@@ -33,7 +33,7 @@ import { filterCandidates, getMediaMentionOptionId, MediaMentionCandidateMenu } 
 import type { MediaMentionCandidate } from './mediaMentionCandidates';
 import { getMentionCaretRect } from './mentionCaret';
 
-export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind; label?: string };
+export type ActivatedMediaMention = { inputKey: string; kind: FlowMediaMentionKind; label?: string; previewUrl?: string };
 
 export type MediaMentionPromptEditorProps = {
   ariaLabel?: string;
@@ -185,6 +185,14 @@ function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   return { nodeKey: node.getKey(), startOffset: offset - match[0].length, endOffset: offset, query: match[1], version };
 }
 
+function restoreMentionCaret(editor: LexicalEditor, query: MentionQuerySnapshot | null) {
+  if (!query) return;
+  editor.update(() => {
+    const node = $getNodeByKey(query.nodeKey);
+    if ($isTextNode(node)) node.select(query.endOffset, query.endOffset);
+  }, { discrete: true });
+}
+
 function $getTrailingMentionQuery(version: number): MentionQuerySnapshot | null {
   let current: LexicalNode | null = $getRoot();
   while (current && $isElementNode(current)) {
@@ -199,7 +207,7 @@ function $getTrailingMentionQuery(version: number): MentionQuerySnapshot | null 
     : null;
 }
 
-function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, previewUrlsByInputKey = EMPTY_PREVIEW_URLS, value, setMenu, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
+function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings, candidates, disabled = false, onActivateCandidate, onChange, onEditorReady, placeholder, previewUrlsByInputKey = EMPTY_PREVIEW_URLS, value, setMenu, setMentionAnchor, registerActions, selectedIndex, moveSelection, contentStyle, editorElementRef, menuId, menuOpen, onActivationError }: MediaMentionPromptEditorProps & {
   contentStyle: React.CSSProperties;
   editorElementRef: React.MutableRefObject<HTMLElement | null>;
   menuId: string;
@@ -209,6 +217,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   registerActions: (actions: EditorActions) => void;
   selectedIndex: number;
   setMenu: (menu: { query: string } | null) => void;
+  setMentionAnchor: (query: MentionQuerySnapshot | null) => void;
 }) {
   const [editor] = useLexicalComposerContext();
   const bindingsRef = useRef(bindings);
@@ -233,15 +242,17 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   useEffect(() => {
     if (!disabled) return;
     queryRef.current = null;
+    setMentionAnchor(null);
     setMenu(null);
     onActivationError(null);
-  }, [disabled, onActivationError, setMenu]);
+  }, [disabled, onActivationError, setMenu, setMentionAnchor]);
   useEffect(() => {
     const query = queryRef.current;
     if (!query || filterCandidates(candidates, query.query).length) return;
     queryRef.current = null;
+    setMentionAnchor(null);
     setMenu(null);
-  }, [candidates, setMenu]);
+  }, [candidates, setMenu, setMentionAnchor]);
   useEffect(() => {
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
@@ -294,7 +305,7 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       const sourceText = node.getTextContent();
       const before = sourceText.slice(0, target.startOffset);
       const after = sourceText.slice(target.endOffset);
-      const mention = $createMediaMentionNode({ binding: allocation.binding, kind: allocation.binding.kind, label: allocation.binding.label, valid: true });
+      const mention = new MediaMentionNode(allocation.binding.inputKey, allocation.binding.kind, allocation.binding.label, true, undefined, false, activated.previewUrl ?? previewUrlsByInputKey[allocation.binding.inputKey]);
       const spacer = $createTextNode(' ');
       if (before) {
         node.setTextContent(before);
@@ -309,11 +320,12 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     }, { discrete: true });
     if (inserted) {
       queryRef.current = null;
+      setMentionAnchor(null);
       setMenu(null);
       onActivationError(null);
       queueMicrotask(() => editor.focus());
     }
-  }, [disabled, editor, onActivateCandidate, onActivationError, setMenu]);
+  }, [disabled, editor, onActivateCandidate, onActivationError, previewUrlsByInputKey, setMenu, setMentionAnchor]);
 
   const onEditorChange = useCallback((editorState: Parameters<React.ComponentProps<typeof OnChangePlugin>['onChange']>[0]) => {
     editorState.read(() => {
@@ -322,10 +334,11 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       lastSerializedValueRef.current = nextValue;
       const query = composingRef.current ? null : $getMentionQuery(versionRef.current);
       queryRef.current = query;
+      setMentionAnchor(query);
       setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
       onChange({ value: nextValue, bindings: bindingsRef.current });
     });
-  }, [candidates, onChange, setMenu]);
+  }, [candidates, onChange, setMenu, setMentionAnchor]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
     event.stopPropagation();
@@ -335,7 +348,9 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
         versionRef.current += 1;
         const query = $getMentionQuery(versionRef.current);
         queryRef.current = query;
+        setMentionAnchor(query);
         setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
+        restoreMentionCaret(editor, query);
       });
       queueMicrotask(sync);
       setTimeout(sync, 0);
@@ -344,9 +359,9 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     const filtered = snapshot ? filterCandidates(candidates, snapshot.query) : [];
     if (disabled || composingRef.current || !filtered.length) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); moveSelection(event.key === 'ArrowDown' ? 1 : -1, filtered.length); return; }
-    if (event.key === 'Escape') { event.preventDefault(); queryRef.current = null; setMenu(null); return; }
+    if (event.key === 'Escape') { event.preventDefault(); queryRef.current = null; setMentionAnchor(null); setMenu(null); return; }
     if (event.key === 'Enter') event.preventDefault();
-  }, [activate, candidates, disabled, editor, moveSelection, selectedIndex, setMenu]);
+  }, [activate, candidates, disabled, editor, moveSelection, selectedIndex, setMenu, setMentionAnchor]);
 
   useEffect(() => editor.registerCommand(KEY_ENTER_COMMAND, (event: KeyboardEvent | null) => {
     const snapshot = queryRef.current;
@@ -364,10 +379,12 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
         versionRef.current += 1;
         const query = $getMentionQuery(versionRef.current);
         queryRef.current = query;
+        setMentionAnchor(query);
         setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
+        restoreMentionCaret(editor, query);
       });
     });
-  }, [candidates, disabled, editor, setMenu]);
+  }, [candidates, disabled, editor, setMenu, setMentionAnchor]);
 
   useEffect(() => { registerActions({ activate: (candidate) => { void activate(candidate); }, focus: () => editor.focus() }); }, [activate, editor, registerActions]);
 
@@ -390,6 +407,9 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
   const [selectedIndex, setSelectedIndex] = useState(0);
   const actionsRef = useRef<EditorActions | null>(null);
   const editorElementRef = useRef<HTMLElement | null>(null);
+  const lexicalEditorRef = useRef<LexicalEditor | null>(null);
+  const [mentionAnchor, setMentionAnchor] = useState<MentionQuerySnapshot | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const editorLayerId = useId();
   const menuId = useId();
   const density = getPromptBarDensity(props.densityVariant as PromptBarDensityVariant);
@@ -400,11 +420,32 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
   const initialConfig = useMemo(() => ({ namespace: 'MediaMentionPromptEditor', nodes: [MediaMentionNode], onError(error: Error) { throw error; }, editorState(editor: LexicalEditor) { initializePrompt(editor, props.value, props.bindings, props.activeInputKeys); }, theme: {} // initialization only; live typing is handled by Lexical itself.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
+  const measureAnchor = useCallback(() => {
+    const editorElement = editorElementRef.current;
+    const lexicalEditor = lexicalEditorRef.current;
+    if (!editorElement || !lexicalEditor || !mentionAnchor) { setAnchorRect(null); return; }
+    const domNode = lexicalEditor.getElementByKey(mentionAnchor.nodeKey);
+    const textNode = domNode ? (document.createTreeWalker(domNode, NodeFilter.SHOW_TEXT).nextNode() as Text | null) : null;
+    setAnchorRect(getMentionCaretRect(editorElement, textNode ? { textNode, offset: mentionAnchor.endOffset } : undefined));
+  }, [mentionAnchor]);
+  useEffect(() => { measureAnchor(); }, [measureAnchor, props.value, props.bindings, props.activeInputKeys]);
+  useEffect(() => {
+    if (!menu) return;
+    let frame = 0;
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measureAnchor); };
+    const observer = typeof ResizeObserver !== 'undefined' && editorElementRef.current ? new ResizeObserver(schedule) : null;
+    if (editorElementRef.current) observer?.observe(editorElementRef.current);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, true);
+    window.visualViewport?.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('scroll', schedule);
+    return () => { cancelAnimationFrame(frame); observer?.disconnect(); window.removeEventListener('resize', schedule); window.removeEventListener('scroll', schedule, true); window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule); };
+  }, [menu, measureAnchor]);
 
   return <LexicalComposer initialConfig={initialConfig}>
     <div style={{ position: 'relative', minHeight: density.editorMinHeight, maxHeight: density.editorMaxHeight }}>
-      <EditorBridge {...props} contentStyle={contentStyle} editorElementRef={editorElementRef} menuId={menuId} menuOpen={Boolean(menu)} moveSelection={moveSelection} onActivationError={setActivationError} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} />
-      {menu ? <MediaMentionCandidateMenu anchorRect={getMentionCaretRect(editorElementRef.current) ?? editorElementRef.current?.getBoundingClientRect() ?? null} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} menuId={menuId} onDismiss={() => setMenu(null)} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
+      <EditorBridge {...props} contentStyle={contentStyle} editorElementRef={editorElementRef} menuId={menuId} menuOpen={Boolean(menu)} moveSelection={moveSelection} onActivationError={setActivationError} onEditorReady={(editor) => { lexicalEditorRef.current = editor; props.onEditorReady?.(editor); }} registerActions={(actions) => { actionsRef.current = actions; }} selectedIndex={selectedIndex} setMenu={setMentionMenu} setMentionAnchor={setMentionAnchor} />
+      {menu ? <MediaMentionCandidateMenu anchorRect={anchorRect} candidates={props.candidates} layerKey={`media-mention-candidates:${editorLayerId}`} menuId={menuId} onDismiss={() => { setMenu(null); setMentionAnchor(null); }} onSelect={(candidate) => actionsRef.current?.activate(candidate)} query={menu.query} selectedIndex={selectedIndex} setSelectedIndex={setSelectedIndex} /> : null}
       {activationError ? <div aria-live="assertive" role="alert">{activationError}</div> : null}
     </div>
   </LexicalComposer>;

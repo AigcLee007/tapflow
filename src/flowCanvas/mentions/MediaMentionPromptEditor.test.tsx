@@ -74,6 +74,12 @@ describe('MediaMentionPromptEditor', () => {
     if (typeof Selection !== 'undefined' && typeof Selection.prototype.modify !== 'function') {
       Object.defineProperty(Selection.prototype, 'modify', { configurable: true, value: () => undefined });
     }
+    if (typeof Range !== 'undefined' && typeof Range.prototype.getBoundingClientRect !== 'function') {
+      Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ x: 160, y: 80, width: 0, height: 18, top: 80, right: 160, bottom: 98, left: 160, toJSON: () => ({}) }),
+      });
+    }
   });
 
   it('opens media-only candidates for @ and activates the keyboard selection', async () => {
@@ -244,7 +250,7 @@ describe('MediaMentionPromptEditor', () => {
       }, { discrete: true });
     });
     const menu = await screen.findByRole('listbox', { name: '引用媒体' });
-    expect(menu.style.left).toBe('480px');
+    expect(menu.style.left).toBe('160px');
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(screen.queryByRole('listbox', { name: '引用媒体' })).toBeNull());
     expect(screen.getAllByRole('combobox')).toHaveLength(2);

@@ -1,9 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-07
+Last updated: 2026-08-08
 Maintainers: project team + Codex sessions
 
 ## 2026-08-08 - Media Mention Caret And Numbering Follow-up
+
+- replaced editor-box menu positioning with a stable Lexical query anchor and range/character fallback; `@` restores its text selection after element-selection recovery, and the menu remeasures on editor resize, viewport resize, scroll, visual viewport changes, and canvas transforms.
+- video mention candidates now preserve connected media and show capability-restricted canvas/library media as disabled choices with a visible reason; text remains excluded.
+- mention activation now carries runtime-only previews so image/video capsule thumbnails render on the first insertion frame; preview URLs remain excluded from serialized draft JSON.
+- validation: focused mention/video suite passed `66/66`; `npm run build` exited `0` with the known Vite/Browserslist warnings. Browser smoke remains to be run against the deployed canvas.
 
 - media inputs now use a unified `inputKey` projection with independent `图片N`、`视频N`、`音频N` labels; text inputs remain outside media mention candidates.
 - image reference chips, media candidates, and mention pills reuse projected labels; mention pills can render runtime-only 16px thumbnails without persisting preview URLs.
