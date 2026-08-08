@@ -85,6 +85,33 @@ describe("NodeInputTray", () => {
     await waitFor(() => expect(screen.queryByRole("tooltip", { name: "预览 Reference image" })).toBeNull());
   });
 
+  it("closes a preview when its hovered input is removed", async () => {
+    const { rerender } = render(<NodeInputTray items={[imageA]} />);
+    fireEvent.mouseEnter(screen.getByTitle("Reference image"));
+    await waitFor(() => expect(screen.getByRole("tooltip", { name: "预览 Reference image" })).not.toBeNull());
+
+    rerender(<NodeInputTray items={[]} />);
+    await waitFor(() => expect(screen.queryByRole("tooltip", { name: "预览 Reference image" })).toBeNull());
+  });
+
+  it("updates an open preview when the same input receives a new preview URL", async () => {
+    const { rerender } = render(<NodeInputTray items={[imageA]} />);
+    fireEvent.mouseEnter(screen.getByTitle("Reference image"));
+    await waitFor(() => expect(screen.getByRole("img", { name: "Reference image" }).getAttribute("src")).toBe(imageA.hoverPreviewUrl));
+
+    rerender(<NodeInputTray items={[{ ...imageA, hoverPreviewUrl: "https://cdn.test/image-updated.png" }]} />);
+    await waitFor(() => expect(screen.getByRole("img", { name: "Reference image" }).getAttribute("src")).toBe("https://cdn.test/image-updated.png"));
+  });
+
+  it("does not open a preview from disabled pointer or focus interactions", () => {
+    render(<NodeInputTray disabled items={[imageA]} />);
+
+    const card = screen.getByTitle("Reference image");
+    fireEvent.mouseEnter(card);
+    fireEvent.focus(card);
+    expect(screen.queryByRole("tooltip", { name: "预览 Reference image" })).toBeNull();
+  });
+
   it("anchors text and overflow portals to their triggers within the viewport", () => {
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });

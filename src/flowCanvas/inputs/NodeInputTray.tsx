@@ -145,7 +145,7 @@ function MediaInputCard({
             suppressFocusPreviewRef.current = false;
             return;
           }
-          if (hoverable) onHoverChange(item, event.currentTarget);
+          if (canPreview) onHoverChange(item, event.currentTarget);
         }}
         onBlur={() => onHoverChange(null, null)}
         onKeyDown={(event) => {
@@ -164,7 +164,7 @@ function MediaInputCard({
             onHoverChange(item, event.currentTarget);
           }
         }}
-        onMouseEnter={(event) => { if (hoverable) onHoverChange(item, event.currentTarget); }}
+        onMouseEnter={(event) => { if (canPreview) onHoverChange(item, event.currentTarget); }}
         onMouseLeave={() => onHoverChange(null, null)}
         role={canFocus || canPreview ? "button" : "group"}
         tabIndex={canFocus || canPreview ? 0 : -1}
@@ -192,12 +192,13 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
   const overflowLayer = useDismissibleLayer(`node-input-tray-overflow-${layerId}`);
   const textMenuStyle = useAnchoredMenuStyle(textLayer.open, textLayer.triggerRef, textLayer.ref);
   const overflowMenuStyle = useAnchoredMenuStyle(overflowLayer.open, overflowLayer.triggerRef, overflowLayer.ref);
-  const [hovered, setHovered] = useState<{ item: CanvasInputItem; trigger: HTMLElement } | null>(null);
+  const [hovered, setHovered] = useState<{ inputKey: string; trigger: HTMLElement } | null>(null);
   const textItems = items.filter((item) => item.kind === "text");
   const mediaItems = items.filter((item) => item.kind !== "text");
   const visibleMediaCount = MAX_VISIBLE_CELLS - (textItems.length ? 1 : 0);
   const visibleMediaItems = mediaItems.slice(0, visibleMediaCount);
   const overflowItems = mediaItems.slice(visibleMediaCount);
+  const hoveredItem = hovered ? items.find((item) => item.inputKey === hovered.inputKey) ?? null : null;
 
   useEffect(() => {
     if (!textItems.length) textLayer.closeLayer();
@@ -206,6 +207,10 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
   useEffect(() => {
     if (!overflowItems.length) overflowLayer.closeLayer();
   }, [overflowItems.length, overflowLayer.closeLayer]);
+
+  useEffect(() => {
+    if (hovered && !hoveredItem) setHovered(null);
+  }, [hovered, hoveredItem]);
 
   useEffect(() => () => {
     if (closeTextMenuTimer.current) clearTimeout(closeTextMenuTimer.current);
@@ -268,11 +273,11 @@ export function NodeInputTray({ disabled = false, items, onFocusSource, onRemove
   return <>
     <div aria-label="节点输入" className="flex items-center gap-1.5">
       {textItems.length ? <button aria-expanded={textLayer.open} aria-haspopup="menu" aria-label={`文本输入，共 ${textItems.length} 个节点`} className="flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center rounded-[8px] border border-white/15 bg-white/[0.06] text-white hover:bg-white/[0.12] disabled:cursor-not-allowed" disabled={disabled} onClick={textLayer.toggle} onMouseEnter={openTextMenu} onMouseLeave={closeTextMenuLater} ref={textLayer.triggerRef as React.RefObject<HTMLButtonElement>} type="button"><FileText aria-hidden className="h-4 w-4" /><span className="text-[11px] font-bold">{textItems.length}</span></button> : null}
-      {visibleMediaItems.map((item) => <MediaInputCard disabled={disabled} item={item} key={item.inputKey} onDragEnd={() => { draggedKey.current = null; }} onDragStart={dragStart} onDrop={drop} onFocusSource={onFocusSource} onHoverChange={(nextItem, trigger) => setHovered(nextItem && trigger ? { item: nextItem, trigger } : null)} onRemove={onRemove} onRetryPreview={onRetryPreview} />)}
+      {visibleMediaItems.map((item) => <MediaInputCard disabled={disabled} item={item} key={item.inputKey} onDragEnd={() => { draggedKey.current = null; }} onDragStart={dragStart} onDrop={drop} onFocusSource={onFocusSource} onHoverChange={(nextItem, trigger) => setHovered(nextItem && trigger ? { inputKey: nextItem.inputKey, trigger } : null)} onRemove={onRemove} onRetryPreview={onRetryPreview} />)}
       {overflowItems.length ? <button aria-expanded={overflowLayer.open} aria-haspopup="menu" aria-label={`显示另外 ${overflowItems.length} 个输入`} className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[8px] border border-white/15 bg-white/[0.06] text-xs font-bold text-white hover:bg-white/[0.12] disabled:cursor-not-allowed" disabled={disabled} onClick={overflowLayer.toggle} ref={overflowLayer.triggerRef as React.RefObject<HTMLButtonElement>} type="button">+{overflowItems.length}</button> : null}
     </div>
     {textMenu}
     {overflowMenu}
-    {hovered ? <MediaHoverPreview id={`media-preview-${hovered.item.inputKey}`} item={hovered.item} onDismiss={() => setHovered(null)} open trigger={hovered.trigger} /> : null}
+    {hovered && hoveredItem ? <MediaHoverPreview id={`media-preview-${hoveredItem.inputKey}`} item={hoveredItem} onDismiss={() => setHovered(null)} open trigger={hovered.trigger} /> : null}
   </>;
 }
