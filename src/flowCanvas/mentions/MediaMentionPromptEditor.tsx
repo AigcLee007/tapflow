@@ -198,6 +198,18 @@ function EditorBridge({ activeInputKeys, bindings, candidates, disabled = false,
     }, { discrete: true });
   }, [disabled, editor]);
   useEffect(() => {
+    if (!disabled) return;
+    queryRef.current = null;
+    setMenu(null);
+    onActivationError(null);
+  }, [disabled, onActivationError, setMenu]);
+  useEffect(() => {
+    const query = queryRef.current;
+    if (!query || filterCandidates(candidates, query.query).length) return;
+    queryRef.current = null;
+    setMenu(null);
+  }, [candidates, setMenu]);
+  useEffect(() => {
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
     const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}`;

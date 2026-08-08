@@ -24,7 +24,7 @@ const imageBinding: FlowMediaMentionBinding = { inputKey: 'asset:image', kind: '
 function renderEditor(overrides: Partial<React.ComponentProps<typeof MediaMentionPromptEditor>> = {}) {
   const onChange = overrides.onChange ?? vi.fn();
   const onActivateCandidate = overrides.onActivateCandidate ?? vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const }));
-  render(
+  const result = render(
     <MediaMentionPromptEditor
       activeInputKeys={new Set(['asset:image'])}
       bindings={[]}
@@ -37,7 +37,7 @@ function renderEditor(overrides: Partial<React.ComponentProps<typeof MediaMentio
       {...overrides}
     />,
   );
-  return { onActivateCandidate, onChange };
+  return { ...result, onActivateCandidate, onChange };
 }
 
 async function renderEditorWithLexicalPrompt(prompt: string, caretOffset: number, overrides: Partial<React.ComponentProps<typeof MediaMentionPromptEditor>> = {}) {
@@ -260,6 +260,61 @@ describe('MediaMentionPromptEditor', () => {
     expect(editor.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[0].id);
     fireEvent.keyDown(editor, { key: 'ArrowDown' });
     await waitFor(() => expect(editor.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[1].id));
+  });
+
+  it('closes an open menu and clears its active ARIA state when the editor becomes disabled', async () => {
+    const activation = vi.fn(async () => { throw new Error('素材不可用'); });
+    const { rerender } = await renderEditorWithLexicalPrompt('@', 1, { onActivateCandidate: activation });
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
+    const menu = await screen.findByRole('listbox', { name: '引用媒体' });
+    expect(editor.getAttribute('aria-controls')).toBe(menu.id);
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    expect((await screen.findByRole('alert')).textContent).toContain('素材不可用');
+
+    rerender(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set(['asset:image'])}
+        bindings={[]}
+        candidates={[imageCandidate, videoCandidate]}
+        densityVariant="image"
+        disabled
+        onActivateCandidate={vi.fn()}
+        onChange={vi.fn()}
+        placeholder="生成提示词"
+        value="@"
+      />,
+    );
+
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: '引用媒体' })).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(editor.getAttribute('aria-expanded')).toBe('false');
+    expect(editor.getAttribute('aria-controls')).toBeNull();
+    expect(editor.getAttribute('aria-activedescendant')).toBeNull();
+  });
+
+  it('closes an open menu when the current query has no remaining candidates', async () => {
+    const { rerender } = await renderEditorWithLexicalPrompt('@road', 5);
+    const editor = screen.getByRole('combobox', { name: '生成提示词' });
+    const menu = await screen.findByRole('listbox', { name: '引用媒体' });
+    expect(editor.getAttribute('aria-controls')).toBe(menu.id);
+
+    rerender(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set(['asset:image'])}
+        bindings={[]}
+        candidates={[imageCandidate]}
+        densityVariant="image"
+        onActivateCandidate={vi.fn()}
+        onChange={vi.fn()}
+        placeholder="生成提示词"
+        value="@road"
+      />,
+    );
+
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: '引用媒体' })).toBeNull());
+    expect(editor.getAttribute('aria-expanded')).toBe('false');
+    expect(editor.getAttribute('aria-controls')).toBeNull();
+    expect(editor.getAttribute('aria-activedescendant')).toBeNull();
   });
 
   it('keeps a valid mention delete control keyboard reachable', async () => {
