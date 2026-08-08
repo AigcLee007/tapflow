@@ -127,7 +127,7 @@ import {
   IMAGE_MODEL_MENU_WIDTH,
 } from './imageMenuStyles';
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
-import { buildMediaMentionCandidates, type MediaMentionCandidate } from '../mentions/mediaMentionCandidates';
+import { buildMediaMentionCandidates, type MediaMentionAssetSeed, type MediaMentionCandidate } from '../mentions/mediaMentionCandidates';
 import { MediaMentionPromptEditor } from '../mentions/MediaMentionPromptEditor';
 import { appendVideoReferenceInput, referenceRoleFor } from '../video/videoReferenceRules';
 import { useAssetLibrary } from '../../assets/useAssetLibrary';
@@ -3185,7 +3185,6 @@ export const TextNodeComponent = memo(function TextNode({
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
-  const canvasNodes = useFlowCanvasStore((s) => s.nodes);
   const resolvedText = typeof runtimeNodeOutput?.text === 'string' ? runtimeNodeOutput.text : (d.text || '');
   const isGenerating = runtimeNodeStatus === 'pending'
     || runtimeNodeStatus === 'runnable'
@@ -4422,8 +4421,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       .filter((asset) => asset.kind === 'image')
       .map((asset) => ({
         id: asset.id,
+        kind: 'image' as const,
         imageUrl: asset.previewUrl || '',
         notes: asset.description || undefined,
+        originalFilename: asset.originalFilename || undefined,
+        previewUrl: asset.previewUrl || '',
         title: asset.title || asset.originalFilename || asset.id,
       })),
     [imageAssetLibrary.assets],
@@ -7809,10 +7811,12 @@ export const VideoNodeComponent = memo(function VideoNode({
     const capabilities = option?.capabilities;
     const constraint = capabilities?.modeConstraints?.[videoParams.mode];
     const allowedKinds = new Set<"image" | "video" | "audio">();
-    if ((constraint?.maxImages ?? capabilities?.maxImages ?? 0) > 0) allowedKinds.add("image");
-    if ((constraint?.maxVideos ?? capabilities?.maxVideos ?? 0) > 0) allowedKinds.add("video");
-    if ((constraint?.maxAudios ?? capabilities?.maxAudios ?? 0) > 0) allowedKinds.add("audio");
-    if (!allowedKinds.size) allowedKinds.add("image");
+    const maxImages = constraint?.maxImages ?? capabilities?.maxImages;
+    const maxVideos = constraint?.maxVideos ?? capabilities?.maxVideos;
+    const maxAudios = constraint?.maxAudios ?? capabilities?.maxAudios;
+    if (typeof maxImages === "number" && maxImages > 0) allowedKinds.add("image");
+    if (typeof maxVideos === "number" && maxVideos > 0) allowedKinds.add("video");
+    if (typeof maxAudios === "number" && maxAudios > 0) allowedKinds.add("audio");
     const connected = resolvedVideoInputItems.map((item) => ({
       assetId: item.assetId,
       inputKey: item.inputKey,
@@ -7829,12 +7833,10 @@ export const VideoNodeComponent = memo(function VideoNode({
         thumbnailUrl: String(node.data.thumbnailUrl || node.data.posterUrl || ""),
         title: String(node.data.title || node.type || "Media"),
       }));
-    const assets = (videoAssetLibrary.assets ?? []).map((asset) => ({
-      assetId: asset.id,
-      kind: asset.kind === "image" || asset.kind === "video" || asset.kind === "audio" ? asset.kind : "other" as const,
-      thumbnailUrl: asset.previewUrl,
-      title: asset.title || asset.originalFilename || "Media",
-    }));
+    const assets: MediaMentionAssetSeed[] = (videoAssetLibrary.assets ?? []).flatMap((asset) => {
+      const kind = asset.kind === "image" || asset.kind === "video" || asset.kind === "audio" ? asset.kind : null;
+      return kind ? [{ assetId: asset.id, kind, thumbnailUrl: asset.previewUrl, title: asset.title || asset.originalFilename || "Media" }] : [];
+    });
     return buildMediaMentionCandidates({ allowedKinds, assets, canvas, connected, currentNodeId: id, recentAssetIds: [] });
   }, [canvasNodes, d.modelId, id, resolvedVideoInputItems, videoAssetLibrary.assets, videoCatalog.models, videoParams.mode]);
   const activateVideoMention = useCallback((candidate: MediaMentionCandidate) => {

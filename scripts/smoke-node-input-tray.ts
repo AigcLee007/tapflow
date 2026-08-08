@@ -5,7 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const NODE_INPUT_TRAY_SMOKE_OUTPUT_DIR = path.join("output", "playwright", "node-input-tray");
-export const NODE_INPUT_TRAY_SMOKE_CONTRACT = "文本输入，共 2 个节点 MediaMentionPromptEditor @图片1 @视频1 video.play hoverPreviewUrl removeTextNodeInputs connected:upstream:upstream-image canvas:upstream-video /logo.png /video-camera-library/v2/fixed.mp4 NodeInputTray DataTransfer";
+export const NODE_INPUT_TRAY_SMOKE_CONTRACT = "文本输入，共 2 个节点 MediaMentionPromptEditor @图片1 @视频1 video.play hoverPreviewUrl removeTextNodeInputs connected:upstream:upstream-image canvas:upstream-video /logo.png /video-camera-library/v2/fixed.mp4 NodeInputTray DataTransfer option";
 const SMOKE_HTML_PATH = path.join(NODE_INPUT_TRAY_SMOKE_OUTPUT_DIR, "node-input-tray-smoke.html");
 const CHECK_CODE_PATH = path.join(NODE_INPUT_TRAY_SMOKE_OUTPUT_DIR, "node-input-tray-check.js");
 
