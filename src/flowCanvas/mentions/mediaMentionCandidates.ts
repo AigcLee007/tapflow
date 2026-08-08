@@ -39,6 +39,12 @@ export type MediaMentionCandidate = {
 
 type CandidateInput = {
   allowedKinds: ReadonlySet<FlowMediaMentionKind>;
+  /**
+   * When present, non-connected media stays visible and is disabled instead of
+   * being filtered out. Existing callers can omit it to retain the legacy
+   * allowed-kinds filtering behavior.
+   */
+  disabledReasons?: ReadonlyMap<FlowMediaMentionKind, string> | Partial<Record<FlowMediaMentionKind, string>>;
   assets: MediaMentionAssetSeed[];
   canvas: MediaMentionCanvasSeed[];
   connected: MediaMentionConnectedSeed[];
@@ -53,8 +59,16 @@ type CandidateInput = {
  * accidentally create a second input.
  */
 export function buildMediaMentionCandidates(input: CandidateInput): MediaMentionCandidate[] {
-  const isAllowed = (kind: MediaMentionConnectedSeed['kind']): kind is FlowMediaMentionKind =>
-    kind !== 'text' && input.allowedKinds.has(kind);
+  const isMediaKind = (kind: MediaMentionConnectedSeed['kind']): kind is FlowMediaMentionKind => kind !== 'text';
+  const disabledReasonFor = (kind: FlowMediaMentionKind): string | undefined => {
+    if (input.allowedKinds.has(kind)) return undefined;
+    if (!input.disabledReasons) return undefined;
+    return input.disabledReasons instanceof Map
+      ? input.disabledReasons.get(kind)
+      : input.disabledReasons[kind];
+  };
+  const shouldIncludeNewSource = (kind: MediaMentionConnectedSeed['kind']): kind is FlowMediaMentionKind =>
+    isMediaKind(kind) && (input.allowedKinds.has(kind) || Boolean(input.disabledReasons));
   const connectedSourceNodeIds = new Set<string>();
   const connectedAssetIds = new Set<string>();
   const candidateKeys = new Set<string>();
@@ -68,7 +82,7 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
 
   for (const source of input.connected) {
     const inputKey = safeId(source.inputKey);
-    if (!inputKey || !isAllowed(source.kind)) continue;
+    if (!inputKey || !isMediaKind(source.kind)) continue;
     const sourceNodeId = safeId(source.sourceNodeId);
     const assetId = safeId(source.assetId);
     if (sourceNodeId === input.currentNodeId) continue;
@@ -87,13 +101,14 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
   const canvasNodeIds = new Set<string>();
   for (const source of input.canvas) {
     const nodeId = safeId(source.nodeId);
-    if (!nodeId || nodeId === input.currentNodeId || !isAllowed(source.kind)) continue;
+    if (!nodeId || nodeId === input.currentNodeId || !shouldIncludeNewSource(source.kind)) continue;
     if (connectedSourceNodeIds.has(nodeId) || canvasNodeIds.has(nodeId)) continue;
     canvasNodeIds.add(nodeId);
     add({
       activation: { type: 'canvas', nodeId },
       candidateKey: `canvas:${nodeId}`,
       mediaKind: source.kind,
+      disabledReason: disabledReasonFor(source.kind),
       thumbnailUrl: safeOptionalUrl(source.thumbnailUrl),
       title: safeTitle(source.title),
     });
@@ -103,7 +118,7 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
   const seenAssetIds = new Set<string>();
   const usableAssets = input.assets.filter((source) => {
     const assetId = safeId(source.assetId);
-    if (!assetId || !isAllowed(source.kind) || connectedAssetIds.has(assetId) || seenAssetIds.has(assetId)) return false;
+    if (!assetId || !shouldIncludeNewSource(source.kind) || connectedAssetIds.has(assetId) || seenAssetIds.has(assetId)) return false;
     seenAssetIds.add(assetId);
     return true;
   });
@@ -119,6 +134,7 @@ export function buildMediaMentionCandidates(input: CandidateInput): MediaMention
       activation: { type: 'asset', assetId },
       candidateKey: `asset:${assetId}`,
       mediaKind: source.kind as FlowMediaMentionKind,
+      disabledReason: disabledReasonFor(source.kind as FlowMediaMentionKind),
       thumbnailUrl: safeOptionalUrl(source.thumbnailUrl),
       title: safeTitle(source.title),
     });

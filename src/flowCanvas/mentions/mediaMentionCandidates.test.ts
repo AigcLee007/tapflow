@@ -34,7 +34,7 @@ describe('buildMediaMentionCandidates', () => {
     expect(result.some((item) => item.mediaKind === ('text' as never))).toBe(false);
   });
 
-  it('filters unsupported kinds before de-duplicating a connected source', () => {
+  it('keeps unsupported connected kinds selectable before de-duplicating a source', () => {
     const result = buildMediaMentionCandidates({
       allowedKinds: new Set(['image']),
       connected: [
@@ -50,8 +50,55 @@ describe('buildMediaMentionCandidates', () => {
       recentAssetIds: [],
     });
 
-    expect(result.map((item) => item.mediaKind)).toEqual(['image']);
-    expect(result).toHaveLength(1);
+    expect(result.map((item) => item.mediaKind)).toEqual(['video', 'image']);
+    expect(result).toHaveLength(2);
+  });
+
+  it('keeps connected media selectable while new sources remain visible but disabled', () => {
+    const result = buildMediaMentionCandidates({
+      allowedKinds: new Set(),
+      disabledReasons: { image: '正在加载模型能力', video: '正在加载模型能力', audio: '正在加载模型能力' },
+      connected: [
+        { inputKey: 'upstream:video', kind: 'video', sourceNodeId: 'connected-video', title: 'Connected video' },
+      ],
+      canvas: [
+        { kind: 'image', nodeId: 'canvas-image', title: 'Canvas image' },
+        { kind: 'video', nodeId: 'canvas-video', title: 'Canvas video' },
+      ],
+      assets: [
+        { assetId: 'asset-audio', kind: 'audio', title: 'Library audio' },
+        { assetId: 'asset-text', kind: 'text', title: 'Library text' },
+      ],
+      currentNodeId: 'target',
+      recentAssetIds: [],
+    });
+
+    expect(result.map((candidate) => [candidate.candidateKey, candidate.disabledReason])).toEqual([
+      ['connected:upstream:video', undefined],
+      ['canvas:canvas-image', '正在加载模型能力'],
+      ['canvas:canvas-video', '正在加载模型能力'],
+      ['asset:asset-audio', '正在加载模型能力'],
+    ]);
+  });
+
+  it('disables only unsupported new media kinds while retaining allowed candidates', () => {
+    const result = buildMediaMentionCandidates({
+      allowedKinds: new Set(['video']),
+      disabledReasons: { image: '当前模式不支持图片输入', audio: '当前模式不支持音频输入' },
+      connected: [],
+      canvas: [
+        { kind: 'image', nodeId: 'canvas-image', title: 'Canvas image' },
+        { kind: 'video', nodeId: 'canvas-video', title: 'Canvas video' },
+      ],
+      assets: [],
+      currentNodeId: 'target',
+      recentAssetIds: [],
+    });
+
+    expect(result.map((candidate) => [candidate.candidateKey, candidate.disabledReason])).toEqual([
+      ['canvas:canvas-image', '当前模式不支持图片输入'],
+      ['canvas:canvas-video', undefined],
+    ]);
   });
 
   it('removes duplicate node and asset sources and never returns self or malformed ids', () => {
