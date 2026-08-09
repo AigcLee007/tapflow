@@ -217,6 +217,76 @@ describe('MediaMentionPromptEditor', () => {
     });
     expect(await screen.findByRole('listbox', { name: '引用媒体' })).toBeTruthy();
   });
+
+  it('does not rewrite Lexical selection repeatedly while opening the @ menu', async () => {
+    const { editor } = await renderEditorWithLexicalPrompt('@', 1);
+    const update = vi.spyOn(editor, 'update');
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: '@' });
+    await screen.findByRole('listbox', { name: '引用媒体' });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(update).not.toHaveBeenCalled();
+  });
+  it('ignores duplicate viewport style mutations while keeping the mention anchor live', async () => {
+    let viewportObserverCallback: MutationCallback | undefined;
+    class ControlledMutationObserver {
+      constructor(private readonly callback: MutationCallback) {}
+      observe(target: Node) {
+        if ((target as HTMLElement).classList?.contains('react-flow__viewport')) viewportObserverCallback = this.callback;
+      }
+      disconnect() {}
+      takeRecords(): MutationRecord[] { return []; }
+    }
+    const requestAnimationFrameMock = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal('MutationObserver', ControlledMutationObserver);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrameMock);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    try {
+      let lexicalEditor: LexicalEditor | undefined;
+      const { container } = render(
+        <div className="react-flow__viewport" style={{ transform: 'translate(0px, 0px)' }}>
+          <MediaMentionPromptEditor
+            activeInputKeys={new Set(['asset:image'])}
+            bindings={[]}
+            candidates={[imageCandidate]}
+            densityVariant="image"
+            onActivateCandidate={vi.fn()}
+            onChange={vi.fn()}
+            onEditorReady={(editor) => { lexicalEditor = editor; }}
+            placeholder="生成提示词"
+            value=""
+          />
+        </div>,
+      );
+      await waitFor(() => expect(lexicalEditor).toBeTruthy());
+      act(() => {
+        lexicalEditor!.update(() => {
+          const root = $getRoot();
+          root.clear();
+          const paragraph = $createParagraphNode();
+          const text = $createTextNode('@');
+          paragraph.append(text);
+          root.append(paragraph);
+          text.selectEnd();
+        }, { discrete: true });
+      });
+      await screen.findByRole('listbox', { name: '引用媒体' });
+      await waitFor(() => expect(viewportObserverCallback).toBeTypeOf('function'));
+      const viewport = container.querySelector('.react-flow__viewport') as HTMLElement;
+      const scheduledBeforeDuplicate = requestAnimationFrameMock.mock.calls.length;
+
+      viewportObserverCallback?.([], {} as MutationObserver);
+      expect(requestAnimationFrameMock).toHaveBeenCalledTimes(scheduledBeforeDuplicate);
+
+      viewport.setAttribute('style', 'transform: translate(12px, 0px)');
+      viewportObserverCallback?.([], {} as MutationObserver);
+      expect(requestAnimationFrameMock).toHaveBeenCalledTimes(scheduledBeforeDuplicate + 1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('does not open or accept candidates during IME composition', () => {
     renderEditor();
     const editor = screen.getByRole('combobox', { name: '生成提示词' });

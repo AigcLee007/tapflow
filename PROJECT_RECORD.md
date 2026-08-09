@@ -1,7 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
 Maintainers: project team + Codex sessions
+
+## 2026-08-09 - Media Mention Freeze Guard
+
+- removed the repeated Lexical selection rewrite that ran while opening an `@` menu; the rewrite fired `OnChange`, updated the React Flow node, and could keep the canvas main thread busy during F2 editing.
+- made mention-anchor measurement idempotent and limited the canvas viewport observer to changed `style` values, preventing duplicate React state updates from viewport mutation noise while preserving repositioning for real canvas transforms.
+- added focused regressions for no repeated Lexical updates and duplicate/changed viewport style mutations. Asset variant 404s and flow-draft `409` responses remain separate operational issues and are not treated as the freeze root cause.
+- validation: the focused mention/input suite passed 63/63 and `npm run build` exited `0`; existing Lexical/React test warnings and Vite/Browserslist warnings remain. Browser smoke against a deployed canvas remains a follow-up.
 
 ## 2026-08-08 - Media Mention Caret And Numbering Follow-up
 

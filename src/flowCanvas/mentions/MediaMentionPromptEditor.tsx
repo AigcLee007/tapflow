@@ -228,14 +228,6 @@ function $getMentionQuery(version: number): MentionQuerySnapshot | null {
   return { nodeKey: node.getKey(), startOffset: offset - match[0].length, endOffset: offset, query: match[1], version };
 }
 
-function restoreMentionCaret(editor: LexicalEditor, query: MentionQuerySnapshot | null) {
-  if (!query) return;
-  editor.update(() => {
-    const node = $getNodeByKey(query.nodeKey);
-    if ($isTextNode(node)) node.select(query.endOffset, query.endOffset);
-  }, { discrete: true });
-}
-
 function $getTrailingMentionQuery(version: number): MentionQuerySnapshot | null {
   let current: LexicalNode | null = $getRoot();
   while (current && $isElementNode(current)) {
@@ -428,7 +420,6 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
         queryRef.current = query;
         setMentionAnchor(query);
         setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
-        restoreMentionCaret(editor, query);
       });
       queueMicrotask(sync);
       setTimeout(sync, 0);
@@ -459,7 +450,6 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
         queryRef.current = query;
         setMentionAnchor(query);
         setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
-        restoreMentionCaret(editor, query);
       });
     });
   }, [candidates, disabled, editor, setMenu, setMentionAnchor]);
@@ -504,20 +494,27 @@ export const MediaMentionPromptEditor = forwardRef<MediaMentionPromptEditorHandl
     if (!editorElement || !lexicalEditor || !mentionAnchor) { setAnchorRect(null); return; }
     const domNode = lexicalEditor.getElementByKey(mentionAnchor.nodeKey);
     const textNode = domNode ? (document.createTreeWalker(domNode, NodeFilter.SHOW_TEXT).nextNode() as Text | null) : null;
-    setAnchorRect(getMentionCaretRect(editorElement, textNode ? { textNode, offset: mentionAnchor.endOffset } : undefined));
+    const nextRect = getMentionCaretRect(editorElement, textNode ? { textNode, offset: mentionAnchor.endOffset } : undefined);
+    setAnchorRect((previous) => sameAnchorRect(previous, nextRect) ? previous : nextRect);
   }, [mentionAnchor]);
-  useEffect(() => { measureAnchor(); }, [measureAnchor, props.value, props.bindings, props.activeInputKeys]);
+  useEffect(() => { measureAnchor(); }, [measureAnchor, props.value]);
   useEffect(() => {
     if (!menu) return;
     let frame = 0;
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measureAnchor); };
     const observer = typeof ResizeObserver !== 'undefined' && editorElementRef.current ? new ResizeObserver(schedule) : null;
     const viewport = editorElementRef.current?.closest('.react-flow__viewport');
+    let lastViewportStyle = viewport?.getAttribute('style') ?? '';
     const viewportObserver = typeof MutationObserver !== 'undefined' && viewport
-      ? new MutationObserver(schedule)
+      ? new MutationObserver(() => {
+        const nextStyle = viewport.getAttribute('style') ?? '';
+        if (nextStyle === lastViewportStyle) return;
+        lastViewportStyle = nextStyle;
+        schedule();
+      })
       : null;
     if (editorElementRef.current) observer?.observe(editorElementRef.current);
-    viewportObserver?.observe(viewport, { attributes: true, attributeFilter: ['style', 'class'] });
+    viewportObserver?.observe(viewport, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', schedule);
     window.addEventListener('scroll', schedule, true);
     window.visualViewport?.addEventListener('resize', schedule);
@@ -541,3 +538,14 @@ const placeholderStyle: React.CSSProperties = { position: 'absolute', left: 0, t
 function pillStyle(valid: boolean): React.CSSProperties { return { display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, margin: '0 2px', padding: '2px 5px 2px 4px', borderRadius: 6, border: `1px solid ${valid ? 'rgba(255,255,255,0.12)' : 'rgba(251,191,36,0.55)'}`, background: valid ? 'rgba(255,255,255,0.08)' : 'rgba(251,191,36,0.11)', color: valid ? '#f8fafc' : '#fde68a', fontSize: 13, fontWeight: 700, lineHeight: 1, verticalAlign: '-3px', userSelect: 'none' }; }
 function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function bindingSignature(bindings: FlowMediaMentionBinding[]) { return bindings.map((binding) => `${binding.inputKey}:${binding.kind}:${binding.label}`).join('|'); }
+
+function sameAnchorRect(left: DOMRect | null, right: DOMRect | null): boolean {
+  if (left === right) return true;
+  if (!left || !right) return left === right;
+  return left.left === right.left
+    && left.top === right.top
+    && left.right === right.right
+    && left.bottom === right.bottom
+    && left.width === right.width
+    && left.height === right.height;
+}
