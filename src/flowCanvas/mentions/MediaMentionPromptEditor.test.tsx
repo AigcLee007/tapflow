@@ -70,6 +70,12 @@ function readLexicalCaret(editor: LexicalEditor) {
   return caret;
 }
 
+function readEditorValue(editor: LexicalEditor) {
+  let value = '';
+  editor.getEditorState().read(() => { value = $getRoot().getTextContent(); });
+  return value;
+}
+
 function renderControlledEditor() {
   let value = '@';
   let bindings: FlowMediaMentionBinding[] = [];
@@ -110,6 +116,59 @@ function renderControlledEditor() {
     />,
   );
   return { view, getEditor: () => editor };
+}
+
+function renderDelayedValueEchoEditor() {
+  let value = 'draft';
+  let bindings: FlowMediaMentionBinding[] = [];
+  let editor: LexicalEditor | undefined;
+  let captureChanges = false;
+  let pending: { bindings: FlowMediaMentionBinding[]; value: string } | null = null;
+  const changes: string[] = [];
+  let view: ReturnType<typeof render>;
+  const renderCurrent = () => view.rerender(
+    <MediaMentionPromptEditor
+      activeInputKeys={new Set(['asset:image'])}
+      bindings={bindings}
+      candidates={[imageCandidate]}
+      densityVariant="image"
+      onActivateCandidate={vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const }))}
+      onChange={(next) => {
+        if (!captureChanges) return;
+        changes.push(next.value);
+        if (pending) return;
+        pending = next;
+        renderCurrent();
+      }}
+      onEditorReady={(nextEditor) => { editor = nextEditor; }}
+      placeholder="Generate prompt"
+      value={value}
+    />,
+  );
+  view = render(
+    <MediaMentionPromptEditor
+      activeInputKeys={new Set(['asset:image'])}
+      bindings={bindings}
+      candidates={[imageCandidate]}
+      densityVariant="image"
+      onActivateCandidate={vi.fn(async () => ({ inputKey: 'asset:image', kind: 'image' as const }))}
+      onChange={(next) => {
+        if (!captureChanges) return;
+        changes.push(next.value);
+        if (pending) return;
+        pending = next;
+        renderCurrent();
+      }}
+      onEditorReady={(nextEditor) => { editor = nextEditor; }}
+      placeholder="Generate prompt"
+      value={value}
+    />,
+  );
+  return {
+    changes,
+    getEditor: () => editor,
+    startCapturingChanges: () => { captureChanges = true; },
+  };
 }
 
 describe('MediaMentionPromptEditor', () => {
@@ -198,6 +257,29 @@ describe('MediaMentionPromptEditor', () => {
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
     await waitFor(() => expect(screen.getByText('@图片1')).toBeTruthy());
     await waitFor(() => expect(readLexicalCaret(editor)).toEqual({ text: ' ', offset: 1 }));
+  });
+
+  it('keeps local text when the controlled value temporarily re-renders the previous value', async () => {
+    const { changes, getEditor, startCapturingChanges } = renderDelayedValueEchoEditor();
+    await waitFor(() => expect(getEditor()).toBeTruthy());
+    const editor = getEditor()!;
+    startCapturingChanges();
+
+    act(() => {
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        const text = $createTextNode('draft x');
+        paragraph.append(text);
+        root.append(paragraph);
+        text.selectEnd();
+      }, { discrete: true });
+    });
+
+    await waitFor(() => expect(changes).toContain('draft x'));
+    await waitFor(() => expect(readEditorValue(editor)).toBe('draft x'));
+    expect(changes).toEqual(['draft x']);
   });
 
   it('opens the menu when the first @ leaves Lexical on an element selection', async () => {

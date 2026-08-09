@@ -263,6 +263,8 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
   const composingRef = useRef(false);
   const queryRef = useRef<MentionQuerySnapshot | null>(null);
   const versionRef = useRef(0);
+  const lastPropValueRef = useRef(value);
+  const pendingLocalValueRef = useRef<string | null>(null);
   const lastSerializedValueRef = useRef(value);
   const bindingStateRef = useRef(`${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}`);
 
@@ -296,8 +298,14 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}\u0000${previewSignature}`;
     let currentValue = '';
     editor.getEditorState().read(() => { currentValue = serializeEditor(); });
-    if (value !== lastSerializedValueRef.current || currentValue !== value) {
+    const propValueChanged = value !== lastPropValueRef.current;
+    lastPropValueRef.current = value;
+    const awaitingLocalValueEcho = !propValueChanged
+      && currentValue !== value
+      && pendingLocalValueRef.current === currentValue;
+    if (currentValue !== value && !awaitingLocalValueEcho) {
       lastSerializedValueRef.current = value;
+      pendingLocalValueRef.current = null;
       bindingStateRef.current = nextBindingState;
       const pending = pendingCaretRef.current;
       const restored = currentValue !== value && initializePrompt(
@@ -312,6 +320,8 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       if (pending && (pending.expectedValue !== value || restored)) pendingCaretRef.current = null;
       return;
     }
+    if (currentValue === value && pendingLocalValueRef.current === value) pendingLocalValueRef.current = null;
+    lastSerializedValueRef.current = currentValue;
     if (nextBindingState === bindingStateRef.current) return;
     bindingStateRef.current = nextBindingState;
     const multiplicity = new Map<string, number>();
@@ -402,13 +412,16 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
       versionRef.current += 1;
       const nextValue = serializeEditor();
       lastSerializedValueRef.current = nextValue;
+      pendingLocalValueRef.current = nextValue;
       const query = composingRef.current ? null : $getMentionQuery(versionRef.current);
       queryRef.current = query;
       setMentionAnchor(query);
       setMenu(query && filterCandidates(candidates, query.query).length ? { query: query.query } : null);
-      onChange({ value: nextValue, bindings: bindingsRef.current });
+      if (nextValue !== value || bindingSignature(bindingsRef.current) !== bindingSignature(bindings)) {
+        onChange({ value: nextValue, bindings: bindingsRef.current });
+      }
     });
-  }, [candidates, onChange, setMenu, setMentionAnchor]);
+  }, [bindings, candidates, onChange, setMenu, setMentionAnchor, value]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
     event.stopPropagation();

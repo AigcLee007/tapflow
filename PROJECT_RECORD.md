@@ -3,6 +3,13 @@
 Last updated: 2026-08-09
 Maintainers: project team + Codex sessions
 
+## 2026-08-09 - Media Prompt Controlled Value Feedback Loop
+
+- fixed the media prompt editor feedback loop triggered by ordinary text input. A local Lexical value could be replaced by a stale controlled prop before its node update returned, causing the previous and next prompt values to alternate indefinitely and freezing the canvas renderer.
+- added explicit tracking for the last parent value and a pending local value. A stale parent re-render now leaves local input intact; a genuine external value change still rebuilds the editor. No-op Lexical synchronization updates no longer write unchanged prompt/binding data back to the node.
+- added a deterministic delayed-controlled-value regression that reproduces the production ordering without a browser timing dependency.
+- validation: focused media editor, mention menu, video composer, and image-input suites passed (64 tests). Real Chromium regression at the production canvas zoom confirmed ordinary input produces one node update and remains responsive; `@` rendered one menu and one candidate without errors or a write loop. Existing React/Lexical test-harness warnings remain non-blocking.
+
 ## 2026-08-09 - Media Mention Freeze Guard
 
 - removed the repeated Lexical selection rewrite that ran while opening an `@` menu; the rewrite fired `OnChange`, updated the React Flow node, and could keep the canvas main thread busy during F2 editing.
