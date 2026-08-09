@@ -390,9 +390,38 @@ describe('MediaMentionPromptEditor', () => {
     expect(onActivateCandidate).not.toHaveBeenCalled();
   });
 
-  it('renders a removed input binding as an invalid warning mention', async () => {
-    renderEditor({ value: 'scene @图片1', bindings: [imageBinding], activeInputKeys: new Set() });
-    expect((await screen.findByText('@图片1')).parentElement?.getAttribute('data-invalid')).toBe('true');
+  it('removes a mention capsule when its referenced input is removed', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set(['asset:image'])}
+        bindings={[imageBinding]}
+        candidates={[imageCandidate]}
+        densityVariant="image"
+        onActivateCandidate={vi.fn()}
+        onChange={onChange}
+        placeholder="Generate prompt"
+        value={`scene @${imageBinding.label} after`}
+      />,
+    );
+    await screen.findByText(`@${imageBinding.label}`);
+    onChange.mockClear();
+
+    rerender(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set()}
+        bindings={[imageBinding]}
+        candidates={[imageCandidate]}
+        densityVariant="image"
+        onActivateCandidate={vi.fn()}
+        onChange={onChange}
+        placeholder="Generate prompt"
+        value={`scene @${imageBinding.label} after`}
+      />,
+    );
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ value: 'scene after', bindings: [] }));
+    expect(screen.queryByText(`@${imageBinding.label}`)).toBeNull();
   });
 
   it('filters candidates, cycles selection, and dismisses on escape and outside pointer down', async () => {

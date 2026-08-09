@@ -75,11 +75,7 @@ function MentionPill({ disabled, label, kind, nodeKey, previewUrl, valid }: { di
     if (disabled) return;
     editor.update(() => {
       const node = $getNodeByKey(nodeKey);
-      const nextSibling = node?.getNextSibling();
-      if ($isTextNode(nextSibling) && /^\s/.test(nextSibling.getTextContent())) {
-        nextSibling.setTextContent(nextSibling.getTextContent().slice(1));
-      }
-      node?.remove();
+      if (node instanceof MediaMentionNode) $removeMediaMentionNode(node);
     }, { discrete: true });
   }, [disabled, editor, nodeKey]);
 
@@ -115,6 +111,14 @@ class MediaMentionNode extends DecoratorNode<React.ReactNode> {
   setPreviewUrl(previewUrl?: string) { const self = this.getWritable(); self.__previewUrl = previewUrl; }
   setDisabled(disabled: boolean) { const self = this.getWritable(); self.__disabled = disabled; }
   decorate() { return <MentionPill disabled={this.__disabled} kind={this.__kind} label={this.__label} nodeKey={this.__key} previewUrl={this.__previewUrl} valid={this.__valid} />; }
+}
+
+function $removeMediaMentionNode(node: MediaMentionNode) {
+  const nextSibling = node.getNextSibling();
+  if ($isTextNode(nextSibling) && /^\s/.test(nextSibling.getTextContent())) {
+    nextSibling.setTextContent(nextSibling.getTextContent().slice(1));
+  }
+  node.remove();
 }
 
 function $createMediaMentionNode(part: NonNullable<ParsedPart['mention']>) {
@@ -296,6 +300,18 @@ function EditorBridge({ activeInputKeys, ariaLabel = '生成提示词', bindings
     bindingsRef.current = bindings;
     activeKeysRef.current = activeInputKeys;
     const nextBindingState = `${bindingSignature(bindings)}\u0000${[...activeInputKeys].sort().join('|')}\u0000${previewSignature}`;
+    const inactiveInputKeys = new Set(bindings.filter((binding) => !activeInputKeys.has(binding.inputKey)).map((binding) => binding.inputKey));
+    if (inactiveInputKeys.size) {
+      const nextBindings = bindings.filter((binding) => !inactiveInputKeys.has(binding.inputKey));
+      bindingsRef.current = nextBindings;
+      bindingStateRef.current = `${bindingSignature(nextBindings)}\u0000${[...activeInputKeys].sort().join('|')}\u0000${previewSignature}`;
+      editor.update(() => {
+        for (const node of $nodesOfType(MediaMentionNode)) {
+          if (node.__inputKey && inactiveInputKeys.has(node.__inputKey)) $removeMediaMentionNode(node);
+        }
+      }, { discrete: true });
+      return;
+    }
     let currentValue = '';
     editor.getEditorState().read(() => { currentValue = serializeEditor(); });
     const propValueChanged = value !== lastPropValueRef.current;
