@@ -95,10 +95,10 @@ function modelIncompatibility(
 ): VideoModeAvailabilityReason | null {
   if (!capabilities.supportedModes.includes(mode)) return "MODEL_UNSUPPORTED";
   const constraint = capabilities.modeConstraints?.[mode];
-  const maxImages = numberLimit(constraint?.maxImages ?? capabilities.maxImages);
-  const maxVideos = numberLimit(constraint?.maxVideos ?? capabilities.maxVideos);
-  const maxAudios = numberLimit(constraint?.maxAudios ?? capabilities.maxAudios);
-  const maxTotal = numberLimit(constraint?.maxTotal ?? capabilities.maxTotal);
+  const maxImages = stricterMaximum(capabilities.maxImages, constraint?.maxImages);
+  const maxVideos = stricterMaximum(capabilities.maxVideos, constraint?.maxVideos);
+  const maxAudios = stricterMaximum(capabilities.maxAudios, constraint?.maxAudios);
+  const maxTotal = stricterMaximum(capabilities.maxTotal, constraint?.maxTotal);
   if (counts.image > maxImages || counts.video > maxVideos || counts.audio > maxAudios || counts.total > maxTotal) return "MODEL_CONSTRAINT_UNMET";
   if (
     (typeof constraint?.minImages === "number" && counts.image < constraint.minImages)
@@ -112,6 +112,10 @@ function modelIncompatibility(
 
 function numberLimit(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
+function stricterMaximum(globalLimit: unknown, modeLimit: unknown): number {
+  return Math.min(numberLimit(globalLimit), numberLimit(modeLimit));
 }
 
 function recommendedModeFor(counts: VideoModeInputCounts): VideoGenerationMode {

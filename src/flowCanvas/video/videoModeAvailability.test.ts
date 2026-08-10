@@ -111,6 +111,22 @@ describe("video mode input availability", () => {
     }))).toMatchObject({ incompatible: true, mode: "all_reference", switched: false });
   });
 
+  test("enforces a global media maximum even when a mode constraint is higher", () => {
+    const availability = evaluateVideoModeAvailability([
+      input("image-1", "image"),
+      input("image-2", "image"),
+    ], capabilities({
+      maxImages: 1,
+      modeConstraints: { image_to_video: { maxImages: 2 } },
+      supportedModes: ["image_to_video"],
+    }));
+
+    expect(availability.items.find((item) => item.mode === "image_to_video")).toMatchObject({
+      enabled: false,
+      modelSupported: false,
+    });
+  });
+
   test.each([
     ["minImages", { minImages: 2 }, [input("image-1", "image")]],
     ["minVideos", { minVideos: 1 }, [input("image-1", "image")]],
