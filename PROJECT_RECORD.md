@@ -3,6 +3,12 @@
 Last updated: 2026-08-09
 Maintainers: project team + Codex sessions
 
+## 2026-08-10 - Video Mode Input Availability Design
+
+- approved a LibTV-style video mode availability contract driven by unified upstream, asset, and upload inputs: no media permits only text-to-video; one image permits image-to-video, first/last frame, image reference, and all reference; two images default to image reference while first/last frame remains manually selectable; three or more images permit image reference and all reference; any video or audio input requires all reference;
+- defined first/last frame role normalization for one or two ordered images, disabled-mode hover explanations, one-time auto-switch notices, model-capability intersection, and no automatic model replacement;
+- recorded the design and acceptance matrix in `docs/superpowers/specs/2026-08-10-video-mode-input-availability-design.md`; implementation remains pending design-to-plan transition.
+
 ## 2026-08-09 - Media Prompt Controlled Value Feedback Loop
 
 - fixed the media prompt editor feedback loop triggered by ordinary text input. A local Lexical value could be replaced by a stale controlled prop before its node update returned, causing the previous and next prompt values to alternate indefinitely and freezing the canvas renderer.
