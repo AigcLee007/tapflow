@@ -1,4 +1,4 @@
-import type { VideoGenerationMode, VideoReferenceRole } from "./videoTypes";
+import type { VideoGenerationMode, VideoModeAvailabilityReason, VideoModeInputCounts, VideoReferenceRole } from "./videoTypes";
 
 export const VIDEO_UI_COPY = {
   videoComposer: "视频创作面板",
@@ -79,6 +79,47 @@ export const VIDEO_UI_MODE_COPY = {
   first_last_frame: { label: "首尾帧生视频", description: "根据首帧和尾帧生成视频" },
   image_reference: { label: "图像参考生视频", description: "使用多张图片控制内容与风格" },
 } as const satisfies Record<VideoGenerationMode, { label: string; description: string }>;
+
+export function getVideoModeSwitchMessage(
+  counts: VideoModeInputCounts,
+  targetMode: VideoGenerationMode,
+  incompatible: boolean,
+): string {
+  const targetLabel = VIDEO_UI_MODE_COPY[targetMode].label;
+  const incompatibilitySuffix = incompatible ? "\uff0c\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u6a21\u5f0f" : "";
+  if (counts.video + counts.audio > 0 && targetMode === "all_reference") {
+    return `\u89c6\u9891\u6216\u97f3\u9891\u8f93\u5165\u9700\u8981\u4f7f\u7528${targetLabel}${incompatibilitySuffix}`;
+  }
+  if (counts.total === 0) return `\u5f53\u524d\u6ca1\u6709\u5a92\u4f53\u8f93\u5165\uff0c\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  if (counts.image === 1) return `\u6839\u636e 1 \u5f20\u56fe\u7247\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  if (counts.image === 2) return `\u6839\u636e 2 \u5f20\u56fe\u7247\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  if (counts.image >= 3) return `\u6839\u636e ${counts.image} \u5f20\u56fe\u7247\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  return `\u5df2\u6839\u636e\u5f53\u524d\u8f93\u5165\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+}
+
+export function getVideoModeUnavailableReason(
+  reason: VideoModeAvailabilityReason,
+  counts: VideoModeInputCounts,
+): string {
+  switch (reason) {
+    case "INPUT_MEDIA_NOT_ALLOWED":
+      return "\u5df2\u6dfb\u52a0\u5a92\u4f53\u7d20\u6750\uff0c\u65e0\u6cd5\u4f7f\u7528\u6587\u751f\u89c6\u9891";
+    case "INPUT_REQUIRES_EXACTLY_ONE_IMAGE":
+      return `\u56fe\u751f\u89c6\u9891\u9700\u8981\u6070\u597d 1 \u5f20\u56fe\u7247\uff08\u5f53\u524d ${counts.image} \u5f20\uff09`;
+    case "INPUT_REQUIRES_IMAGE":
+      return "\u56fe\u50cf\u53c2\u8003\u751f\u89c6\u9891\u9700\u8981\u81f3\u5c11 1 \u5f20\u56fe\u7247";
+    case "INPUT_REQUIRES_MEDIA":
+      return "\u5168\u53c2\u8003\u751f\u89c6\u9891\u9700\u8981\u81f3\u5c11 1 \u4e2a\u5a92\u4f53\u7d20\u6750";
+    case "INPUT_REQUIRES_ONE_OR_TWO_IMAGES":
+      return `\u9996\u5c3e\u5e27\u751f\u89c6\u9891\u9700\u8981 1-2 \u5f20\u56fe\u7247\uff08\u5f53\u524d ${counts.image} \u5f20\uff09`;
+    case "INPUT_VIDEO_OR_AUDIO_REQUIRES_ALL_REFERENCE":
+      return "\u89c6\u9891\u6216\u97f3\u9891\u7d20\u6750\u4ec5\u652f\u6301\u5168\u53c2\u8003\u751f\u89c6\u9891";
+    case "MODEL_CONSTRAINT_UNMET":
+      return "\u5f53\u524d\u6a21\u578b\u7684\u8f93\u5165\u9650\u5236\u4e0d\u6ee1\u8db3";
+    case "MODEL_UNSUPPORTED":
+      return "\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u751f\u6210\u6a21\u5f0f";
+  }
+}
 
 export const VIDEO_UI_BLOCKER_COPY = {
   HUMAN_REVIEW_REQUIRED: "需要完成真人验证",

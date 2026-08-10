@@ -50,7 +50,7 @@ const veoContext = (): ProviderCallContext => ({
       maxImages: 2,
       maxTotal: 2,
       maxVideos: 0,
-      modeConstraints: { first_last_frame: { maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 2 } },
+      modeConstraints: { first_last_frame: { maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 1 } },
       referenceSemantics: "ordered_first_last_frames",
       supportedModes: ["first_last_frame"],
     },
@@ -128,6 +128,22 @@ describe("PixelHubVideoAdapter", () => {
     expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({
       aspect_ratio: "16:9", duration: 8, model: "veo31-fast", prompt: request.prompt,
       image_urls: ["https://signed.test/image-0", "https://signed.test/image-1"], resolution: "1080p",
+    });
+  });
+
+  test("maps a Veo first frame without inventing a last frame", async () => {
+    const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({ task_id: "task-veo-single", status: "queued" }), { status: 200 }));
+    const veoRequest: VideoGenerationRequest = {
+      ...request,
+      params: { ...request.params!, mode: "first_last_frame" },
+      inputAssets: [media("image", "first_frame", 0)],
+    };
+
+    await new PixelHubVideoAdapter({ fetchImplementation }).generateVideo(veoContext(), veoRequest);
+
+    expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({
+      aspect_ratio: "16:9", duration: 8, model: "veo31-fast", prompt: request.prompt,
+      image_urls: ["https://signed.test/image-0"], resolution: "1080p",
     });
   });
 

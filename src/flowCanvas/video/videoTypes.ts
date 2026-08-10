@@ -5,6 +5,43 @@ export type VideoGenerationMode =
   | "first_last_frame"
   | "image_reference";
 
+export type VideoModeInputCounts = {
+  audio: number;
+  image: number;
+  text: number;
+  total: number;
+  video: number;
+};
+
+export type VideoModeInput = {
+  inputKey: string;
+  kind: "text" | "image" | "video" | "audio";
+};
+
+export type VideoModeAvailabilityReason =
+  | "INPUT_MEDIA_NOT_ALLOWED"
+  | "INPUT_REQUIRES_EXACTLY_ONE_IMAGE"
+  | "INPUT_REQUIRES_IMAGE"
+  | "INPUT_REQUIRES_MEDIA"
+  | "INPUT_REQUIRES_ONE_OR_TWO_IMAGES"
+  | "INPUT_VIDEO_OR_AUDIO_REQUIRES_ALL_REFERENCE"
+  | "MODEL_CONSTRAINT_UNMET"
+  | "MODEL_UNSUPPORTED";
+
+export type VideoModeAvailabilityItem = {
+  enabled: boolean;
+  inputAllowed: boolean;
+  mode: VideoGenerationMode;
+  modelSupported: boolean;
+  reason: VideoModeAvailabilityReason | null;
+};
+
+export type VideoModeAvailabilityResult = {
+  counts: VideoModeInputCounts;
+  items: VideoModeAvailabilityItem[];
+  recommendedMode: VideoGenerationMode;
+};
+
 export type VideoResolution = "480P" | "720P" | "1080P" | "4K";
 
 export type VideoAspectRatio =

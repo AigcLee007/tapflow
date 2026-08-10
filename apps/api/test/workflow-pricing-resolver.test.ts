@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { builtinAiPluginRegistry, type VideoGenerationCapabilities } from "@aigc-flow/ai-gateway-core";
+import { describe, expect, it, vi } from "vitest";
+import {
+  builtinAiPluginRegistry,
+  validateVideoGenerationRequest,
+  type VideoGenerationCapabilities,
+} from "@aigc-flow/ai-gateway-core";
 
 import {
   assertNodeRouteSupportsRuntimeRequest,
@@ -83,6 +87,19 @@ function pixelHubPricingInput(input: {
       providerKey: "pixelhub",
       requireExactPricing: true,
       routeKey: input.route,
+    },
+  };
+}
+
+function withFirstLastFrameMinImages(capabilities: VideoGenerationCapabilities, minImages: number): VideoGenerationCapabilities {
+  return {
+    ...capabilities,
+    modeConstraints: {
+      ...capabilities.modeConstraints,
+      first_last_frame: {
+        ...capabilities.modeConstraints.first_last_frame!,
+        minImages,
+      },
     },
   };
 }
@@ -184,6 +201,135 @@ describe("workflow pricing resolver", () => {
     })).toThrow(/UNSUPPORTED_DURATION|This duration is not supported/);
   });
 
+  it.each([
+    ["text_to_video rejects image references", "gemini-omni-flash", "text_to_video", ["reference_image", "reference_image"]],
+    ["image_to_video rejects two images", "gemini-omni-flash", "image_to_video", ["main_image", "main_image"]],
+    ["first_last_frame rejects three images", "veo31-fast", "first_last_frame", ["first_frame", "last_frame", "last_frame"]],
+  ])("%s before reserve/enqueue", (_label, model, mode, roles) => {
+    const referenceInputs = roles.map((role, index) => ({
+      referenceKey: `ref-${index}`,
+      source: { kind: "asset", id: `asset-${index}` },
+      mediaKind: "image",
+      role,
+      order: index,
+    }));
+
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          generationPrompt: "animate the subject",
+          params: {
+            videoGeneration: {
+              schemaVersion: 2,
+              mode,
+              aspectRatio: "16:9",
+              resolution: model === "veo31-fast" ? "1080P" : "720P",
+              durationSeconds: 4,
+              generateAudio: true,
+              count: 1,
+              referenceInputs,
+            },
+          },
+          routeKey: `video.pixelhub.${model}`,
+        },
+        id: `invalid-${mode}`,
+        type: "video.generate",
+      },
+      routeContext: {
+        capabilities: pixelHubCapabilitiesFor(model),
+        modelKey: model,
+        providerKey: "pixelhub",
+        requireExactPricing: true,
+        routeKey: `video.pixelhub.${model}`,
+      },
+    })).toThrowError(expect.objectContaining({ statusCode: 422 }));
+  });
+
+  it.each([
+    ["text_to_video with a non-array reference input", "gemini-omni-flash", "text_to_video", {}],
+    ["text_to_video with a malformed image reference", "gemini-omni-flash", "text_to_video", [{
+      referenceKey: "malformed-image",
+      source: { kind: "asset" },
+      mediaKind: "image",
+      role: "reference_image",
+      order: 0,
+    }]],
+    ["image_to_video with two images", "gemini-omni-flash", "image_to_video", [
+      { referenceKey: "main-0", source: { kind: "asset", id: "asset-0" }, mediaKind: "image", role: "main_image", order: 0 },
+      { referenceKey: "main-1", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "main_image", order: 1 },
+    ]],
+    ["first_last_frame with three images", "veo31-fast", "first_last_frame", [
+      { referenceKey: "first", source: { kind: "asset", id: "asset-first" }, mediaKind: "image", role: "first_frame", order: 0 },
+      { referenceKey: "last", source: { kind: "asset", id: "asset-last" }, mediaKind: "image", role: "last_frame", order: 1 },
+      { referenceKey: "extra", source: { kind: "asset", id: "asset-extra" }, mediaKind: "image", role: "last_frame", order: 2 },
+    ]],
+  ])("returns 422 before reserve or enqueue for %s", async (_label, model, mode, referenceInputs) => {
+    const reserveUsageWithClient = vi.fn();
+    const queueAdd = vi.fn();
+    const client = {
+      query: vi.fn(async (query: string) => {
+        if (query === "BEGIN" || query === "COMMIT" || query === "ROLLBACK" || query.startsWith("SELECT set_config")) {
+          return { rows: [] };
+        }
+        throw new Error("structured video validation must run before database writes");
+      }),
+      release: vi.fn(),
+    };
+    const service = new WorkflowRunsService({
+      nodeExecuteQueue: { add: queueAdd },
+      personalWalletService: { reserveUsageWithClient } as never,
+      pool: { connect: vi.fn(async () => client) } as never,
+    });
+    const node = {
+      config: {
+        generationPrompt: "animate the subject",
+        params: {
+          videoGeneration: {
+            schemaVersion: 2,
+            mode,
+            aspectRatio: "16:9",
+            resolution: model === "veo31-fast" ? "1080P" : "720P",
+            durationSeconds: 4,
+            generateAudio: true,
+            count: 1,
+            referenceInputs,
+          },
+        },
+        routeKey: `video.pixelhub.${model}`,
+      },
+      id: "invalid-video",
+      type: "video.generate",
+    };
+    const internals = service as unknown as {
+      getCurrentFlowRuntimeOrCreateSnapshot: () => Promise<unknown>;
+      loadActivePricing: () => Promise<unknown[]>;
+      loadRouteRuntimeContexts: () => Promise<Map<string, unknown>>;
+    };
+    internals.getCurrentFlowRuntimeOrCreateSnapshot = async () => ({
+      compiled_graph_json: { entryNodeIds: [node.id], nodes: [node] },
+      current_version_id: "version-1",
+      flow_id: "flow-1",
+    });
+    internals.loadActivePricing = async () => [];
+    internals.loadRouteRuntimeContexts = async () => new Map([[
+      `video.pixelhub.${model}`,
+      {
+        capabilities: pixelHubCapabilitiesFor(model),
+        modelKey: model,
+        providerKey: "pixelhub",
+        routeKey: `video.pixelhub.${model}`,
+      },
+    ]]);
+
+    await expect(service.createWorkflowRun(
+      { tenantId: "tenant-1", userId: "user-1" },
+      "flow-1",
+      {},
+    )).rejects.toMatchObject({ statusCode: 422 });
+    expect(reserveUsageWithClient).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
   it("preserves video_generation when loading a structured video route context", async () => {
     const service = new WorkflowRunsService({
       nodeExecuteQueue: {
@@ -223,6 +369,71 @@ describe("workflow pricing resolver", () => {
     }, "tenant-1", [{ config: { routeKey }, type: "video.generate" }]);
 
     expect(contexts.get(routeKey)?.capabilities.supportedVideoWorkflows).toEqual(["video_generation"]);
+  });
+
+  it("uses each route's video capabilities ahead of shared model defaults", async () => {
+    const sharedModelCapabilities = withFirstLastFrameMinImages(pixelHubCapabilitiesFor("veo31-fast"), 2);
+    const service = new WorkflowRunsService({
+      nodeExecuteQueue: { async add() { return { id: "job-1" }; } },
+      pool: {} as never,
+    });
+    const loadRouteRuntimeContexts = (
+      service as unknown as {
+        loadRouteRuntimeContexts: (
+          client: { query: () => Promise<{ rows: Array<Record<string, unknown>> }> },
+          tenantId: string,
+          nodes: Array<{ config: Record<string, unknown>; type: string }>,
+        ) => Promise<Map<string, { capabilities: VideoGenerationCapabilities }>>;
+      }
+    ).loadRouteRuntimeContexts.bind(service);
+    const loadCapabilities = async (routeCapabilities: VideoGenerationCapabilities, routeTenantId: string | null) => {
+      const contexts = await loadRouteRuntimeContexts({
+        async query() {
+          return {
+            rows: [{
+              model_capabilities: sharedModelCapabilities,
+              model_id: "shared-veo-model",
+              model_key: "veo31-fast",
+              provider_key: "pixelhub",
+              request_config: { capabilities: routeCapabilities },
+              route_key: "video.pixelhub.veo31-fast",
+              tenant_id: routeTenantId,
+            }],
+          };
+        },
+      }, "tenant-1", [{ config: { routeKey: "video.pixelhub.veo31-fast" }, type: "video.generate" }]);
+      return contexts.get("video.pixelhub.veo31-fast")!.capabilities;
+    };
+    const platformCapabilities = await loadCapabilities(withFirstLastFrameMinImages(pixelHubCapabilitiesFor("veo31-fast"), 1), null);
+    const tenantCapabilities = await loadCapabilities(withFirstLastFrameMinImages(pixelHubCapabilitiesFor("veo31-fast"), 2), "tenant-1");
+    const firstFrameRequest = {
+      inputAssets: [{
+        assetId: "first-frame",
+        kind: "image",
+        metadata: {
+          videoReference: {
+            mediaKind: "image",
+            order: 0,
+            referenceKey: "first-frame",
+            role: "first_frame",
+            sourceKind: "asset",
+            sourceNodeId: null,
+          },
+        },
+      }],
+      params: {
+        aspectRatio: "16:9",
+        count: 1,
+        durationSeconds: 4,
+        generateAudio: true,
+        mode: "first_last_frame",
+        resolution: "1080P",
+      },
+      prompt: "Animate the scene",
+    };
+
+    expect(validateVideoGenerationRequest(firstFrameRequest, platformCapabilities)).toEqual([]);
+    expect(validateVideoGenerationRequest(firstFrameRequest, tenantCapabilities).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
   });
 
   it("resolves nested image edit route keys when the top-level routeKey is missing", () => {

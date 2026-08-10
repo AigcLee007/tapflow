@@ -993,6 +993,93 @@ describe("worker skeleton", () => {
     }));
   });
 
+  test("video.generate preserves a single first-frame reference role and order", () => {
+    const buildVideoRequest = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { inputAssets: Array<Record<string, unknown>> };
+    }).buildVideoRequest;
+
+    const request = buildVideoRequest(new Map(), {
+      generationPrompt: "Animate this frame",
+      params: {
+        videoGeneration: {
+          schemaVersion: 2,
+          mode: "first_last_frame",
+          aspectRatio: "16:9",
+          resolution: "1080P",
+          durationSeconds: 4,
+          generateAudio: true,
+          count: 1,
+          referenceInputs: [{
+            referenceKey: "first",
+            source: { kind: "asset", id: "asset-first" },
+            mediaKind: "image",
+            role: "first_frame",
+            order: 0,
+          }],
+        },
+      },
+    });
+
+    expect(request.inputAssets).toEqual([
+      expect.objectContaining({
+        assetId: "asset-first",
+        metadata: { videoReference: expect.objectContaining({ role: "first_frame", order: 0 }) },
+      }),
+    ]);
+  });
+
+  test("video.generate preserves ordered first and last frame metadata", () => {
+    const buildVideoRequest = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { inputAssets: Array<Record<string, unknown>> };
+    }).buildVideoRequest;
+
+    const request = buildVideoRequest(new Map(), {
+      generationPrompt: "Animate between frames",
+      params: {
+        videoGeneration: {
+          schemaVersion: 2,
+          mode: "first_last_frame",
+          aspectRatio: "16:9",
+          resolution: "1080P",
+          durationSeconds: 4,
+          generateAudio: true,
+          count: 1,
+          referenceInputs: [
+            {
+              referenceKey: "first",
+              source: { kind: "asset", id: "asset-first" },
+              mediaKind: "image",
+              role: "first_frame",
+              order: 0,
+            },
+            {
+              referenceKey: "last",
+              source: { kind: "asset", id: "asset-last" },
+              mediaKind: "image",
+              role: "last_frame",
+              order: 1,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(request.inputAssets.map((asset) => ({
+      assetId: asset.assetId,
+      role: (asset.metadata as { videoReference: { role: string; order: number } }).videoReference.role,
+      order: (asset.metadata as { videoReference: { role: string; order: number } }).videoReference.order,
+    }))).toEqual([
+      { assetId: "asset-first", role: "first_frame", order: 0 },
+      { assetId: "asset-last", role: "last_frame", order: 1 },
+    ]);
+  });
+
   test("video.generate request rejects an unresolved V2 upstream reference", () => {
     const buildVideoRequest = (__workerTestUtils as {
       buildVideoRequest: (

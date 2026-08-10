@@ -5,6 +5,7 @@ import type {
   VideoGenerationParamsV2,
   VideoReferenceInputV2,
 } from "./videoTypes";
+import { resolveAvailableVideoMode } from "./videoModeAvailability";
 
 type ModeResolution = {
   incompatible: boolean;
@@ -17,22 +18,11 @@ export function resolveAutomaticVideoMode(
   references: VideoReferenceInputV2[],
   currentMode: VideoGenerationMode,
 ): ModeResolution {
-  const imageCount = references.filter((reference) => reference.mediaKind === "image").length;
-  const videoCount = references.filter((reference) => reference.mediaKind === "video").length;
-  const audioCount = references.filter((reference) => reference.mediaKind === "audio").length;
-  if (videoCount + audioCount > 0) {
-    if (capabilities.supportedModes.includes("all_reference")) {
-      return result("all_reference", false, references, capabilities);
-    }
-    return result(currentMode, true, references, capabilities);
-  }
-  if (imageCount === 0) return result("text_to_video", false, references, capabilities);
-  if (imageCount === 1) return result("image_to_video", !capabilities.supportedModes.includes("image_to_video"), references, capabilities);
-  if (capabilities.referenceSemantics === "ordered_first_last_frames" && imageCount === 2) {
-    return result("first_last_frame", !capabilities.supportedModes.includes("first_last_frame"), references, capabilities);
-  }
-  if (capabilities.supportedModes.includes("image_reference")) return result("image_reference", false, references, capabilities);
-  return result(currentMode, true, references, capabilities);
+  const resolved = resolveAvailableVideoMode(currentMode, references.map((reference) => ({
+    inputKey: reference.referenceKey,
+    kind: reference.mediaKind,
+  })), capabilities);
+  return result(resolved.mode, resolved.incompatible, references, capabilities);
 }
 
 /**
@@ -177,12 +167,12 @@ function validateReferenceRoles(
   if (mode === "first_last_frame" && semantics === "ordered_first_last_frames") {
     const firstFrames = images.filter((reference) => reference.role === "first_frame");
     const lastFrames = images.filter((reference) => reference.role === "last_frame");
-    if (
-      images.length !== 2
-      || firstFrames.length !== 1
-      || lastFrames.length !== 1
-      || firstFrames[0]!.order >= lastFrames[0]!.order
-    ) addMissingInputIssue(issues);
+    const hasValidSingleFrame = images.length === 1 && firstFrames.length === 1 && lastFrames.length === 0;
+    const hasValidFramePair = images.length === 2
+      && firstFrames.length === 1
+      && lastFrames.length === 1
+      && firstFrames[0]!.order < lastFrames[0]!.order;
+    if (references.length !== images.length || (!hasValidSingleFrame && !hasValidFramePair)) addMissingInputIssue(issues);
   }
 }
 
