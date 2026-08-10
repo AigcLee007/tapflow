@@ -23,6 +23,7 @@ describe("PixelHub Veo optional-last-frame migration", () => {
 
     expect(sql).toContain("video.pixelhub.veo31-fast");
     expect(sql).toContain("route.tenant_id IS NULL");
+    expect(sql).toContain("UPDATE ai_models AS model");
     expect(sql).toContain("{capabilities,modeConstraints,first_last_frame,minImages}");
     expect(sql).toContain("route.request_config");
     expect(sql).not.toContain("pricing =");
@@ -38,6 +39,7 @@ describeWithDatabase("PixelHub Veo optional-last-frame migration", () => {
       const pool = createPgPool();
       const providerId = randomUUID();
       const modelId = randomUUID();
+      const tenantModelId = randomUUID();
       const credentialId = randomUUID();
       const connectionId = randomUUID();
       const packageId = randomUUID();
@@ -55,12 +57,44 @@ describeWithDatabase("PixelHub Veo optional-last-frame migration", () => {
           `,
           [providerId],
         );
+        const capabilities = {
+          aspectRatios: ["16:9", "9:16"],
+          audioControlMode: "always_on_implicit",
+          confirmedByRoute: true,
+          defaults: { aspectRatio: "16:9", count: 1, durationSeconds: 4, generateAudio: true, mode: "first_last_frame", resolution: "1080P" },
+          durationStepSeconds: 2,
+          maxAudios: 0,
+          maxCount: 1,
+          maxDurationSeconds: 8,
+          maxImages: 2,
+          maxPromptLength: null,
+          maxTotal: 2,
+          maxVideos: 0,
+          minDurationSeconds: 4,
+          modeConstraints: {
+            first_last_frame: { maxAudios: 0, maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 2 },
+            image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 },
+            text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 },
+          },
+          preservedModelSetting: "keep-model-setting",
+          referenceSemantics: "ordered_first_last_frames",
+          resolutions: ["720P", "1080P"],
+          supportedDurations: [4, 6, 8],
+          supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
+        };
         await pool.query(
           `
-            INSERT INTO ai_models (id, provider_id, model_key, display_name, modality)
-            VALUES ($1::uuid, $2::uuid, 'veo31-fast', 'Veo 3.1 Fast', 'video')
+            INSERT INTO ai_models (id, provider_id, model_key, display_name, modality, capabilities)
+            VALUES ($1::uuid, $2::uuid, 'veo31-fast', 'Veo 3.1 Fast', 'video', $3::jsonb)
           `,
-          [modelId, providerId],
+          [modelId, providerId, JSON.stringify(capabilities)],
+        );
+        await pool.query(
+          `
+            INSERT INTO ai_models (id, provider_id, model_key, display_name, modality, capabilities)
+            VALUES ($1::uuid, $2::uuid, 'tenant-veo31-fast', 'Tenant Veo 3.1 Fast', 'video', $3::jsonb)
+          `,
+          [tenantModelId, providerId, JSON.stringify(capabilities)],
         );
         await pool.query(
           `
@@ -115,7 +149,7 @@ describeWithDatabase("PixelHub Veo optional-last-frame migration", () => {
             INSERT INTO ai_routes (id, tenant_id, provider_id, model_id, route_key, modality, request_config, pricing, status)
             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'video.pixelhub.veo31-fast', 'video', $5::jsonb, '{"unitCredits":9}'::jsonb, 'active')
           `,
-          [tenantRouteId, tenantId, providerId, modelId, JSON.stringify(requestConfig)],
+          [tenantRouteId, tenantId, providerId, tenantModelId, JSON.stringify(requestConfig)],
         );
 
         await pool.query("DELETE FROM schema_migrations WHERE filename = $1", [migrationFile]);
@@ -164,6 +198,27 @@ describeWithDatabase("PixelHub Veo optional-last-frame migration", () => {
             route_key: "video.pixelhub.veo31-fast",
             tenant_id: tenantId,
           },
+        ]);
+
+        const models = await pool.query<{
+          min_images: number;
+          model_key: string;
+          preserved_model_setting: string;
+        }>(
+          `
+            SELECT
+              model_key,
+              (capabilities #>> '{modeConstraints,first_last_frame,minImages}')::int AS min_images,
+              capabilities->>'preservedModelSetting' AS preserved_model_setting
+            FROM ai_models
+            WHERE id IN ($1::uuid, $2::uuid)
+            ORDER BY model_key ASC
+          `,
+          [modelId, tenantModelId],
+        );
+        expect(models.rows).toEqual([
+          { min_images: 2, model_key: "tenant-veo31-fast", preserved_model_setting: "keep-model-setting" },
+          { min_images: 1, model_key: "veo31-fast", preserved_model_setting: "keep-model-setting" },
         ]);
 
         await pool.query("DELETE FROM schema_migrations WHERE filename = $1", [migrationFile]);
