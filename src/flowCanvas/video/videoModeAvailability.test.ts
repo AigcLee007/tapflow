@@ -5,7 +5,7 @@ import {
   resolveAvailableVideoMode,
 } from "./videoModeAvailability";
 import { createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
-import type { VideoGenerationCapabilities, VideoGenerationMode } from "./videoTypes";
+import type { VideoGenerationCapabilities, VideoGenerationMode, VideoModeInput } from "./videoTypes";
 
 const modes: VideoGenerationMode[] = ["text_to_video", "image_to_video", "first_last_frame", "image_reference", "all_reference"];
 
@@ -20,7 +20,7 @@ const capabilities = (overrides: Partial<VideoGenerationCapabilities> = {}): Vid
   ...overrides,
 });
 
-const input = (inputKey: string, kind: "text" | "image" | "video" | "audio") => ({ inputKey, kind });
+const input = (inputKey: string, kind: VideoModeInput["kind"]): VideoModeInput => ({ inputKey, kind });
 
 const allowedModes = (inputs: Array<ReturnType<typeof input>>) => (
   evaluateVideoModeAvailability(inputs, capabilities()).items
@@ -109,5 +109,29 @@ describe("video mode input availability", () => {
       modeConstraints: { all_reference: { requiresVisualWithAudio: true } },
       supportedModes: ["all_reference"],
     }))).toMatchObject({ incompatible: true, mode: "all_reference", switched: false });
+  });
+
+  test.each([
+    ["minImages", { minImages: 2 }, [input("image-1", "image")]],
+    ["minVideos", { minVideos: 1 }, [input("image-1", "image")]],
+    ["minAudios", { minAudios: 1 }, [input("image-1", "image")]],
+    ["maxImages", { maxImages: 1 }, [input("image-1", "image"), input("image-2", "image")]],
+    ["maxVideos", { maxVideos: 1 }, [input("video-1", "video"), input("video-2", "video")]],
+    ["maxAudios", { maxAudios: 1 }, [input("audio-1", "audio"), input("audio-2", "audio")]],
+    ["maxTotal", { maxTotal: 1 }, [input("image-1", "image"), input("image-2", "image")]],
+    ["requiresVideoOrAudio", { requiresVideoOrAudio: true }, [input("image-1", "image")]],
+    ["requiresVisualWithAudio", { requiresVisualWithAudio: true }, [input("audio-1", "audio")]],
+  ])("applies the %s route constraint to model availability", (_name, constraint, inputs) => {
+    const availability = evaluateVideoModeAvailability(inputs, capabilities({
+      modeConstraints: { all_reference: constraint },
+      supportedModes: ["all_reference"],
+    }));
+
+    expect(availability.items.find((item) => item.mode === "all_reference")).toMatchObject({
+      enabled: false,
+      inputAllowed: true,
+      modelSupported: false,
+      reason: "MODEL_CONSTRAINT_UNMET",
+    });
   });
 });

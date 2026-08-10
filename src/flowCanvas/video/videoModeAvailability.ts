@@ -4,13 +4,9 @@ import type {
   VideoModeAvailabilityItem,
   VideoModeAvailabilityReason,
   VideoModeAvailabilityResult,
+  VideoModeInput,
   VideoModeInputCounts,
 } from "./videoTypes";
-
-export type VideoModeInput = {
-  inputKey: string;
-  kind: "text" | "image" | "video" | "audio";
-};
 
 const MODES: VideoGenerationMode[] = ["text_to_video", "all_reference", "image_to_video", "first_last_frame", "image_reference"];
 const FALLBACK_ORDER: VideoGenerationMode[] = ["image_reference", "first_last_frame", "all_reference", "image_to_video", "text_to_video"];

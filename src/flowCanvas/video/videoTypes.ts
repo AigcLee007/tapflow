@@ -13,6 +13,11 @@ export type VideoModeInputCounts = {
   video: number;
 };
 
+export type VideoModeInput = {
+  inputKey: string;
+  kind: "text" | "image" | "video" | "audio";
+};
+
 export type VideoModeAvailabilityReason =
   | "INPUT_MEDIA_NOT_ALLOWED"
   | "INPUT_REQUIRES_EXACTLY_ONE_IMAGE"
