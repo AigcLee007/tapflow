@@ -201,6 +201,50 @@ describe("workflow pricing resolver", () => {
     })).toThrow(/UNSUPPORTED_DURATION|This duration is not supported/);
   });
 
+  it.each([
+    ["text_to_video rejects image references", "gemini-omni-flash", "text_to_video", ["reference_image", "reference_image"]],
+    ["image_to_video rejects two images", "gemini-omni-flash", "image_to_video", ["main_image", "main_image"]],
+    ["first_last_frame rejects three images", "veo31-fast", "first_last_frame", ["first_frame", "last_frame", "last_frame"]],
+  ])("%s before reserve/enqueue", (_label, model, mode, roles) => {
+    const referenceInputs = roles.map((role, index) => ({
+      referenceKey: `ref-${index}`,
+      source: { kind: "asset", id: `asset-${index}` },
+      mediaKind: "image",
+      role,
+      order: index,
+    }));
+
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      node: {
+        config: {
+          generationPrompt: "animate the subject",
+          params: {
+            videoGeneration: {
+              schemaVersion: 2,
+              mode,
+              aspectRatio: "16:9",
+              resolution: model === "veo31-fast" ? "1080P" : "720P",
+              durationSeconds: 4,
+              generateAudio: true,
+              count: 1,
+              referenceInputs,
+            },
+          },
+          routeKey: `video.pixelhub.${model}`,
+        },
+        id: `invalid-${mode}`,
+        type: "video.generate",
+      },
+      routeContext: {
+        capabilities: pixelHubCapabilitiesFor(model),
+        modelKey: model,
+        providerKey: "pixelhub",
+        requireExactPricing: true,
+        routeKey: `video.pixelhub.${model}`,
+      },
+    })).toThrowError(expect.objectContaining({ statusCode: 422 }));
+  });
+
   it("preserves video_generation when loading a structured video route context", async () => {
     const service = new WorkflowRunsService({
       nodeExecuteQueue: {
