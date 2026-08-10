@@ -278,12 +278,12 @@ describe("video generation contract", () => {
     expect(validateVideoGenerationRequest(tooMany, sora).map((issue) => issue.code)).toContain("REFERENCE_MEDIA_TOTAL_EXCEEDED");
   });
 
-  test("requires Veo first and last frames in order", () => {
+  test("accepts Veo first frame alone or ordered first and last frames", () => {
     const veo: VideoGenerationCapabilities = {
       ...geminiCapabilities,
       modeConstraints: {
         image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
-        first_last_frame: { maxImages: 2, maxTotal: 2, minImages: 2 },
+        first_last_frame: { maxImages: 2, maxTotal: 2, minImages: 1 },
         text_to_video: { maxTotal: 0 },
       },
       referenceSemantics: "ordered_first_last_frames",
@@ -306,6 +306,18 @@ describe("video generation contract", () => {
       params: { ...request().params!, mode: "first_last_frame" },
     });
     expect(validateVideoGenerationRequest(valid, veo)).toEqual([]);
+
+    const firstFrame = request({
+      inputAssets: [asset("image", "first_frame", 0)],
+      params: { ...request().params!, mode: "first_last_frame" },
+    });
+    expect(validateVideoGenerationRequest(firstFrame, veo)).toEqual([]);
+
+    const tooManyFrames = request({
+      inputAssets: [asset("image", "first_frame", 0), asset("image", "last_frame", 1), asset("image", "last_frame", 2)],
+      params: { ...request().params!, mode: "first_last_frame" },
+    });
+    expect(validateVideoGenerationRequest(tooManyFrames, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
 
     const reversed = request({
       inputAssets: [asset("image", "last_frame", 0), asset("image", "first_frame", 1)],

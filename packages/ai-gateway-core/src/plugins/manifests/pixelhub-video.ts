@@ -30,7 +30,7 @@ const veo: VideoGenerationCapabilities = {
   aspectRatios: ["16:9", "9:16"], audioControlMode: "always_on_implicit", confirmedByRoute: true,
   defaults: params("text_to_video", "16:9", "1080P", 4), durationStepSeconds: 2,
   maxAudios: 0, maxCount: 1, maxDurationSeconds: 8, maxImages: 2, maxPromptLength: null, maxTotal: 2, maxVideos: 0, minDurationSeconds: 4,
-  modeConstraints: { first_last_frame: { maxAudios: 0, maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 2 }, image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 }, text_to_video: empty },
+  modeConstraints: { first_last_frame: { maxAudios: 0, maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 1 }, image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 }, text_to_video: empty },
   referenceSemantics: "ordered_first_last_frames", resolutions: ["720P", "1080P"], supportedDurations: [4, 6, 8], supportedModes: ["text_to_video", "image_to_video", "first_last_frame"],
 };
 

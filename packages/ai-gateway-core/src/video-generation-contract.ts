@@ -370,15 +370,19 @@ export function validateVideoGenerationRequest(
     }
   }
   if (params.mode === "first_last_frame" && capabilities.referenceSemantics === "ordered_first_last_frames") {
-    const orderedImages = references.filter((reference) => reference.mediaKind === "image");
-    const firstFrames = orderedImages.filter((reference) => reference.role === "first_frame");
-    const lastFrames = orderedImages.filter((reference) => reference.role === "last_frame");
-    if (
-      orderedImages.length !== 2 ||
-      firstFrames.length !== 1 ||
-      lastFrames.length !== 1 ||
-      firstFrames[0]!.order >= lastFrames[0]!.order
-    ) {
+    const firstFrameOnly =
+      references.length === 1 &&
+      references[0]!.mediaKind === "image" &&
+      references[0]!.role === "first_frame";
+    const firstFrames = references.filter((reference) => reference.mediaKind === "image" && reference.role === "first_frame");
+    const lastFrames = references.filter((reference) => reference.mediaKind === "image" && reference.role === "last_frame");
+    const orderedPair =
+      references.length === 2 &&
+      counts.image === 2 &&
+      firstFrames.length === 1 &&
+      lastFrames.length === 1 &&
+      firstFrames[0]!.order < lastFrames[0]!.order;
+    if (!firstFrameOnly && !orderedPair) {
       issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "First and last frame references must be ordered images."));
     }
   }
