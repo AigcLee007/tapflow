@@ -130,7 +130,7 @@ import {
 import { PromptLexicalEditor, type PromptLexicalEditorHandle, type PromptReference } from './PromptLexicalEditor';
 import { buildMediaMentionCandidates, type MediaMentionAssetSeed, type MediaMentionCandidate } from '../mentions/mediaMentionCandidates';
 import { MediaMentionPromptEditor } from '../mentions/MediaMentionPromptEditor';
-import { appendVideoReferenceInput, referenceRoleFor } from '../video/videoReferenceRules';
+import { appendVideoReferenceInput, normalizeReferenceRolesForMode, referenceRoleFor } from '../video/videoReferenceRules';
 import { useAssetLibrary } from '../../assets/useAssetLibrary';
 import {
   applySlashCommandToPrompt,
@@ -7747,8 +7747,12 @@ export const VideoNodeComponent = memo(function VideoNode({
     [videoParams.aspectRatio],
   );
   const videoInputItems = useMemo(() => {
+    const roleByInputKey = new Map(videoParams.referenceInputs.map((reference) => [
+      `${reference.source.kind}:${reference.source.id}`,
+      reference.role,
+    ]));
     const seeds: CanvasInputSeed[] = [
-      ...upstreamInputRefs,
+      ...upstreamInputRefs.map((input) => ({ ...input, role: roleByInputKey.get(input.inputKey) ?? input.role })),
       ...videoParams.referenceInputs.flatMap((reference) => reference.source.kind === 'asset' ? [{
         assetId: reference.source.id,
         durationMs: undefined,
@@ -8040,6 +8044,21 @@ export const VideoNodeComponent = memo(function VideoNode({
     const assetId = resolvedVideoInputItems.find((item) => item.inputKey === inputKey)?.assetId;
     if (assetId) retryVideoInputAsset(assetId);
   }, [resolvedVideoInputItems, retryVideoInputAsset]);
+  const normalizeVideoReferenceRoles = useCallback(() => {
+    const current = useFlowCanvasStore.getState().nodes.find((node) => node.id === id);
+    if (!current) return;
+    const currentParams = normalizeVideoGenerationParams(current.data).params;
+    const option = videoCatalog.models.find((model) => model.id === current.data.modelId);
+    const referenceInputs = normalizeReferenceRolesForMode(
+      currentParams.referenceInputs,
+      currentParams.mode,
+      (option?.capabilities ?? createSafeDefaultVideoCapabilities()).referenceSemantics,
+    );
+    if (JSON.stringify(referenceInputs) === JSON.stringify(currentParams.referenceInputs)) return;
+    updateNodeData(id, {
+      params: { ...(current.data.params ?? {}), videoGeneration: { ...currentParams, referenceInputs } },
+    });
+  }, [id, updateNodeData, videoCatalog.models]);
 
   return (
     <div 
@@ -8127,9 +8146,15 @@ export const VideoNodeComponent = memo(function VideoNode({
               onConnectCanvasReference={(input) => connectVideoReference({ ...input, targetNodeId: id })}
               onFocusInput={handleFocusVideoInput}
               onGenerate={handleGenerate}
-              onRemoveInput={(inputKey) => removeNodeInput(id, inputKey)}
+              onRemoveInput={(inputKey) => {
+                removeNodeInput(id, inputKey);
+                normalizeVideoReferenceRoles();
+              }}
               onRemoveAllText={() => removeTextNodeInputs(id)}
-              onReorderInputs={(inputKeys) => reorderNodeInputs(id, inputKeys)}
+              onReorderInputs={(inputKeys) => {
+                reorderNodeInputs(id, inputKeys);
+                normalizeVideoReferenceRoles();
+              }}
               onRetryInputPreview={handleRetryVideoInputPreview}
               onUpdate={(patch) => updateNodeData(id, patch)}
               onUploadReference={async (file, mediaKind) => {

@@ -392,6 +392,55 @@ describe("FlowNodes agent metadata", () => {
     });
   });
 
+  it("projects persisted first and last frame roles onto connected image inputs", async () => {
+    const model = createVideoCatalogModel({
+      capabilities: {
+        aspectRatios: ["16:9"],
+        confirmedByRoute: true,
+        durationStepSeconds: 1,
+        maxCount: 1,
+        maxDurationSeconds: 8,
+        maxImages: 2,
+        maxTotal: 2,
+        minDurationSeconds: 4,
+        referenceSemantics: "ordered_first_last_frames",
+        resolutions: ["720P"],
+        supportedModes: ["first_last_frame"],
+        supportsAudio: false,
+        supportsHumanReview: false,
+      },
+      id: "first-last-model",
+    });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const first = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 0 }, { assetId: "asset-first", kind: "image", title: "First" });
+    const last = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 240 }, { assetId: "asset-last", kind: "image", title: "Last" });
+    const target = useFlowCanvasStore.getState().addNode("video", { x: 320, y: 0 }, createVideoNodeData({
+      modelId: model.id,
+      params: {
+        videoGeneration: {
+          aspectRatio: "16:9",
+          count: 1,
+          durationSeconds: 4,
+          generateAudio: false,
+          mode: "first_last_frame",
+          referenceInputs: [
+            { mediaKind: "image", order: 0, referenceKey: `upstream:${first.id}`, role: "first_frame", source: { kind: "upstream", id: first.id } },
+            { mediaKind: "image", order: 1, referenceKey: `upstream:${last.id}`, role: "last_frame", source: { kind: "upstream", id: last.id } },
+          ],
+          resolution: "720P",
+          schemaVersion: 2,
+        },
+      },
+    }) as any, { selected: true });
+    useFlowCanvasStore.getState().onConnect({ source: first.id, sourceHandle: "out", target: target.id, targetHandle: "in" });
+    useFlowCanvasStore.getState().onConnect({ source: last.id, sourceHandle: "out", target: target.id, targetHandle: "in" });
+
+    render(<StoreBackedVideoNode nodeId={target.id} />);
+
+    expect(await screen.findByLabelText("输入角色：首帧")).toBeTruthy();
+    expect(screen.getByLabelText("输入角色：尾帧")).toBeTruthy();
+  });
+
   it("renders an Agent badge and opens session detail for text nodes", () => {
     const listener = vi.fn();
     window.addEventListener("tapflow:open-agent-session", listener as EventListener);

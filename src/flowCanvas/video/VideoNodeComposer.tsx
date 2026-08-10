@@ -17,6 +17,8 @@ import { useVideoGenerationCatalog } from "./useVideoGenerationCatalog";
 import { correctVideoGenerationParams, createSafeDefaultVideoCapabilities } from "./videoGenerationCapabilities";
 import { emitVideoComposerDiagnostic } from "./videoComposerDiagnostics";
 import { createVideoModelSelectionPatch } from "./videoModelSelection";
+import { evaluateVideoModeAvailability, resolveAvailableVideoMode } from "./videoModeAvailability";
+import { normalizeReferenceRolesForMode } from "./videoReferenceRules";
 import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole } from "./videoTypes";
 import type { LexicalEditor } from "lexical";
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
@@ -57,6 +59,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [manifest, setManifest] = useState<VideoCameraManifest>({ version: 2, attribution: "DramaClaw commercial license", items: [] });
   const cameraButtonRef = useRef<HTMLButtonElement>(null);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
@@ -74,6 +77,21 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
   );
   const option = catalog.models.find((model) => model.id === data.modelId) ?? null;
   const capabilities = option?.capabilities ?? null;
+  const effectiveCapabilities = capabilities ?? createSafeDefaultVideoCapabilities();
+  const modeInputs = useMemo(
+    () => (inputItems ?? []).map(({ inputKey, kind }) => ({ inputKey, kind })),
+    [inputItems],
+  );
+  const modeAvailability = useMemo(
+    () => evaluateVideoModeAvailability(modeInputs, effectiveCapabilities),
+    [effectiveCapabilities, modeInputs],
+  );
+  const modeResolution = useMemo(
+    () => resolveAvailableVideoMode(params.mode, modeInputs, effectiveCapabilities),
+    [effectiveCapabilities, modeInputs, params.mode],
+  );
+  const selectedModeAvailability = modeAvailability.items.find((item) => item.mode === params.mode);
+  const appliedModeCorrectionRef = useRef<string | null>(null);
   const capabilityCorrection = useMemo(
     () => correctVideoGenerationParams(params, capabilities),
     [capabilities, params],
@@ -95,6 +113,35 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     emitVideoComposerDiagnostic("capability_corrected", { errorCode: "CAPABILITY_CORRECTED", modelId: data.modelId, motionId: params.cameraMotionId });
     onUpdate({ params: { ...(data.params ?? {}), videoGeneration: capabilityCorrection.params } });
   }, [capabilities, capabilityCorrection, data.modelId, data.params, onUpdate, params]);
+
+  useEffect(() => {
+    if (modeResolution.incompatible || !modeResolution.switched || modeResolution.mode === params.mode) return;
+    const signature = JSON.stringify({
+      inputs: modeInputs.map(({ inputKey, kind }) => ({ inputKey, kind })),
+      newMode: modeResolution.mode,
+      oldMode: params.mode,
+    });
+    if (appliedModeCorrectionRef.current === signature) return;
+    appliedModeCorrectionRef.current = signature;
+    const referenceInputs = normalizeReferenceRolesForMode(
+      params.referenceInputs,
+      modeResolution.mode,
+      effectiveCapabilities.referenceSemantics,
+    );
+    setModeNotice("已根据当前输入调整生成模式");
+    onUpdate({
+      params: {
+        ...(data.params ?? {}),
+        videoGeneration: { ...params, mode: modeResolution.mode, referenceInputs },
+      },
+    });
+  }, [data.params, effectiveCapabilities.referenceSemantics, modeInputs, modeResolution.incompatible, modeResolution.mode, modeResolution.switched, onUpdate, params]);
+
+  useEffect(() => {
+    if (!modeNotice) return;
+    const timeout = window.setTimeout(() => setModeNotice(null), 4_000);
+    return () => window.clearTimeout(timeout);
+  }, [modeNotice]);
 
   useEffect(() => {
     let active = true;
@@ -153,11 +200,20 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     : catalog.error
       ? VIDEO_UI_COPY.modelCatalogError
       : option?.label ?? VIDEO_UI_COPY.chooseModel;
-  const generationDisabled = generating || !selectedModelUsable || catalog.loading || Boolean(catalog.error);
+  const selectedModeEnabled = selectedModeAvailability?.enabled ?? true;
+  const generationDisabled = generating || !selectedModelUsable || !selectedModeEnabled || catalog.loading || Boolean(catalog.error);
+  const handleModeChange = (mode: VideoGenerationParamsV1["mode"]) => {
+    setModeNotice(null);
+    setParams({
+      ...params,
+      mode,
+      referenceInputs: normalizeReferenceRolesForMode(params.referenceInputs, mode, effectiveCapabilities.referenceSemantics),
+    });
+  };
 
   return <div aria-busy={generating} aria-label={VIDEO_UI_COPY.videoComposer} className="flex w-full flex-col text-white">
     <div className="flex flex-nowrap items-center gap-2" data-testid="video-composer-tools">
-      <VideoModeMenu capabilities={capabilities} disabled={generating} onChange={(mode) => setParams({ ...params, mode })} value={params.mode} />
+      <VideoModeMenu availability={modeAvailability} disabled={generating} onChange={handleModeChange} value={params.mode} />
       <button aria-label={VIDEO_UI_COPY.cameraLibrary} className={`inline-flex min-w-0 items-center gap-1.5 px-[9px] ${VIDEO_COMPOSER_CAPSULE_CLASS}`} disabled={generating} onClick={() => setCameraOpen(true)} ref={cameraButtonRef} style={capsuleStyle} type="button"><Camera className="shrink-0" size={14} /><span className="truncate">{selectedMotionLabel ?? "运镜"}</span></button>
       <VideoPalettePopover disabled={generating} onChange={setParams} sourceDisplayByRole={sourceDisplayByRole} value={params} />
     </div>
@@ -166,6 +222,8 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
       <VideoReferenceStrip allowMediaAdd={allowMediaAdd} capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} inputItems={inputItems} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onFocusInput={onFocusInput} onRemoveInput={onRemoveInput} onRemoveAllText={onRemoveAllText} onReorderInputs={onReorderInputs} onRetryInputPreview={onRetryInputPreview} onUploadReference={onUploadReference} value={params} />
     </div>
 
+    {modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{modeNotice}</div> : null}
+    {!selectedModeEnabled && !modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">当前模型不支持此生成模式</div> : null}
     {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}
 
     <div className="mt-2">

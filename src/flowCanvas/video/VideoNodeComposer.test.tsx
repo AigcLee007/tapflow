@@ -502,6 +502,127 @@ describe("VideoNodeComposer", () => {
     expect(onUpdate).toHaveBeenCalledTimes(1);
   });
 
+  test("switches an invalid mode once from unified inputs and announces the transient correction", async () => {
+    const onUpdate = vi.fn();
+    const data = {
+      generationPrompt: "",
+      modelId: "gemini-id",
+      params: { videoGeneration: createDefaultVideoGenerationParams() },
+    } as any;
+    const catalog = usableVideoCatalog([usableVideoOption({
+      capabilities: mergeVideoCapabilities({
+        confirmedByRoute: true,
+        maxImages: 2,
+        maxTotal: 2,
+        supportedModes: ["text_to_video", "image_to_video", "first_last_frame", "image_reference", "all_reference"],
+      }),
+    })]);
+    const inputItems = [{
+      assetId: "image-1",
+      group: "image" as const,
+      inputKey: "asset:image-1",
+      kind: "image" as const,
+      kindIndex: 1,
+      mentionLabel: "图片1",
+      order: 0,
+      previewState: "ready" as const,
+      role: "main_image" as const,
+      source: "asset" as const,
+      title: "Reference",
+    }];
+
+    const { rerender } = render(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({
+      params: {
+        videoGeneration: expect.objectContaining({ mode: "image_to_video" }),
+      },
+    }));
+    expect(screen.getByRole("status").textContent).toContain("调整生成模式");
+
+    rerender(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves an enabled manual mode and normalizes reference roles when manually changed", () => {
+    const onUpdate = vi.fn();
+    const data = {
+      generationPrompt: "",
+      modelId: "gemini-id",
+      params: {
+        videoGeneration: {
+          ...createDefaultVideoGenerationParams(),
+          mode: "image_reference",
+          referenceInputs: [
+            { mediaKind: "image", order: 0, referenceKey: "asset:first", role: "reference_image", source: { kind: "asset", id: "first" } },
+            { mediaKind: "image", order: 1, referenceKey: "asset:last", role: "reference_image", source: { kind: "asset", id: "last" } },
+          ],
+        },
+      },
+    } as any;
+    const catalog = usableVideoCatalog([usableVideoOption({
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, maxImages: 2, maxTotal: 2 }),
+    })]);
+    const inputItems = ["first", "last"].map((id, index) => ({
+      assetId: id,
+      group: "image" as const,
+      inputKey: `asset:${id}`,
+      kind: "image" as const,
+      kindIndex: index + 1,
+      mentionLabel: `图片${index + 1}`,
+      order: index,
+      previewState: "ready" as const,
+      source: "asset" as const,
+      title: id,
+    }));
+
+    render(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+
+    expect(onUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "首尾帧生视频" }));
+    expect(onUpdate).toHaveBeenCalledWith({
+      params: {
+        videoGeneration: expect.objectContaining({
+          mode: "first_last_frame",
+          referenceInputs: [
+            expect.objectContaining({ role: "first_frame" }),
+            expect.objectContaining({ role: "last_frame" }),
+          ],
+        }),
+      },
+    });
+  });
+
+  test("retains an unsupported all-reference mode and blocks generation when video topology requires it", () => {
+    const onUpdate = vi.fn();
+    const data = {
+      generationPrompt: "scene",
+      modelId: "gemini-id",
+      params: { videoGeneration: { ...createDefaultVideoGenerationParams(), mode: "all_reference" } },
+    } as any;
+    const catalog = usableVideoCatalog([usableVideoOption({
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, supportedModes: ["text_to_video"] }),
+    })]);
+    const inputItems = [{
+      assetId: "clip-1",
+      group: "video" as const,
+      inputKey: "asset:clip-1",
+      kind: "video" as const,
+      kindIndex: 1,
+      mentionLabel: "视频1",
+      order: 0,
+      previewState: "ready" as const,
+      source: "asset" as const,
+      title: "Clip",
+    }];
+
+    render(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   test("retains the rollback composer model, aspect, duration, HD, count, and generation controls", () => {
     const data = { generationPrompt: "", modelId: "veo3.1-fast", params: { aspect_ratio: "16:9", duration: "4" } } as any;
     render(<VideoNodeLegacyComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} />);
