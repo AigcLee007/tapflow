@@ -34,7 +34,7 @@ const soraContext = (): ProviderCallContext => ({
       maxImages: 9,
       maxTotal: 12,
       maxVideos: 3,
-      modeConstraints: { all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVideoOrAudio: true, requiresVisualWithAudio: true } },
+      modeConstraints: { all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVisualWithAudio: true } },
       referenceSemantics: "mixed_reference_media",
     },
   },

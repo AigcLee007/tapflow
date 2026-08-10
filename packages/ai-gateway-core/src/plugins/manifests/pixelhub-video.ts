@@ -20,7 +20,7 @@ const sora: VideoGenerationCapabilities = {
   defaults: params("text_to_video", "16:9", "720P", 4), durationStepSeconds: 1,
   maxAudios: 3, maxCount: 1, maxDurationSeconds: 15, maxImages: 9, maxPromptLength: 2500, maxTotal: 12, maxVideos: 3, minDurationSeconds: 4,
   modeConstraints: {
-    all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVideoOrAudio: true, requiresVisualWithAudio: true },
+    all_reference: { maxAudios: 3, maxImages: 9, maxTotal: 12, maxVideos: 3, requiresVisualWithAudio: true },
     image_reference: { maxAudios: 0, maxImages: 9, maxTotal: 9, maxVideos: 0, minImages: 2 },
     image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 }, text_to_video: empty,
   }, referenceSemantics: "mixed_reference_media", resolutions: ["720P"], supportedDurations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], supportedModes: ["text_to_video", "image_to_video", "image_reference", "all_reference"],
@@ -49,7 +49,7 @@ export const pixelHubVideoManifest: AiPluginManifest = {
     { bindingKey: "veo31-fast", label: "Veo 3.1 Fast", modelKey: "veo31-fast", routeKey: "video.pixelhub.veo31-fast" },
   ],
   credentials: { fields: [{ key: "apiKey", label: "Bearer API Key", required: true, secret: true }], type: "bearer" },
-  description: "PixelHub asynchronous video generation.", displayName: "PixelHub Video", modality: "video", packageKey: "pixelhub.video", version: "1.0.2",
+  description: "PixelHub asynchronous video generation.", displayName: "PixelHub Video", modality: "video", packageKey: "pixelhub.video", version: "1.0.3",
   provider: { capabilities: { requiresBaseUrlOverride: true, supportedVideoWorkflows: ["video_generation"] }, defaultBaseUrl: "", key: "pixelhub", kind: "pixelhub-video", name: "PixelHub" },
   models: [model("gemini-omni-flash", "Gemini Omni Flash", "pixelhub-gemini-omni-flash", gemini, 10), model("sora-v3-pro", "Sora V3 Pro", "pixelhub-sora-v3-pro", sora, 20), model("veo31-fast", "Veo 3.1 Fast", "pixelhub-veo31-fast", veo, 30)],
   routes: [route("gemini-omni-flash", "pixelhub-gemini-omni-flash", gemini), route("sora-v3-pro", "pixelhub-sora-v3-pro", sora), route("veo31-fast", "pixelhub-veo31-fast", veo)],

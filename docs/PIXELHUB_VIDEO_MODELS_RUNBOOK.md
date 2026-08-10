@@ -44,7 +44,7 @@ Use a disposable project and tenant-owned assets. Confirm reserve, settle/refund
 | Product model | Supported smoke inputs |
 | --- | --- |
 | Gemini Omni Flash | text; 1-5 reference images; optional one source video with reference images |
-| Sora V3 Pro | text; one image; 2-9 image references; mixed references with visual input when audio is present |
+| Sora V3 Pro | text; 1-9 reference images; mixed references with visual input when audio is present |
 | Veo 3.1 Fast | text; one first frame; ordered first and last frame |
 
 For every matrix run, confirm the saved node retains only the stable route key, schema-v2 parameters, ordered references, asset IDs, and upstream source-node IDs. Verify the selected upstream model, duration, ratio, and approved reference fields are sent; credits reserve once and settle or refund once; successful media is recorded as a video `assets` row, appears in `/assets`, and is referenced by asset ID only.

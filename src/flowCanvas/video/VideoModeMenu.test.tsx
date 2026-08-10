@@ -53,7 +53,9 @@ describe("VideoModeMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
     const imageToVideo = screen.getByRole("menuitemradio", { name: /图生视频/ });
     fireEvent.mouseEnter(imageToVideo);
-    expect(screen.getByRole("tooltip").textContent).toContain("图生视频需要恰好 1 张图片（当前 2 张）");
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip.textContent).toContain("图生视频需要恰好 1 张图片（当前 2 张）");
+    expect(tooltip.style.zIndex).toBe("100001");
     fireEvent.mouseLeave(imageToVideo);
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.focus(imageToVideo);

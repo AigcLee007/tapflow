@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Film, Image, Images, Type, Video, type LucideIcon } from "lucide-react";
 
 import { MenuSurface } from "../../components/menu/MenuSurface";
@@ -37,17 +38,33 @@ const DEFAULT_AVAILABILITY: VideoModeAvailabilityResult = {
 export function VideoModeMenu({ availability = DEFAULT_AVAILABILITY, disabled = false, onChange, value }: VideoModeMenuProps) {
   const layer = useDismissibleLayer("video-mode-menu");
   const [tooltipMode, setTooltipMode] = useState<VideoGenerationMode | null>(null);
+  const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null);
   const selected = MODE_OPTIONS.find((option) => option.value === value) ?? MODE_OPTIONS[0];
+  const tooltipOption = tooltipMode ? MODE_OPTIONS.find((option) => option.value === tooltipMode) : null;
+  const tooltipItem = tooltipOption ? availability.items.find((item) => item.mode === tooltipOption.value) : null;
+  const tooltip = tooltipItem?.reason ? getVideoModeUnavailableReason(tooltipItem.reason, availability.counts) : null;
+  const tooltipId = tooltipOption ? `video-mode-${tooltipOption.value}-tooltip` : undefined;
+
+  const closeTooltip = () => {
+    setTooltipMode(null);
+    setTooltipAnchor(null);
+  };
+
+  const openTooltip = (mode: VideoGenerationMode, anchor: HTMLElement, content: string | null) => {
+    if (!content) return;
+    setTooltipMode(mode);
+    setTooltipAnchor(anchor.getBoundingClientRect());
+  };
 
   useEffect(() => {
     if (disabled) {
-      setTooltipMode(null);
+      closeTooltip();
       layer.closeLayer();
     }
   }, [disabled, layer.closeLayer]);
 
   useEffect(() => {
-    if (!layer.open) setTooltipMode(null);
+    if (!layer.open) closeTooltip();
   }, [layer.open]);
 
   return (
@@ -80,31 +97,30 @@ export function VideoModeMenu({ availability = DEFAULT_AVAILABILITY, disabled = 
             const optionEnabled = item?.enabled ?? false;
             const selectedOption = option.value === value;
             const ModeIcon = MODE_ICONS[option.value];
-            const tooltip = !optionEnabled && item?.reason
+            const optionTooltip = !optionEnabled && item?.reason
               ? getVideoModeUnavailableReason(item.reason, availability.counts)
               : null;
-            const tooltipId = tooltip ? `video-mode-${option.value}-tooltip` : undefined;
 
             return (
               <button
                 key={option.value}
                 aria-checked={selectedOption}
-                aria-describedby={tooltipMode === option.value ? tooltipId : undefined}
+                aria-describedby={tooltipMode === option.value ? `video-mode-${option.value}-tooltip` : undefined}
                 aria-disabled={disabled || !optionEnabled || undefined}
                 className={`${MENU_ITEM_CLASS} relative h-[38px] ${selectedOption ? "bg-white/[0.088]" : ""} ${disabled || !optionEnabled ? "cursor-not-allowed text-white/45" : "focus:bg-white/[0.088] focus:outline-none"}`.trim()}
-                onBlur={() => setTooltipMode((current) => current === option.value ? null : current)}
+                onBlur={closeTooltip}
                 onClick={() => {
                   if (disabled || !optionEnabled) return;
                   onChange(option.value);
                   layer.closeLayer();
                 }}
                 onFocus={() => {
-                  if (tooltip) setTooltipMode(option.value);
+                  openTooltip(option.value, event.currentTarget, optionTooltip);
                 }}
                 onMouseEnter={() => {
-                  if (tooltip) setTooltipMode(option.value);
+                  openTooltip(option.value, event.currentTarget, optionTooltip);
                 }}
-                onMouseLeave={() => setTooltipMode((current) => current === option.value ? null : current)}
+                onMouseLeave={closeTooltip}
                 role="menuitemradio"
                 type="button"
               >
@@ -112,15 +128,21 @@ export function VideoModeMenu({ availability = DEFAULT_AVAILABILITY, disabled = 
                   <ModeIcon aria-hidden="true" size={15} />
                 </span>
                 <span className={`${MENU_ITEM_PRIMARY_CLASS} min-w-0 truncate`}>{option.label}</span>
-                {tooltipMode === option.value && tooltip ? (
-                  <span className="absolute left-[calc(100%+8px)] top-0 z-[1201] w-[220px] rounded-[10px] border border-white/10 bg-[#1c1c20] px-2 py-1.5 text-[9px] font-medium leading-[1.25] text-white/75 shadow-[0_8px_20px_rgba(0,0,0,0.35)]" id={tooltipId} role="tooltip">
-                    {tooltip}
-                  </span>
-                ) : null}
               </button>
             );
           })}
         </MenuSurface>
+      ) : null}
+      {tooltip && tooltipAnchor && typeof document !== "undefined" ? createPortal(
+        <span
+          className="pointer-events-none fixed w-[220px] rounded-[10px] border border-white/10 bg-[#1c1c20] px-2 py-1.5 text-[9px] font-medium leading-[1.25] text-white/75 shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
+          id={tooltipId}
+          role="tooltip"
+          style={{ left: tooltipAnchor.right + 8, top: tooltipAnchor.top, zIndex: 100001 }}
+        >
+          {tooltip}
+        </span>,
+        document.body,
       ) : null}
     </div>
   );
