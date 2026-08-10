@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { AiGateway } from "../src/ai-gateway.js";
+import { builtinAiPluginRegistry } from "../src/plugins/registry.js";
 import type { ProviderAdapter } from "../src/provider-adapter.js";
 import {
   readVideoCapabilities,
@@ -336,6 +337,30 @@ describe("video generation contract", () => {
       params: { ...request().params!, mode: "first_last_frame" },
     });
     expect(validateVideoGenerationRequest(sameOrder, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+  });
+
+  test("rejects invalid first-last-frame inputs using the registered Veo capabilities", () => {
+    const route = builtinAiPluginRegistry.require("pixelhub.video").routes.find((candidate) => candidate.routeKey === "video.pixelhub.veo31-fast");
+    const veo = readVideoCapabilities(route?.requestConfig.capabilities);
+    if (!veo) throw new Error("Registered Veo capabilities are unavailable.");
+
+    const loneLastFrame = request({
+      inputAssets: [asset("image", "last_frame", 0)],
+      params: { ...request().params!, mode: "first_last_frame", resolution: "1080P" },
+    });
+    expect(validateVideoGenerationRequest(loneLastFrame, veo).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+
+    const firstFrameWithAudio = request({
+      inputAssets: [asset("image", "first_frame", 0), asset("audio", "reference_audio", 1)],
+      params: { ...request().params!, mode: "first_last_frame", resolution: "1080P" },
+    });
+    expect(validateVideoGenerationRequest(firstFrameWithAudio, veo).map((issue) => issue.code)).toContain("REFERENCE_LIMIT_EXCEEDED");
+
+    const framePairWithVideo = request({
+      inputAssets: [asset("image", "first_frame", 0), asset("image", "last_frame", 1), asset("video", "reference_video", 2)],
+      params: { ...request().params!, mode: "first_last_frame", resolution: "1080P" },
+    });
+    expect(validateVideoGenerationRequest(framePairWithVideo, veo).map((issue) => issue.code)).toContain("REFERENCE_LIMIT_EXCEEDED");
   });
 
   test("requires exactly one Gemini source video in all-reference mode", () => {
