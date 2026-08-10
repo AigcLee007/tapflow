@@ -211,14 +211,14 @@ describe("NodeInputTray", () => {
     expect(screen.queryByRole("menu", { name: "更多输入" })).toBeNull();
   });
 
-  it("renders first and last frame role badges", () => {
+  it("renders visible and accessible first and last frame role badges", () => {
     render(<NodeInputTray items={[
       { ...imageA, inputKey: "asset:first", order: 0, role: "first_frame", title: "First" },
       { ...imageA, inputKey: "asset:last", order: 1, role: "last_frame", title: "Last" },
     ]} />);
 
-    expect(screen.getByLabelText("输入角色：首帧")).not.toBeNull();
-    expect(screen.getByLabelText("输入角色：尾帧")).not.toBeNull();
+    expect(screen.getByLabelText("输入角色：首帧").textContent).toBe("首帧");
+    expect(screen.getByLabelText("输入角色：尾帧").textContent).toBe("尾帧");
   });
 
   it("opens an asset preview from keyboard focus and associates it as a tooltip", async () => {

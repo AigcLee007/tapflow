@@ -591,6 +591,34 @@ describe('flowCanvasStore upstream image references', () => {
     ]);
   });
 
+  it('derives first and last frame roles from persisted image input order', () => {
+    useFlowCanvasStore.getState().loadProject({
+      id: 'first-last-frame-order', title: 'First and last frame order', version: 1, updatedAt: Date.now(), viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [{
+        id: 'video-target', type: 'video', position: { x: 0, y: 0 }, data: {
+          kind: 'video',
+          inputOrder: ['asset:first-image', 'asset:last-image'],
+          referenceAssetItemIds: ['first-image', 'last-image'],
+          referenceOrder: ['asset:first-image', 'asset:last-image'],
+          params: { videoGeneration: {
+            ...normalizeVideoGenerationParams({}).params,
+            mode: 'first_last_frame',
+            referenceInputs: [
+              { mediaKind: 'image', order: 0, referenceKey: 'asset:last-image', role: 'first_frame', source: { kind: 'asset', id: 'last-image' } },
+              { mediaKind: 'image', order: 1, referenceKey: 'asset:first-image', role: 'last_frame', source: { kind: 'asset', id: 'first-image' } },
+            ],
+          } },
+        },
+      }] as any,
+      edges: [],
+    });
+
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === 'video-target')?.data).params.referenceInputs).toEqual([
+      expect.objectContaining({ order: 0, referenceKey: 'asset:first-image', role: 'first_frame' }),
+      expect.objectContaining({ order: 1, referenceKey: 'asset:last-image', role: 'last_frame' }),
+    ]);
+  });
+
   it('keeps persisted nodes and dirty state unchanged for runtime-only output refreshes', () => {
     const source = useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, { title: 'Text source' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, { title: 'Video target' });

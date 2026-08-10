@@ -736,17 +736,20 @@ const reconcileNodeInputs = (
         ))
       )).map((reference, order) => ({ ...reference, order }))
       : referenceInputs;
-    const referenceOrder = getUniqueInputKeys(normalizedReferenceInputs.map((reference) => reference.source.kind === 'upstream'
+    const roleNormalizedReferenceInputs = normalized!.mode === 'first_last_frame'
+      ? normalizeReferenceRolesForMode(normalizedReferenceInputs, normalized!.mode, 'ordered_first_last_frames')
+      : normalizedReferenceInputs;
+    const referenceOrder = getUniqueInputKeys(roleNormalizedReferenceInputs.map((reference) => reference.source.kind === 'upstream'
       ? toUpstreamInputKey(reference.source.id)
       : toAssetInputKey(reference.source.id)));
-    const referenceAssetItemIds = getUniqueInputKeys(normalizedReferenceInputs
+    const referenceAssetItemIds = getUniqueInputKeys(roleNormalizedReferenceInputs
       .filter((reference) => reference.source.kind === 'asset')
       .map((reference) => reference.source.id));
     const existingReferenceInputs = normalized!.referenceInputs.map((reference) => ({
       ...reference,
       referenceKey: reference.source.kind === 'upstream' ? toUpstreamInputKey(reference.source.id) : reference.referenceKey,
     }));
-    const referencesChanged = JSON.stringify(existingReferenceInputs) !== JSON.stringify(normalizedReferenceInputs);
+    const referencesChanged = JSON.stringify(existingReferenceInputs) !== JSON.stringify(roleNormalizedReferenceInputs);
     if (!referencesChanged
       && hasSameItems(getUniqueInputKeys(node.data.inputOrder), inputOrder)
       && hasSameItems(getUniqueInputKeys(node.data.referenceOrder), referenceOrder)
@@ -760,7 +763,7 @@ const reconcileNodeInputs = (
         referenceOrder,
         params: {
           ...(node.data.params ?? {}),
-          videoGeneration: { ...normalized!, referenceInputs: normalizedReferenceInputs },
+          videoGeneration: { ...normalized!, referenceInputs: roleNormalizedReferenceInputs },
         },
         updatedAt: Date.now(),
       },
