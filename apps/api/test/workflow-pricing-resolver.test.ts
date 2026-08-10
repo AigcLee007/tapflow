@@ -246,6 +246,7 @@ describe("workflow pricing resolver", () => {
   });
 
   it.each([
+    ["text_to_video with a non-array reference input", "gemini-omni-flash", "text_to_video", {}],
     ["text_to_video with a malformed image reference", "gemini-omni-flash", "text_to_video", [{
       referenceKey: "malformed-image",
       source: { kind: "asset" },

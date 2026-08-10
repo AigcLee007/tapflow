@@ -510,7 +510,14 @@ function readStructuredVideoGenerationRequest(
   const params = isRecord(config.params) ? config.params : {};
   const videoGeneration = isRecord(params.videoGeneration) ? params.videoGeneration : null;
   if (!videoGeneration || videoGeneration.schemaVersion !== 2) return null;
-  const references = Array.isArray(videoGeneration.referenceInputs) ? videoGeneration.referenceInputs : [];
+  if (!Array.isArray(videoGeneration.referenceInputs)) {
+    throw new WorkflowRunsApiError(
+      422,
+      "REFERENCE_ASSET_NOT_FOUND",
+      "REFERENCE_ASSET_NOT_FOUND: Structured video references must be an array.",
+    );
+  }
+  const references = videoGeneration.referenceInputs;
   const inputAssets: AssetReferenceInput[] = references.map((reference, index) => {
     if (!isRecord(reference) || !isRecord(reference.source)) {
       throw new WorkflowRunsApiError(
