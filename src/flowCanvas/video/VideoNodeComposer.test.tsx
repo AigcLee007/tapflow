@@ -538,7 +538,7 @@ describe("VideoNodeComposer", () => {
         videoGeneration: expect.objectContaining({ mode: "image_to_video" }),
       },
     }));
-    expect(screen.getByRole("status").textContent).toContain("调整生成模式");
+    expect(screen.getByRole("status").textContent).toContain("根据 1 张图片已切换为图生视频");
 
     rerender(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
     expect(onUpdate).toHaveBeenCalledTimes(1);

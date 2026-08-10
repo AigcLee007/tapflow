@@ -80,6 +80,23 @@ export const VIDEO_UI_MODE_COPY = {
   image_reference: { label: "图像参考生视频", description: "使用多张图片控制内容与风格" },
 } as const satisfies Record<VideoGenerationMode, { label: string; description: string }>;
 
+export function getVideoModeSwitchMessage(
+  counts: VideoModeInputCounts,
+  targetMode: VideoGenerationMode,
+  incompatible: boolean,
+): string {
+  const targetLabel = VIDEO_UI_MODE_COPY[targetMode].label;
+  const incompatibilitySuffix = incompatible ? "\uff0c\u5f53\u524d\u6a21\u578b\u4e0d\u652f\u6301\u8be5\u6a21\u5f0f" : "";
+  if (counts.video + counts.audio > 0 && targetMode === "all_reference") {
+    return `\u89c6\u9891\u6216\u97f3\u9891\u8f93\u5165\u9700\u8981\u4f7f\u7528${targetLabel}${incompatibilitySuffix}`;
+  }
+  if (counts.total === 0) return `\u5f53\u524d\u6ca1\u6709\u5a92\u4f53\u8f93\u5165\uff0c\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  if (counts.image === 1) return `\u6839\u636e 1 \u5f20\u56fe\u7247\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  if (counts.image === 2) return `\u6839\u636e 2 \u5f20\u56fe\u7247\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  if (counts.image >= 3) return `\u6839\u636e ${counts.image} \u5f20\u56fe\u7247\u5df2\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+  return `\u5df2\u6839\u636e\u5f53\u524d\u8f93\u5165\u5207\u6362\u4e3a${targetLabel}${incompatibilitySuffix}`;
+}
+
 export function getVideoModeUnavailableReason(
   reason: VideoModeAvailabilityReason,
   counts: VideoModeInputCounts,

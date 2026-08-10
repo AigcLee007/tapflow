@@ -22,7 +22,7 @@ import { normalizeReferenceRolesForMode } from "./videoReferenceRules";
 import type { VideoGenerationParamsV1, VideoReferenceInputV2, VideoReferenceRole } from "./videoTypes";
 import type { LexicalEditor } from "lexical";
 import type { VideoPaletteSourceDisplay } from "./VideoPalettePopover";
-import { VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
+import { getVideoModeSwitchMessage, VIDEO_UI_COPY, VIDEO_UI_REFERENCE_ROLE_COPY } from "./videoUiCopy";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
 import { VIDEO_COMPOSER_CAPSULE_CLASS, videoComposerDensity } from "../utils/promptBarDensity";
 import { ImageGenerateToolbar } from "../nodes/ImageGenerateToolbar";
@@ -128,7 +128,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
       modeResolution.mode,
       effectiveCapabilities.referenceSemantics,
     );
-    setModeNotice(getVideoModeSwitchMessage(modeInputs, modeResolution.mode, modeResolution.incompatible));
+    setModeNotice(getVideoModeSwitchMessage(modeAvailability.counts, modeResolution.mode, modeResolution.incompatible));
     onUpdate({
       params: {
         ...(data.params ?? {}),
@@ -314,17 +314,4 @@ function resolvePaletteSourceDisplays(
 function getPaletteRoleLabel(role: VideoReferenceRole): string {
   const roleLabel = VIDEO_UI_REFERENCE_ROLE_COPY[role];
   return role === "reference" ? roleLabel : `${roleLabel}参考`;
-}
-
-function getVideoModeSwitchMessage(
-  inputs: Array<{ inputKey: string; kind: CanvasInputItem["kind"] }>,
-  mode: VideoGenerationParamsV1["mode"],
-  incompatible: boolean,
-): string {
-  if (mode === "all_reference" && inputs.some((input) => input.kind === "video" || input.kind === "audio")) {
-    return incompatible
-      ? "视频或音频输入需要使用全参考生视频，当前模型不支持该模式"
-      : "视频或音频输入已切换为全参考生视频";
-  }
-  return "已根据当前输入调整生成模式";
 }
