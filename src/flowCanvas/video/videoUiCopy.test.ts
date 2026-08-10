@@ -7,6 +7,7 @@ import {
   VIDEO_UI_COPY,
   VIDEO_UI_MODE_COPY,
   VIDEO_UI_REFERENCE_ROLE_COPY,
+  getVideoModeUnavailableReason,
 } from "./videoUiCopy";
 
 const MOJIBAKE_TOKENS = ["\uFFFD", "\u00E9\u00A2\u0091", "\u00E7\u0094\u009F", "\u00E8\u00A7\u0086", "\u00A6\u0086"];
@@ -64,5 +65,19 @@ describe("video model presentation copy", () => {
     expect(getVideoModelDescription("适合电影感动态镜头，画面稳定。 ")).toBe("适合电影感动态镜头，画面稳定。 ");
     expect(getVideoModelDescription("支持 4K / 16:9，时长 8 秒")).toBe("支持 4K / 16:9，时长 8 秒");
     expect(getVideoModelDescription("适合动态镜头\nhttps://example.com")).toBe("暂无中文模型说明");
+  });
+});
+
+describe("video mode availability copy", () => {
+  test("explains input and model availability reasons in Chinese", () => {
+    const counts = { audio: 0, image: 2, text: 1, total: 2, video: 0 };
+    expect(getVideoModeUnavailableReason("INPUT_MEDIA_NOT_ALLOWED", counts)).toBe("已添加媒体素材，无法使用文生视频");
+    expect(getVideoModeUnavailableReason("INPUT_REQUIRES_EXACTLY_ONE_IMAGE", counts)).toBe("图生视频需要恰好 1 张图片（当前 2 张）");
+    expect(getVideoModeUnavailableReason("INPUT_REQUIRES_IMAGE", counts)).toBe("图像参考生视频需要至少 1 张图片");
+    expect(getVideoModeUnavailableReason("INPUT_REQUIRES_MEDIA", counts)).toBe("全参考生视频需要至少 1 个媒体素材");
+    expect(getVideoModeUnavailableReason("INPUT_REQUIRES_ONE_OR_TWO_IMAGES", counts)).toBe("首尾帧生视频需要 1-2 张图片（当前 2 张）");
+    expect(getVideoModeUnavailableReason("INPUT_VIDEO_OR_AUDIO_REQUIRES_ALL_REFERENCE", counts)).toBe("视频或音频素材仅支持全参考生视频");
+    expect(getVideoModeUnavailableReason("MODEL_UNSUPPORTED", counts)).toBe("当前模型不支持该生成模式");
+    expect(getVideoModeUnavailableReason("MODEL_CONSTRAINT_UNMET", counts)).toBe("当前模型的输入限制不满足");
   });
 });
