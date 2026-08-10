@@ -1,7 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-08-09
+Last updated: 2026-08-10
 Maintainers: project team + Codex sessions
+
+## 2026-08-10 - Video Mode Input Availability Implementation Plan
+
+- completed the implementation plan for the approved LibTV-style video generation mode availability behavior in `docs/superpowers/plans/2026-08-10-video-mode-input-availability.md`;
+- the plan covers unified upstream/asset/upload input projection, the no-media/one-image/two-image/three-plus-image/video-or-audio availability matrix, two-image default fallback to image reference, one-or-two-image first/last-frame roles, disabled-mode tooltips, one-time auto-switch notices, model capability intersection, server-side fail-closed validation, browser smoke coverage, and build/test verification;
+- product implementation has not started yet; no production behavior, API, worker, or database changes were made in this planning task.
 
 ## 2026-08-10 - Video Mode Input Availability Design
 
