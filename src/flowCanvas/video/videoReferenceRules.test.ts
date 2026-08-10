@@ -165,6 +165,27 @@ describe("video reference rules", () => {
     ]);
   });
 
+  test("reorders frame images without dropping extra non-image references", () => {
+    const input = [
+      reference("image", 8, "reference_image"),
+      reference("video", 3, "reference_video"),
+      reference("audio", 1, "reference_audio"),
+      reference("image", 5, "reference_image"),
+      reference("image", 6, "reference_image"),
+    ];
+
+    const normalized = normalizeReferenceRolesForMode(input, "first_last_frame", "ordered_first_last_frames");
+
+    expect(normalized).toHaveLength(input.length);
+    expect(normalized).toEqual([
+      expect.objectContaining({ referenceKey: "audio:1", order: 0, role: "reference_audio" }),
+      expect.objectContaining({ referenceKey: "video:3", order: 1, role: "reference_video" }),
+      expect.objectContaining({ referenceKey: "image:5", order: 2, role: "first_frame" }),
+      expect.objectContaining({ referenceKey: "image:6", order: 3, role: "last_frame" }),
+      expect.objectContaining({ referenceKey: "image:8", order: 4, role: "last_frame" }),
+    ]);
+  });
+
   test("reports reference blockers without dropping inputs", () => {
     const input = [reference("image", 0), reference("image", 1), reference("image", 2), reference("image", 3), reference("image", 4), reference("image", 5)];
     const issues = validateVideoReferenceInputs(params({ mode: "image_reference", referenceInputs: input }), geminiCapabilities);
@@ -223,5 +244,19 @@ describe("video reference rules", () => {
       veoCapabilities,
     );
     expect(validVeoFramePair).toEqual([]);
+
+    const invalidVeoFrames = [
+      ["lone last frame", [reference("image", 0, "last_frame")]],
+      ["duplicate first frames", [reference("image", 0, "first_frame"), reference("image", 1, "first_frame")]],
+      ["missing first frame", [reference("image", 0, "last_frame"), reference("image", 1, "last_frame")]],
+      ["three images", [reference("image", 0, "first_frame"), reference("image", 1, "last_frame"), reference("image", 2, "last_frame")]],
+      ["extra audio reference", [reference("image", 0, "first_frame"), reference("image", 1, "last_frame"), reference("audio", 2, "reference_audio")]],
+    ] as const;
+    for (const [_name, referenceInputs] of invalidVeoFrames) {
+      expect(validateVideoReferenceInputs(
+        params({ mode: "first_last_frame", referenceInputs: [...referenceInputs] }),
+        veoCapabilities,
+      ).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+    }
   });
 });
