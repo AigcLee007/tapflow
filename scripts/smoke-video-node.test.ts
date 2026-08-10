@@ -95,6 +95,8 @@ describe("video node browser smoke contract", () => {
     expect(code).toContain('data-testid="video-composer-actions"');
     expect(code).toContain('data-testid="video-composer-settings-group"');
     expect(code).toContain('data-testid="video-composer-submit-group"');
+    expect(code).toContain("const controlGroups = buttons.map");
+    expect(code).toContain("const promptLocked = Boolean(prompt)");
     expect(code).toContain("video-capsule-model");
     expect(code).toContain("video-capsule-parameters");
     expect(code).toContain("scrollWidth");

@@ -528,13 +528,18 @@ const generationControlsLocked = await mobilePage.evaluate(() => {
     '[data-testid="video-composer-settings-group"] button',
     '[data-testid="video-composer-submit-group"] button',
   ];
-  const controls = buttons.flatMap((selector) => [...document.querySelectorAll(selector)]);
+  const controlGroups = buttons.map((selector) => [...document.querySelectorAll(selector)]);
+  const controls = controlGroups.flat();
   const prompt = document.querySelector('[aria-label="视频提示词"]');
-  const promptLocked = !prompt
-    || prompt.getAttribute('aria-disabled') === 'true'
+  const promptLocked = Boolean(prompt)
+    && (prompt.getAttribute('aria-disabled') === 'true'
     || prompt.getAttribute('contenteditable') === 'false'
-    || ('disabled' in prompt && Boolean(prompt.disabled));
-  return controls.length >= 6 && controls.every((control) => control.disabled) && promptLocked;
+    || ('disabled' in prompt && Boolean(prompt.disabled)));
+  return controlGroups[0].length >= 3
+    && controlGroups[1].length >= 2
+    && controlGroups[2].length >= 1
+    && controls.every((control) => control.disabled)
+    && promptLocked;
 });
 await mobilePage.evaluate(() => window.setVideoSmokeSelected?.(false));
 const generationFeedbackVisibleUnselected = await mobilePage.getByRole('status').filter({ hasText: '正在提交任务' }).isVisible();
