@@ -18,6 +18,7 @@ import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { FLOW_NODE_DEFAULT_SIZES, fitMediaNodeToShortSide, getMediaNodeSizeFromRatioString, parseAspectRatio } from '../utils/nodeSizing';
 import { buildImageGenerationModeParamPatch } from '../utils/imageGenerationModes';
 import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
+import { normalizeReferenceRolesForMode } from '../video/videoReferenceRules';
 import type { VideoReferenceInputV2 } from '../video/videoTypes';
 import { PANORAMA_GENERATION_MODE, type PanoramaGenerateSettings } from '../panorama/panoramaTypes';
 import { buildPanoramaGenerationPrompt } from '../panorama/panoramaUtils';
@@ -456,6 +457,28 @@ const appendInputOrderKey = (inputOrder: unknown, key: string) => {
 };
 
 const toAssetInputKey = (assetId: string) => `asset:${assetId}`;
+
+const normalizeVideoReferenceInputOrder = (data: FlowNodeData, inputOrder: string[]): FlowNodeData => {
+  const params = normalizeVideoGenerationParams(data).params;
+  if (params.mode !== 'first_last_frame') return data;
+  const inputOrderByKey = new Map(inputOrder.map((key, index) => [key, index]));
+  const referenceInputs = normalizeReferenceRolesForMode(
+    [...params.referenceInputs]
+      .sort((left, right) => {
+        const leftKey = left.source.kind === 'upstream' ? toUpstreamInputKey(left.source.id) : toAssetInputKey(left.source.id);
+        const rightKey = right.source.kind === 'upstream' ? toUpstreamInputKey(right.source.id) : toAssetInputKey(right.source.id);
+        return (inputOrderByKey.get(leftKey) ?? Number.MAX_SAFE_INTEGER) - (inputOrderByKey.get(rightKey) ?? Number.MAX_SAFE_INTEGER);
+      })
+      .map((reference, order) => ({ ...reference, order })),
+    params.mode,
+    'ordered_first_last_frames',
+  );
+  if (JSON.stringify(referenceInputs) === JSON.stringify(params.referenceInputs)) return data;
+  return {
+    ...data,
+    params: { ...(data.params ?? {}), videoGeneration: { ...params, referenceInputs } },
+  };
+};
 
 const hasSameItems = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((item, index) => item === right[index]);
@@ -1983,7 +2006,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       mediaKeys,
     );
     const projectedNodes = get().nodes.map((node) => (
-      node.id === targetNodeId ? { ...node, data: { ...node.data, inputOrder } } : node
+      node.id === targetNodeId ? { ...node, data: normalizeVideoReferenceInputOrder({ ...node.data, inputOrder }, inputOrder) } : node
     ));
     const projectedTarget = reconcileNodeInputs(projectedNodes, get().edges, get().nodeOutputByNodeId)
       .find((node) => node.id === targetNodeId);
@@ -1992,7 +2015,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     set((state) => {
       const nodes = state.nodes.map((node) => (
         node.id === targetNodeId
-          ? { ...node, data: { ...node.data, inputOrder, updatedAt: Date.now() } }
+          ? { ...node, data: { ...normalizeVideoReferenceInputOrder({ ...node.data, inputOrder }, inputOrder), updatedAt: Date.now() } }
           : node
       ));
       const reconciledNodes = reconcileNodeInputs(nodes, state.edges, state.nodeOutputByNodeId);

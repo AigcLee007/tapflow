@@ -8151,10 +8151,7 @@ export const VideoNodeComponent = memo(function VideoNode({
                 normalizeVideoReferenceRoles();
               }}
               onRemoveAllText={() => removeTextNodeInputs(id)}
-              onReorderInputs={(inputKeys) => {
-                reorderNodeInputs(id, inputKeys);
-                normalizeVideoReferenceRoles();
-              }}
+              onReorderInputs={(inputKeys) => reorderNodeInputs(id, inputKeys)}
               onRetryInputPreview={handleRetryVideoInputPreview}
               onUpdate={(patch) => updateNodeData(id, patch)}
               onUploadReference={async (file, mediaKind) => {

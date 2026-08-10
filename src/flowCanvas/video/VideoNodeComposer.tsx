@@ -223,7 +223,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     </div>
 
     {modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{modeNotice}</div> : null}
-    {!selectedModeEnabled && !modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">当前模型不支持此生成模式</div> : null}
+    {!selectedModeEnabled && !modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{VIDEO_UI_COPY.unsupportedByCurrentModel}</div> : null}
     {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}
 
     <div className="mt-2">
