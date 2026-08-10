@@ -60,10 +60,14 @@ describe("VideoModeMenu", () => {
     expect(screen.getByRole("tooltip").textContent).toContain("图生视频需要恰好 1 张图片（当前 2 张）");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "生成模式" }));
-    fireEvent.focus(imageToVideo);
+    const reopenedImageToVideo = screen.getByRole("menuitemradio", { name: /图生视频/ });
+    fireEvent.focus(reopenedImageToVideo);
+    expect(screen.getByRole("tooltip")).toBeTruthy();
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   test("closes an open menu and blocks changes when disabled", () => {
