@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   builtinAiPluginRegistry,
   validateVideoGenerationRequest,
@@ -243,6 +243,90 @@ describe("workflow pricing resolver", () => {
         routeKey: `video.pixelhub.${model}`,
       },
     })).toThrowError(expect.objectContaining({ statusCode: 422 }));
+  });
+
+  it.each([
+    ["text_to_video with a malformed image reference", "gemini-omni-flash", "text_to_video", [{
+      referenceKey: "malformed-image",
+      source: { kind: "asset" },
+      mediaKind: "image",
+      role: "reference_image",
+      order: 0,
+    }]],
+    ["image_to_video with two images", "gemini-omni-flash", "image_to_video", [
+      { referenceKey: "main-0", source: { kind: "asset", id: "asset-0" }, mediaKind: "image", role: "main_image", order: 0 },
+      { referenceKey: "main-1", source: { kind: "asset", id: "asset-1" }, mediaKind: "image", role: "main_image", order: 1 },
+    ]],
+    ["first_last_frame with three images", "veo31-fast", "first_last_frame", [
+      { referenceKey: "first", source: { kind: "asset", id: "asset-first" }, mediaKind: "image", role: "first_frame", order: 0 },
+      { referenceKey: "last", source: { kind: "asset", id: "asset-last" }, mediaKind: "image", role: "last_frame", order: 1 },
+      { referenceKey: "extra", source: { kind: "asset", id: "asset-extra" }, mediaKind: "image", role: "last_frame", order: 2 },
+    ]],
+  ])("returns 422 before reserve or enqueue for %s", async (_label, model, mode, referenceInputs) => {
+    const reserveUsageWithClient = vi.fn();
+    const queueAdd = vi.fn();
+    const client = {
+      query: vi.fn(async (query: string) => {
+        if (query === "BEGIN" || query === "COMMIT" || query === "ROLLBACK" || query.startsWith("SELECT set_config")) {
+          return { rows: [] };
+        }
+        throw new Error("structured video validation must run before database writes");
+      }),
+      release: vi.fn(),
+    };
+    const service = new WorkflowRunsService({
+      nodeExecuteQueue: { add: queueAdd },
+      personalWalletService: { reserveUsageWithClient } as never,
+      pool: { connect: vi.fn(async () => client) } as never,
+    });
+    const node = {
+      config: {
+        generationPrompt: "animate the subject",
+        params: {
+          videoGeneration: {
+            schemaVersion: 2,
+            mode,
+            aspectRatio: "16:9",
+            resolution: model === "veo31-fast" ? "1080P" : "720P",
+            durationSeconds: 4,
+            generateAudio: true,
+            count: 1,
+            referenceInputs,
+          },
+        },
+        routeKey: `video.pixelhub.${model}`,
+      },
+      id: "invalid-video",
+      type: "video.generate",
+    };
+    const internals = service as unknown as {
+      getCurrentFlowRuntimeOrCreateSnapshot: () => Promise<unknown>;
+      loadActivePricing: () => Promise<unknown[]>;
+      loadRouteRuntimeContexts: () => Promise<Map<string, unknown>>;
+    };
+    internals.getCurrentFlowRuntimeOrCreateSnapshot = async () => ({
+      compiled_graph_json: { entryNodeIds: [node.id], nodes: [node] },
+      current_version_id: "version-1",
+      flow_id: "flow-1",
+    });
+    internals.loadActivePricing = async () => [];
+    internals.loadRouteRuntimeContexts = async () => new Map([[
+      `video.pixelhub.${model}`,
+      {
+        capabilities: pixelHubCapabilitiesFor(model),
+        modelKey: model,
+        providerKey: "pixelhub",
+        routeKey: `video.pixelhub.${model}`,
+      },
+    ]]);
+
+    await expect(service.createWorkflowRun(
+      { tenantId: "tenant-1", userId: "user-1" },
+      "flow-1",
+      {},
+    )).rejects.toMatchObject({ statusCode: 422 });
+    expect(reserveUsageWithClient).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
   });
 
   it("preserves video_generation when loading a structured video route context", async () => {

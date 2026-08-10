@@ -511,8 +511,14 @@ function readStructuredVideoGenerationRequest(
   const videoGeneration = isRecord(params.videoGeneration) ? params.videoGeneration : null;
   if (!videoGeneration || videoGeneration.schemaVersion !== 2) return null;
   const references = Array.isArray(videoGeneration.referenceInputs) ? videoGeneration.referenceInputs : [];
-  const inputAssets: AssetReferenceInput[] = references.flatMap((reference) => {
-    if (!isRecord(reference) || !isRecord(reference.source)) return [];
+  const inputAssets: AssetReferenceInput[] = references.map((reference, index) => {
+    if (!isRecord(reference) || !isRecord(reference.source)) {
+      throw new WorkflowRunsApiError(
+        422,
+        "REFERENCE_ASSET_NOT_FOUND",
+        `REFERENCE_ASSET_NOT_FOUND: Structured video reference ${index} is invalid.`,
+      );
+    }
     const sourceKind = reference.source.kind;
     const sourceId = readTrimmedString(reference.source.id);
     const mediaKind = readTrimmedString(reference.mediaKind);
@@ -522,8 +528,14 @@ function readStructuredVideoGenerationRequest(
     if (
       !sourceId || !mediaKind || !referenceKey || !role || !Number.isInteger(order)
       || (sourceKind !== "asset" && sourceKind !== "upstream")
-    ) return [];
-    return [{
+    ) {
+      throw new WorkflowRunsApiError(
+        422,
+        "REFERENCE_ASSET_NOT_FOUND",
+        `REFERENCE_ASSET_NOT_FOUND: Structured video reference ${index} is invalid.`,
+      );
+    }
+    return {
       assetId: sourceId,
       kind: mediaKind,
       metadata: {
@@ -537,7 +549,7 @@ function readStructuredVideoGenerationRequest(
         },
       },
       mimeType: null,
-    }];
+    };
   });
   return {
     inputAssets,
