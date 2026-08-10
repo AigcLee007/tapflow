@@ -136,6 +136,10 @@ describe("video generation contract", () => {
         params: { ...request().params!, mode: "image_reference" },
       }),
       request({
+        inputAssets: [asset("image", "reference_image")],
+        params: { ...request().params!, mode: "all_reference" },
+      }),
+      request({
         inputAssets: [asset("image", "reference_image"), asset("video", "source_video", 1)],
         params: { ...request().params!, mode: "all_reference" },
       }),

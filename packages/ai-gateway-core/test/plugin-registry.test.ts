@@ -58,7 +58,7 @@ describe("AI plugin registry", () => {
         audioControlMode: "always_on_implicit",
         confirmedByRoute: true,
         modeConstraints: {
-          all_reference: { maxAudios: 0, maxImages: 5, maxTotal: 6, maxVideos: 1, minVideos: 1 },
+          all_reference: { maxAudios: 0, maxImages: 5, maxTotal: 6, maxVideos: 1 },
           image_reference: { maxAudios: 0, maxImages: 5, maxTotal: 5, maxVideos: 0, minImages: 2 },
           image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 },
           text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 },

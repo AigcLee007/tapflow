@@ -360,13 +360,14 @@ export function validateVideoGenerationRequest(
   if (params.mode === "all_reference" && capabilities.referenceSemantics === "style_images_and_source_video") {
     const sourceVideos = references.filter((reference) => reference.mediaKind === "video" && reference.role === "source_video");
     if (
-      sourceVideos.length !== 1 ||
+      sourceVideos.length > 1 ||
+      (sourceVideos.length === 0 && counts.image === 0) ||
       references.some((reference) =>
         (reference.mediaKind === "video" && reference.role !== "source_video") ||
         (reference.mediaKind === "image" && reference.role !== "reference_image"),
       )
     ) {
-      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "All-reference requires reference images and exactly one source video."));
+      issues.push(issue("VIDEO_MODE_INPUT_REQUIRED", "inputAssets", "All-reference requires reference images or one source video."));
     }
   }
   if (params.mode === "first_last_frame" && capabilities.referenceSemantics === "ordered_first_last_frames") {

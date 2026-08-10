@@ -74,7 +74,7 @@ export const VIDEO_UI_REFERENCE_ROLE_COPY = {
 
 export const VIDEO_UI_MODE_COPY = {
   text_to_video: { label: "文生视频", description: "根据文字描述生成视频" },
-  all_reference: { label: "全参考生视频", description: "综合所有参考素材生成视频" },
+  all_reference: { label: "全能参考视频", description: "综合所有参考素材生成视频" },
   image_to_video: { label: "图生视频", description: "使用单张图片作为画面起点" },
   first_last_frame: { label: "首尾帧生视频", description: "根据首帧和尾帧生成视频" },
   image_reference: { label: "图像参考生视频", description: "使用多张图片控制内容与风格" },
@@ -109,11 +109,11 @@ export function getVideoModeUnavailableReason(
     case "INPUT_REQUIRES_IMAGE":
       return "\u56fe\u50cf\u53c2\u8003\u751f\u89c6\u9891\u9700\u8981\u81f3\u5c11 1 \u5f20\u56fe\u7247";
     case "INPUT_REQUIRES_MEDIA":
-      return "\u5168\u53c2\u8003\u751f\u89c6\u9891\u9700\u8981\u81f3\u5c11 1 \u4e2a\u5a92\u4f53\u7d20\u6750";
+      return "\u5168\u80fd\u53c2\u8003\u89c6\u9891\u9700\u8981\u81f3\u5c11 1 \u4e2a\u5a92\u4f53\u7d20\u6750";
     case "INPUT_REQUIRES_ONE_OR_TWO_IMAGES":
       return `\u9996\u5c3e\u5e27\u751f\u89c6\u9891\u9700\u8981 1-2 \u5f20\u56fe\u7247\uff08\u5f53\u524d ${counts.image} \u5f20\uff09`;
     case "INPUT_VIDEO_OR_AUDIO_REQUIRES_ALL_REFERENCE":
-      return "\u89c6\u9891\u6216\u97f3\u9891\u7d20\u6750\u4ec5\u652f\u6301\u5168\u53c2\u8003\u751f\u89c6\u9891";
+      return "\u89c6\u9891\u6216\u97f3\u9891\u7d20\u6750\u4ec5\u652f\u6301\u5168\u80fd\u53c2\u8003\u89c6\u9891";
     case "MODEL_CONSTRAINT_UNMET":
       return "\u5f53\u524d\u6a21\u578b\u7684\u8f93\u5165\u9650\u5236\u4e0d\u6ee1\u8db3";
     case "MODEL_UNSUPPORTED":

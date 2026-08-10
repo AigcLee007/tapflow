@@ -43,7 +43,7 @@ Use a disposable project and tenant-owned assets. Confirm reserve, settle/refund
 
 | Product model | Supported smoke inputs |
 | --- | --- |
-| Gemini Omni Flash | text; one image; 2-5 image references; one source video with optional reference images |
+| Gemini Omni Flash | text; 1-5 reference images; optional one source video with reference images |
 | Sora V3 Pro | text; one image; 2-9 image references; mixed references with visual input when audio is present |
 | Veo 3.1 Fast | text; one first frame; ordered first and last frame |
 

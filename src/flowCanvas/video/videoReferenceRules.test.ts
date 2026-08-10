@@ -16,7 +16,7 @@ const geminiCapabilities = mergeVideoCapabilities({
     text_to_video: { maxTotal: 0 },
     image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 },
     image_reference: { maxImages: 5, maxTotal: 5, minImages: 2 },
-    all_reference: { maxImages: 5, maxVideos: 1, maxTotal: 6, minVideos: 1 },
+    all_reference: { maxImages: 5, maxVideos: 1, maxTotal: 6, minImages: 1 },
   },
 });
 const veoCapabilities = mergeVideoCapabilities({
@@ -131,8 +131,8 @@ describe("video reference rules", () => {
     });
     expect(resolveAutomaticVideoMode(geminiCapabilities, mixed.slice(0, 1), "all_reference")).toMatchObject({
       incompatible: false,
-      mode: "image_to_video",
-      references: [expect.objectContaining({ role: "main_image" })],
+      mode: "all_reference",
+      references: [expect.objectContaining({ role: "reference_image" })],
     });
     expect(resolveAutomaticVideoMode(geminiCapabilities, [], "image_to_video")).toMatchObject({
       incompatible: false,
@@ -194,11 +194,11 @@ describe("video reference rules", () => {
   });
 
   test("requires the model-specific media counts and reference roles before generation", () => {
-    const geminiAllReferenceWithoutVideo = validateVideoReferenceInputs(
+    const geminiAllReferenceWithImagesOnly = validateVideoReferenceInputs(
       params({ mode: "all_reference", referenceInputs: [reference("image", 0, "reference_image")] }),
       geminiCapabilities,
     );
-    expect(geminiAllReferenceWithoutVideo.map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
+    expect(geminiAllReferenceWithImagesOnly).toEqual([]);
 
     const geminiAllReferenceWithMainImage = validateVideoReferenceInputs(
       params({

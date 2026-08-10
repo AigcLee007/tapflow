@@ -158,7 +158,7 @@ function validateReferenceRoles(
   if (mode === "all_reference" && semantics === "style_images_and_source_video") {
     const sourceVideos = videos.filter((reference) => reference.role === "source_video");
     if (
-      sourceVideos.length !== 1
+      (sourceVideos.length > 1 || (sourceVideos.length === 0 && images.length === 0))
       || videos.some((reference) => reference.role !== "source_video")
       || images.some((reference) => reference.role !== "reference_image")
     ) addMissingInputIssue(issues);
