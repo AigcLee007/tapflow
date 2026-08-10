@@ -22,7 +22,8 @@ describe("video node browser smoke contract", () => {
     expect(html).toContain("useFlowCanvasStore");
     expect(html).toContain("video-smoke-node");
     expect(html).toContain("creatorLabel: 'Gemini Omni Flash'");
-    expect(html.match(/uiSchema:/g)).toHaveLength(1);
+    expect(html.match(/uiSchema:/g)).toHaveLength(2);
+    expect(html).toContain("modelKey: 'limited-smoke'");
   });
 
   test("checks the LibTV composer and the blocked-run boundary at all target viewports", () => {
@@ -63,6 +64,16 @@ describe("video node browser smoke contract", () => {
       "generationFeedbackVisibleUnselected",
       "generationControlsLocked",
       "reducedMotionFeedbackSafe",
+      "modeAvailabilityNoMedia",
+      "modeAvailabilityOneImage",
+      "modeAvailabilityTwoImages",
+      "modeAvailabilityThreeImages",
+      "modeAvailabilityVideoOrAudio",
+      "disabledModeTooltipVisible",
+      "twoImagesDefaultToImageReference",
+      "singleFrameRoleVisible",
+      "orderedFrameRolesVisible",
+      "modelUnsupportedAllReference",
     ]) {
       expect(code).toContain(field);
     }

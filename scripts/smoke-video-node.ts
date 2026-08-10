@@ -33,6 +33,16 @@ export type VideoNodeSmokeResult = {
   tabletActionsSingleRow: boolean;
   topUploadButtonOpensUpload: boolean;
   videoNodeHasNoResizeControls: boolean;
+  modeAvailabilityNoMedia: boolean;
+  modeAvailabilityOneImage: boolean;
+  modeAvailabilityTwoImages: boolean;
+  modeAvailabilityThreeImages: boolean;
+  modeAvailabilityVideoOrAudio: boolean;
+  disabledModeTooltipVisible: boolean;
+  twoImagesDefaultToImageReference: boolean;
+  singleFrameRoleVisible: boolean;
+  orderedFrameRolesVisible: boolean;
+  modelUnsupportedAllReference: boolean;
 };
 
 export type VideoNodeSmokeCheckOptions = {
@@ -81,18 +91,34 @@ export function buildVideoNodeSmokeHtml(): string {
             capabilities: {}, defaultRouteKey: 'video.smoke', displayName: 'Gemini Omni Flash', id: 'video-smoke-model',
             modality: 'video', modelFamily: 'smoke', modelId: 'gemini-omni-flash', modelKey: 'gemini-omni-flash', sortOrder: 1,
             status: 'active', uiSchema: { creatorLabel: 'Gemini Omni Flash', description: '电影感运动与光线模型' },
+          }, {
+            capabilities: {}, defaultRouteKey: 'video.smoke-limited', displayName: 'Limited Smoke', id: 'video-smoke-limited-model',
+            modality: 'video', modelFamily: 'smoke', modelId: 'limited-smoke', modelKey: 'limited-smoke', sortOrder: 2,
+            status: 'active', uiSchema: { creatorLabel: 'Limited Smoke', description: '受限测试模型' },
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (requestUrl.includes('/api/v2/ai/model-catalog/gemini-omni-flash/routes')) {
           return new Response(JSON.stringify([{
             capabilities: { aspectRatios: ['16:9', '9:16'], audioControlMode: 'always_on_implicit', confirmedByRoute: true,
               durationStepSeconds: 2, maxAudios: 0, maxCount: 1, maxDurationSeconds: 10, maxImages: 5, maxTotal: 6, maxVideos: 1, minDurationSeconds: 4,
-              modeConstraints: { all_reference: { maxAudios: 0, maxImages: 5, maxTotal: 6, maxVideos: 1, minVideos: 1 }, image_reference: { maxAudios: 0, maxImages: 5, maxTotal: 5, maxVideos: 0, minImages: 2 }, image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 }, text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 } },
+              modeConstraints: { all_reference: { maxAudios: 1, maxImages: 5, maxTotal: 6, maxVideos: 1 }, first_last_frame: { maxAudios: 0, maxImages: 2, maxTotal: 2, maxVideos: 0, minImages: 1 }, image_reference: { maxAudios: 0, maxImages: 5, maxTotal: 5, maxVideos: 0, minImages: 1 }, image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 }, text_to_video: { maxAudios: 0, maxImages: 0, maxTotal: 0, maxVideos: 0 } },
               referenceSemantics: 'style_images_and_source_video', resolutions: ['720P', '1080P'], supportedDurations: [4, 6, 8, 10],
-              supportedModes: ['text_to_video', 'image_to_video', 'image_reference', 'all_reference'], supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
+              supportedModes: ['text_to_video', 'image_to_video', 'first_last_frame', 'image_reference', 'all_reference'], supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
             estimatedCredits: 12, minChargeCredits: 1, modality: 'video', modelFamily: 'smoke', modelKey: 'gemini-omni-flash',
             pricing: { billingBasis: 'duration_second', exact: true, minChargeCredits: 1, unit: 'video_generation', unitCredits: 1 }, pricingUnit: 'video_generation', providerKey: 'smoke', providerName: 'Smoke provider', routeId: 'route-smoke',
             routeKey: 'video.smoke', routeLabel: 'Line one',
+          }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (requestUrl.includes('/api/v2/ai/model-catalog/limited-smoke/routes')) {
+          return new Response(JSON.stringify([{
+            capabilities: { aspectRatios: ['16:9'], audioControlMode: 'always_on_implicit', confirmedByRoute: true,
+              durationStepSeconds: 2, maxAudios: 0, maxCount: 1, maxDurationSeconds: 10, maxImages: 1, maxTotal: 1, maxVideos: 0, minDurationSeconds: 4,
+              modeConstraints: { image_to_video: { maxAudios: 0, maxImages: 1, maxTotal: 1, maxVideos: 0, minImages: 1 } },
+              referenceSemantics: 'main_image', resolutions: ['720P'], supportedDurations: [4, 6, 8, 10],
+              supportedModes: ['image_to_video'], supportedVideoWorkflows: ['video_generation'], supportsAudio: true, supportsHumanReview: false },
+            estimatedCredits: 12, minChargeCredits: 1, modality: 'video', modelFamily: 'smoke', modelKey: 'limited-smoke',
+            pricing: { billingBasis: 'duration_second', exact: true, minChargeCredits: 1, unit: 'video_generation', unitCredits: 1 }, pricingUnit: 'video_generation', providerKey: 'smoke', providerName: 'Smoke provider', routeId: 'route-smoke-limited',
+            routeKey: 'video.smoke-limited', routeLabel: 'Limited line',
           }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (requestUrl.includes('/assets/asset-ready-smoke/download-url')) {
@@ -116,6 +142,9 @@ export function buildVideoNodeSmokeHtml(): string {
       window.getVideoSmokeNode = () => useFlowCanvasStore.getState().nodes.find((node) => node.id === 'video-smoke-node');
       window.setVideoSmokeNodeData = (patch) => useFlowCanvasStore.setState((state) => ({ nodes: state.nodes.map((node) => node.id === 'video-smoke-node' ? {
         ...node, data: { ...node.data, ...patch }, selected: true,
+      } : node), selectedNodeCount: 1 }));
+      window.setVideoSmokeReferences = (referenceInputs, mode) => useFlowCanvasStore.setState((state) => ({ nodes: state.nodes.map((node) => node.id === 'video-smoke-node' ? {
+        ...node, data: { ...node.data, params: { ...(node.data.params || {}), videoGeneration: { ...(node.data.params?.videoGeneration || {}), referenceInputs, ...(mode ? { mode } : {}) } } }, selected: true,
       } : node), selectedNodeCount: 1 }));
       window.setVideoSmokeRunStatus = (status) => useFlowCanvasStore.setState((state) => ({
         nodeRunStatusByNodeId: { ...state.nodeRunStatusByNodeId, 'video-smoke-node': status },
@@ -261,6 +290,22 @@ async function actionLayout(viewportPage) {
     };
   });
 }
+async function setVideoReferences(viewportPage, references, mode) {
+  await viewportPage.evaluate(({ references: nextReferences, mode: nextMode }) => window.setVideoSmokeReferences?.(nextReferences, nextMode), { references, mode });
+  await viewportPage.waitForTimeout(250);
+}
+async function readVideoModeStates(viewportPage) {
+  await viewportPage.locator('button[aria-label="生成模式"]').click();
+  const menu = viewportPage.locator('[role="menu"][aria-label="生成模式选项"]');
+  await menu.waitFor({ state: 'visible' });
+  const states = await menu.locator('[role="menuitemradio"]').evaluateAll((items) => items.map((item) => item.getAttribute('aria-disabled') !== 'true'));
+  const tooltipVisible = await menu.locator('[role="tooltip"]').count() > 0;
+  await viewportPage.keyboard.press('Escape');
+  await menu.waitFor({ state: 'hidden' });
+  return { states, tooltipVisible };
+}
+const imageReference = (id, order, role = 'reference') => ({ referenceKey: 'asset:' + id, source: { kind: 'asset', id }, mediaKind: 'image', role, order });
+const videoReference = (id) => ({ referenceKey: 'asset:' + id, source: { kind: 'asset', id }, mediaKind: 'video', role: 'source_video', order: 0 });
 async function readCapsuleGeometry(viewportPage) {
   return await viewportPage.locator('[aria-label="视频创作面板"]').evaluate((composer, limits) => {
     const readCapsule = (testId) => {
@@ -308,21 +353,56 @@ let mobileHarness;
 try {
 await assertComposerVisible(desktopPage, 'desktop');
 const composerVisible = await desktopPage.locator('[aria-label="视频创作面板"]').isVisible();
-await desktopPage.waitForFunction(() => {
-  const node = window.getVideoSmokeNode?.();
-  return node?.data?.modelId === 'video-smoke-model' && node?.data?.routeKey === 'video.smoke';
-});
+await desktopPage.waitForTimeout(750);
 const defaultGeminiSelected = await desktopPage.evaluate(() => {
   const node = window.getVideoSmokeNode?.();
   return node?.data?.modelId === 'video-smoke-model' && node?.data?.routeKey === 'video.smoke';
 });
+const noMediaStates = await readVideoModeStates(desktopPage);
+const modeAvailabilityNoMedia = noMediaStates.states.join('|') === 'true|false|false|false|false';
+await setVideoReferences(desktopPage, [imageReference('smoke-image-1', 0)], 'text_to_video');
+const oneImageStates = await readVideoModeStates(desktopPage);
+const oneImageMode = await desktopPage.evaluate(() => window.getVideoSmokeNode?.()?.data?.params?.videoGeneration?.mode);
+const modeAvailabilityOneImage = oneImageStates.states.join('|') === 'false|true|true|true|true' && oneImageMode === 'image_to_video';
+await setVideoReferences(desktopPage, [imageReference('smoke-image-1', 0), imageReference('smoke-image-2', 1)], 'image_to_video');
+const twoImageStates = await readVideoModeStates(desktopPage);
+const twoImageMode = await desktopPage.evaluate(() => window.getVideoSmokeNode?.()?.data?.params?.videoGeneration?.mode);
+const twoImagesDefaultToImageReference = twoImageMode === 'image_reference';
+const modeAvailabilityTwoImages = twoImageStates.states.join('|') === 'false|true|false|true|true';
+await setVideoReferences(desktopPage, [imageReference('smoke-image-1', 0, 'first_frame'), imageReference('smoke-image-2', 1, 'last_frame')], 'first_last_frame');
+const orderedFrameRolesVisible = await desktopPage.getByText('首帧', { exact: true }).count() > 0 && await desktopPage.getByText('尾帧', { exact: true }).count() > 0;
+await setVideoReferences(desktopPage, [imageReference('smoke-image-1', 0, 'first_frame')], 'first_last_frame');
+const singleFrameRoleVisible = await desktopPage.getByText('首帧', { exact: true }).count() > 0;
+const singleFrameStates = await readVideoModeStates(desktopPage);
+const removedTailFrameKeepsFirstLastAvailable = singleFrameStates.states[3] === true;
+await setVideoReferences(desktopPage, [imageReference('smoke-image-1', 0), imageReference('smoke-image-2', 1), imageReference('smoke-image-3', 2)], 'image_reference');
+const threeImageStates = await readVideoModeStates(desktopPage);
+const modeAvailabilityThreeImages = threeImageStates.states.join('|') === 'false|true|false|false|true';
+await setVideoReferences(desktopPage, [videoReference('smoke-video-1')], 'text_to_video');
+const videoStates = await readVideoModeStates(desktopPage);
+const modeAvailabilityVideoOrAudio = videoStates.states.join('|') === 'false|true|false|false|false';
+await setVideoReferences(desktopPage, [imageReference('smoke-image-1', 0), imageReference('smoke-image-2', 1), imageReference('smoke-image-3', 2)], 'image_to_video');
+await desktopPage.locator('button[aria-label="生成模式"]').click();
+const disabledImageToVideo = desktopPage.locator('[role="menuitemradio"]').nth(2);
+await disabledImageToVideo.hover();
+const disabledModeTooltipVisible = await desktopPage.locator('[role="tooltip"]').isVisible();
+await desktopPage.keyboard.press('Escape');
+await setVideoReferences(desktopPage, [videoReference('smoke-video-1')], 'all_reference');
+await desktopPage.evaluate(() => window.setVideoSmokeNodeData?.({ modelId: 'video-smoke-limited-model', routeKey: 'video.smoke-limited' }));
+await desktopPage.waitForTimeout(500);
+const modelUnsupportedAllReference = await desktopPage.evaluate(() => {
+  const node = window.getVideoSmokeNode?.();
+  const generate = document.querySelector('button[aria-label="生成视频"]');
+  return node?.data?.modelId === 'video-smoke-limited-model'
+    && node?.data?.params?.videoGeneration?.mode === 'all_reference'
+    && Boolean(generate?.disabled);
+});
+await desktopPage.evaluate(() => window.setVideoSmokeNodeData?.({ modelId: 'video-smoke-model', routeKey: 'video.smoke', params: { videoGeneration: { ...window.getVideoSmokeNode?.()?.data?.params?.videoGeneration, mode: 'text_to_video', referenceInputs: [] } } }));
+await desktopPage.waitForTimeout(350);
 const desktopActionLayout = await actionLayout(desktopPage);
 const desktopActionsSingleRow = desktopActionLayout.groupCount === 2 && desktopActionLayout.sameRow;
 const desktopCapsuleGeometry = await readCapsuleGeometry(desktopPage);
-await desktopPage.waitForFunction(() => {
-  const node = window.getVideoSmokeNode?.();
-  return node?.data?.width === 170 && node?.data?.height === 302 && node?.data?.aspectRatio === 9 / 16;
-});
+await desktopPage.waitForTimeout(250);
 const portraitEmptyNodeIsSized = await desktopPage.evaluate(() => {
   const node = window.getVideoSmokeNode?.();
   const card = [...document.querySelectorAll('[data-id="video-smoke-node"] div')].find((element) => {
@@ -436,7 +516,10 @@ await mobilePage.evaluate(() => document.querySelector('button[aria-label="运�
 await mobilePage.waitForSelector('section[role="dialog"][aria-label="运镜库"] video', { timeout: 15000 });
 const reducedMotionVideoIsPaused = await mobilePage.locator('section[role="dialog"][aria-label="运镜库"] video').evaluateAll((videos) => videos.length === 23 && videos.every((video) => video.paused));
 await mobilePage.locator('button[aria-label="关闭运镜库"]').click();
-await mobilePage.evaluate(() => window.setVideoSmokeRunStatus?.('pending'));
+await mobilePage.evaluate(() => {
+  window.setVideoSmokeNodeData?.({ generationStatus: 'generating' });
+  window.setVideoSmokeRunStatus?.('pending');
+});
 await mobilePage.getByRole('status').filter({ hasText: '正在提交任务' }).waitFor({ state: 'visible' });
 const generationControlsLocked = await mobilePage.evaluate(() => {
   const selectors = [
@@ -456,6 +539,7 @@ const reducedMotionFeedbackSafe = await mobilePage.getByTestId('video-generation
 const generationFeedbackHasNoPercent = await mobilePage.getByRole('status').evaluate((status) => !/\d+%/.test(status.textContent || ''));
 await mobilePage.evaluate(() => {
   window.setVideoSmokeRunStatus?.('idle');
+  window.setVideoSmokeNodeData?.({ generationStatus: 'idle' });
   window.setVideoSmokeSelected?.(true);
 });
 await mobilePage.evaluate(() => window.setVideoSmokeNodeData?.({
@@ -491,8 +575,8 @@ const noParameterFlexExpansion = capsuleGeometryByViewport.every(({ composerWidt
   && parameters.width < composerWidth * 0.75,
 );
 
-const result = { blockedGenerationDidNotCreateRun, capsuleWidthMatchesContent, cameraGridColumns, cameraPresetCount, composerVisible, defaultGeminiSelected, desktopActionsSingleRow, durationRangeIsDefault, editorGeometryByZoom, editorRemainsNodeAnchored, editorSizeStableAcrossZoom, emptyPreviewDoesNotOpenUpload, emptyUploadInputPresent, generationControlsLocked, generationFeedbackVisibleUnselected, mobileActionsTwoGroups, modelMenuNoSearch, noParameterFlexExpansion, parameterDialogIsTopLayer, placeholderDropDoesNotUpload, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, reducedMotionFeedbackSafe, resolutionOptions, tabletActionsSingleRow, topUploadButtonOpensUpload, videoNodeHasNoResizeControls };
-if (!composerVisible || !defaultGeminiSelected || !desktopActionsSingleRow || !narrowActionsSingleRow || !tabletActionsSingleRow || !mobileActionsTwoGroups || !generationFeedbackVisibleUnselected || !generationControlsLocked || !reducedMotionFeedbackSafe || !generationFeedbackHasNoPercent || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !capsuleWidthMatchesContent || !noParameterFlexExpansion || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !emptyPreviewDoesNotOpenUpload || !topUploadButtonOpensUpload || !placeholderDropDoesNotUpload || !videoNodeHasNoResizeControls || !editorSizeStableAcrossZoom || !editorRemainsNodeAnchored || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain) {
+const result = { blockedGenerationDidNotCreateRun, capsuleWidthMatchesContent, cameraGridColumns, cameraPresetCount, composerVisible, defaultGeminiSelected, desktopActionsSingleRow, durationRangeIsDefault, editorGeometryByZoom, editorRemainsNodeAnchored, editorSizeStableAcrossZoom, emptyPreviewDoesNotOpenUpload, emptyUploadInputPresent, generationControlsLocked, generationFeedbackVisibleUnselected, mobileActionsTwoGroups, modelMenuNoSearch, noParameterFlexExpansion, parameterDialogIsTopLayer, placeholderDropDoesNotUpload, portraitEmptyNodeIsSized, readyControls, readyPreviewUsesContain, reducedMotionFeedbackSafe, resolutionOptions, tabletActionsSingleRow, topUploadButtonOpensUpload, videoNodeHasNoResizeControls, modeAvailabilityNoMedia, modeAvailabilityOneImage, modeAvailabilityTwoImages, modeAvailabilityThreeImages, modeAvailabilityVideoOrAudio, disabledModeTooltipVisible, twoImagesDefaultToImageReference, singleFrameRoleVisible, orderedFrameRolesVisible, modelUnsupportedAllReference };
+if (!composerVisible || !defaultGeminiSelected || !desktopActionsSingleRow || !narrowActionsSingleRow || !tabletActionsSingleRow || !mobileActionsTwoGroups || !generationFeedbackVisibleUnselected || !generationControlsLocked || !reducedMotionFeedbackSafe || !generationFeedbackHasNoPercent || !modelMenuNoSearch || !hoverDescriptionVisible || !hasDurationAudioAndCounts || !durationRangeIsDefault || !parameterDialogIsTopLayer || !resolutionOptions.includes('1080P') || cameraGridColumns !== 4 || cameraPresetCount !== 23 || !reducedMotionVideoIsPaused || !blockedGenerationDidNotCreateRun || !capsuleWidthMatchesContent || !noParameterFlexExpansion || !portraitEmptyNodeIsSized || !emptyUploadInputPresent || !emptyPreviewDoesNotOpenUpload || !topUploadButtonOpensUpload || !placeholderDropDoesNotUpload || !videoNodeHasNoResizeControls || !editorSizeStableAcrossZoom || !editorRemainsNodeAnchored || !readyControls.download || !readyControls.fullscreen || !readyControls.upload || !readyPreviewUsesContain || !modeAvailabilityNoMedia || !modeAvailabilityOneImage || !modeAvailabilityTwoImages || !modeAvailabilityThreeImages || !modeAvailabilityVideoOrAudio || !disabledModeTooltipVisible || !twoImagesDefaultToImageReference || !singleFrameRoleVisible || !orderedFrameRolesVisible || !modelUnsupportedAllReference) {
   throw new Error(JSON.stringify({ ...result, capsuleGeometryByViewport, generationFeedbackHasNoPercent, hasDurationAudioAndCounts, durationControlCount, durationOptions, audioGroupCount, countDisabledStates, countOptions, hoverDescriptionVisible, narrowActionsSingleRow, reducedMotionVideoIsPaused }));
 }
 return JSON.stringify({ ...result, status: 'ok' });

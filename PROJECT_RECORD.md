@@ -3,6 +3,14 @@
 Last updated: 2026-08-10
 Maintainers: project team + Codex sessions
 
+## 2026-08-10 - Video Mode Input Availability Implementation
+
+- implemented the approved input-driven video-mode matrix across the Flow canvas: no media enables only text-to-video; one image enables image-to-video, first/last frame, image reference, and all reference; two images default to image reference; three or more images disable image-to-video and first/last frame; video or audio requires all reference. Text inputs do not affect the matrix.
+- video mode rows always remain visible. Unavailable rows provide keyboard and hover Tooltip explanations, automatic topology corrections persist only the selected semantic mode and reference roles, and transient switch notices remain React state rather than draft data.
+- first/last frame now accepts one first frame or an ordered first/last pair. Input reorder persists both order and frame roles. PixelHub Veo capability data and the platform route migration support an optional last frame without modifying tenant routes.
+- API structured video request validation now fails closed before billing reserve or queue enqueue for malformed reference arrays and invalid media/mode combinations. Worker tests preserve first-frame and ordered frame metadata.
+- validation to date: focused mode, Composer, input, API, worker, and smoke-contract suites passed. The real browser smoke confirmed all new availability, Tooltip, frame-role, and unsupported-model checks. Its legacy empty-node DOM-size and generation-control-lock assertions remain false in this local harness; the aggregate browser smoke is therefore not recorded as passing.
+
 ## 2026-08-10 - Video Mode Input Availability Implementation Plan
 
 - completed the implementation plan for the approved LibTV-style video generation mode availability behavior in `docs/superpowers/plans/2026-08-10-video-mode-input-availability.md`;
