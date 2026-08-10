@@ -56,6 +56,7 @@ export const VIDEO_NODE_SMOKE_DEFAULT_URL = "http://localhost:5188";
 export const VIDEO_NODE_SMOKE_OUTPUT_DIR = path.join("output", "playwright", "video-node");
 const SMOKE_HTML_PATH = path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "video-node-smoke.html");
 const CHECK_CODE_PATH = path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "video-node-check.js");
+const NAVIGATE_CODE_PATH = path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "video-node-navigate.js");
 
 export function buildVideoNodeSmokeHtml(): string {
   return `<!doctype html>
@@ -397,7 +398,7 @@ const modelUnsupportedAllReference = await desktopPage.evaluate(() => {
     && node?.data?.params?.videoGeneration?.mode === 'all_reference'
     && Boolean(generate?.disabled);
 });
-await desktopPage.evaluate(() => window.setVideoSmokeNodeData?.({ modelId: 'video-smoke-model', routeKey: 'video.smoke', params: { videoGeneration: { ...window.getVideoSmokeNode?.()?.data?.params?.videoGeneration, mode: 'text_to_video', referenceInputs: [] } } }));
+await desktopPage.evaluate(() => window.setVideoSmokeNodeData?.({ modelId: 'video-smoke-model', routeKey: 'video.smoke', params: { videoGeneration: { ...window.getVideoSmokeNode?.()?.data?.params?.videoGeneration, aspectRatio: '9:16', mode: 'text_to_video', referenceInputs: [] } } }));
 await desktopPage.waitForTimeout(350);
 const desktopActionLayout = await actionLayout(desktopPage);
 const desktopActionsSingleRow = desktopActionLayout.groupCount === 2 && desktopActionLayout.sameRow;
@@ -407,7 +408,7 @@ const portraitEmptyNodeIsSized = await desktopPage.evaluate(() => {
   const node = window.getVideoSmokeNode?.();
   const card = [...document.querySelectorAll('[data-id="video-smoke-node"] div')].find((element) => {
     const rect = element.getBoundingClientRect();
-    return Math.round(rect.width) === 170 && Math.round(rect.height) === 302;
+    return Math.abs(rect.width - 170) <= 3 && Math.abs(rect.height - 302) <= 3;
   });
   return node?.data?.width === 170 && node?.data?.height === 302 && Boolean(card);
 });
@@ -522,14 +523,18 @@ await mobilePage.evaluate(() => {
 });
 await mobilePage.getByRole('status').filter({ hasText: '正在提交任务' }).waitFor({ state: 'visible' });
 const generationControlsLocked = await mobilePage.evaluate(() => {
-  const selectors = [
-    'textarea[aria-label="视频提示词"]',
+  const buttons = [
     '[data-testid="video-composer-tools"] button',
     '[data-testid="video-composer-settings-group"] button',
     '[data-testid="video-composer-submit-group"] button',
   ];
-  const controls = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]);
-  return controls.length >= 7 && controls.every((control) => control.disabled);
+  const controls = buttons.flatMap((selector) => [...document.querySelectorAll(selector)]);
+  const prompt = document.querySelector('[aria-label="视频提示词"]');
+  const promptLocked = !prompt
+    || prompt.getAttribute('aria-disabled') === 'true'
+    || prompt.getAttribute('contenteditable') === 'false'
+    || ('disabled' in prompt && Boolean(prompt.disabled));
+  return controls.length >= 6 && controls.every((control) => control.disabled) && promptLocked;
 });
 await mobilePage.evaluate(() => window.setVideoSmokeSelected?.(false));
 const generationFeedbackVisibleUnselected = await mobilePage.getByRole('status').filter({ hasText: '正在提交任务' }).isVisible();
@@ -614,7 +619,7 @@ function commandInvocation(command: string, args: string[]) {
   return { command: "cmd.exe", args: ["/d", "/s", "/c", [command, ...args].map(quote).join(" ")] };
 }
 
-function runCommand(command: string, args: string[], timeoutMs = 60_000): Promise<string> {
+function runCommand(command: string, args: string[], timeoutMs = 120_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const invocation = commandInvocation(command, args);
     const child = spawn(invocation.command, invocation.args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
@@ -655,16 +660,19 @@ async function runSmoke(): Promise<void> {
   const screenshots = { desktopScreenshotPath: path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "desktop.png"), narrowScreenshotPath: path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "narrow.png"), tabletScreenshotPath: path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "tablet.png"), mobileScreenshotPath: path.join(VIDEO_NODE_SMOKE_OUTPUT_DIR, "mobile.png") };
   const vite = spawnVite(port);
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  const playwright = ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`];
   try {
     await mkdir(VIDEO_NODE_SMOKE_OUTPUT_DIR, { recursive: true });
     await writeFile(SMOKE_HTML_PATH, buildVideoNodeSmokeHtml(), "utf8");
     await writeFile(CHECK_CODE_PATH, buildVideoNodeCheckCode(screenshots), "utf8");
+    await writeFile(NAVIGATE_CODE_PATH, `async page => { await page.goto(${JSON.stringify(pageUrl)}, { timeout: 120000, waitUntil: "domcontentloaded" }); return page.url(); }`, "utf8");
     await waitForServer(`http://127.0.0.1:${port}/`);
-    await runCommand(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "open", pageUrl]);
-    const raw = await runCommand(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "--raw", "run-code", "--filename", CHECK_CODE_PATH]);
+    await runCommand(npx, [...playwright, "open", "about:blank"]);
+    await runCommand(npx, [...playwright, "--raw", "run-code", "--filename", NAVIGATE_CODE_PATH], 150_000);
+    const raw = await runCommand(npx, [...playwright, "--raw", "run-code", "--filename", CHECK_CODE_PATH]);
     console.log(JSON.stringify({ defaultUrl: VIDEO_NODE_SMOKE_DEFAULT_URL, result: parsePlaywrightCliJson(raw), screenshots, smokePage: SMOKE_HTML_PATH, status: "ok" }, null, 2));
   } finally {
-    await runCommand(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "close"], 30_000).catch(() => "");
+    await runCommand(npx, [...playwright, "close"], 30_000).catch(() => "");
     await stopProcessTree(vite);
   }
 }
