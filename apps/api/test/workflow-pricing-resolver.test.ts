@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { builtinAiPluginRegistry, type VideoGenerationCapabilities } from "@aigc-flow/ai-gateway-core";
+import {
+  builtinAiPluginRegistry,
+  validateVideoGenerationRequest,
+  type VideoGenerationCapabilities,
+} from "@aigc-flow/ai-gateway-core";
 
 import {
   assertNodeRouteSupportsRuntimeRequest,
@@ -83,6 +87,19 @@ function pixelHubPricingInput(input: {
       providerKey: "pixelhub",
       requireExactPricing: true,
       routeKey: input.route,
+    },
+  };
+}
+
+function withFirstLastFrameMinImages(capabilities: VideoGenerationCapabilities, minImages: number): VideoGenerationCapabilities {
+  return {
+    ...capabilities,
+    modeConstraints: {
+      ...capabilities.modeConstraints,
+      first_last_frame: {
+        ...capabilities.modeConstraints.first_last_frame!,
+        minImages,
+      },
     },
   };
 }
@@ -223,6 +240,71 @@ describe("workflow pricing resolver", () => {
     }, "tenant-1", [{ config: { routeKey }, type: "video.generate" }]);
 
     expect(contexts.get(routeKey)?.capabilities.supportedVideoWorkflows).toEqual(["video_generation"]);
+  });
+
+  it("uses each route's video capabilities ahead of shared model defaults", async () => {
+    const sharedModelCapabilities = withFirstLastFrameMinImages(pixelHubCapabilitiesFor("veo31-fast"), 2);
+    const service = new WorkflowRunsService({
+      nodeExecuteQueue: { async add() { return { id: "job-1" }; } },
+      pool: {} as never,
+    });
+    const loadRouteRuntimeContexts = (
+      service as unknown as {
+        loadRouteRuntimeContexts: (
+          client: { query: () => Promise<{ rows: Array<Record<string, unknown>> }> },
+          tenantId: string,
+          nodes: Array<{ config: Record<string, unknown>; type: string }>,
+        ) => Promise<Map<string, { capabilities: VideoGenerationCapabilities }>>;
+      }
+    ).loadRouteRuntimeContexts.bind(service);
+    const loadCapabilities = async (routeCapabilities: VideoGenerationCapabilities, routeTenantId: string | null) => {
+      const contexts = await loadRouteRuntimeContexts({
+        async query() {
+          return {
+            rows: [{
+              model_capabilities: sharedModelCapabilities,
+              model_id: "shared-veo-model",
+              model_key: "veo31-fast",
+              provider_key: "pixelhub",
+              request_config: { capabilities: routeCapabilities },
+              route_key: "video.pixelhub.veo31-fast",
+              tenant_id: routeTenantId,
+            }],
+          };
+        },
+      }, "tenant-1", [{ config: { routeKey: "video.pixelhub.veo31-fast" }, type: "video.generate" }]);
+      return contexts.get("video.pixelhub.veo31-fast")!.capabilities;
+    };
+    const platformCapabilities = await loadCapabilities(withFirstLastFrameMinImages(pixelHubCapabilitiesFor("veo31-fast"), 1), null);
+    const tenantCapabilities = await loadCapabilities(withFirstLastFrameMinImages(pixelHubCapabilitiesFor("veo31-fast"), 2), "tenant-1");
+    const firstFrameRequest = {
+      inputAssets: [{
+        assetId: "first-frame",
+        kind: "image",
+        metadata: {
+          videoReference: {
+            mediaKind: "image",
+            order: 0,
+            referenceKey: "first-frame",
+            role: "first_frame",
+            sourceKind: "asset",
+            sourceNodeId: null,
+          },
+        },
+      }],
+      params: {
+        aspectRatio: "16:9",
+        count: 1,
+        durationSeconds: 4,
+        generateAudio: true,
+        mode: "first_last_frame",
+        resolution: "1080P",
+      },
+      prompt: "Animate the scene",
+    };
+
+    expect(validateVideoGenerationRequest(firstFrameRequest, platformCapabilities)).toEqual([]);
+    expect(validateVideoGenerationRequest(firstFrameRequest, tenantCapabilities).map((issue) => issue.code)).toContain("VIDEO_MODE_INPUT_REQUIRED");
   });
 
   it("resolves nested image edit route keys when the top-level routeKey is missing", () => {

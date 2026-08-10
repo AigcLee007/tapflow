@@ -451,8 +451,8 @@ function mergeRouteRuntimeCapabilities(input: {
     ...readSupportedGenerationModes(input.modelCapabilities),
     ...readSupportedGenerationModes(routeCapabilities),
   ]));
-  const videoCapabilities = readVideoCapabilities(input.modelCapabilities)
-    ?? readVideoCapabilities(routeCapabilities);
+  const videoCapabilities = readVideoCapabilities(routeCapabilities)
+    ?? readVideoCapabilities(input.modelCapabilities);
   return {
     ...(videoCapabilities ?? {}),
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
