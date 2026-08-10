@@ -115,7 +115,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
   }, [capabilities, capabilityCorrection, data.modelId, data.params, onUpdate, params]);
 
   useEffect(() => {
-    if (modeResolution.incompatible || !modeResolution.switched || modeResolution.mode === params.mode) return;
+    if (!modeResolution.switched || modeResolution.mode === params.mode) return;
     const signature = JSON.stringify({
       inputs: modeInputs.map(({ inputKey, kind }) => ({ inputKey, kind })),
       newMode: modeResolution.mode,
@@ -128,7 +128,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
       modeResolution.mode,
       effectiveCapabilities.referenceSemantics,
     );
-    setModeNotice("已根据当前输入调整生成模式");
+    setModeNotice(getVideoModeSwitchMessage(modeInputs, modeResolution.mode, modeResolution.incompatible));
     onUpdate({
       params: {
         ...(data.params ?? {}),
@@ -314,4 +314,17 @@ function resolvePaletteSourceDisplays(
 function getPaletteRoleLabel(role: VideoReferenceRole): string {
   const roleLabel = VIDEO_UI_REFERENCE_ROLE_COPY[role];
   return role === "reference" ? roleLabel : `${roleLabel}参考`;
+}
+
+function getVideoModeSwitchMessage(
+  inputs: Array<{ inputKey: string; kind: CanvasInputItem["kind"] }>,
+  mode: VideoGenerationParamsV1["mode"],
+  incompatible: boolean,
+): string {
+  if (mode === "all_reference" && inputs.some((input) => input.kind === "video" || input.kind === "audio")) {
+    return incompatible
+      ? "视频或音频输入需要使用全参考生视频，当前模型不支持该模式"
+      : "视频或音频输入已切换为全参考生视频";
+  }
+  return "已根据当前输入调整生成模式";
 }

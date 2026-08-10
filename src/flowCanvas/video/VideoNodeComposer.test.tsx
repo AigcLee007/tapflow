@@ -623,6 +623,49 @@ describe("VideoNodeComposer", () => {
     expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  test("persists all-reference for video input even when the selected text-only model cannot generate it", async () => {
+    const onUpdate = vi.fn();
+    const data = {
+      generationPrompt: "scene",
+      modelId: "text-only-model",
+      params: { videoGeneration: createDefaultVideoGenerationParams() },
+    } as any;
+    const catalog = usableVideoCatalog([usableVideoOption({
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, maxVideos: 1, maxTotal: 1, supportedModes: ["text_to_video"] }),
+      id: "text-only-model",
+    })]);
+    const inputItems = [{
+      assetId: "clip-1",
+      group: "video" as const,
+      inputKey: "upstream:clip-1",
+      kind: "video" as const,
+      kindIndex: 1,
+      mentionLabel: "视频1",
+      order: 0,
+      previewState: "ready" as const,
+      source: "upstream" as const,
+      sourceNodeId: "clip-1",
+      title: "Clip",
+    }];
+
+    const { rerender } = render(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({
+      params: {
+        videoGeneration: expect.objectContaining({
+          mode: "all_reference",
+          referenceInputs: [],
+        }),
+      },
+    }));
+    expect(onUpdate.mock.calls.some(([patch]) => "modelId" in patch)).toBe(false);
+    expect((screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("status").textContent).toContain("视频或音频");
+
+    rerender(<VideoNodeComposer catalog={catalog} data={data} generating={false} inputItems={inputItems} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
+
   test("retains the rollback composer model, aspect, duration, HD, count, and generation controls", () => {
     const data = { generationPrompt: "", modelId: "veo3.1-fast", params: { aspect_ratio: "16:9", duration: "4" } } as any;
     render(<VideoNodeLegacyComposer data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={vi.fn()} />);
