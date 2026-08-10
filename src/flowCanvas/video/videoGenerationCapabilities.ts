@@ -94,7 +94,6 @@ export function correctVideoGenerationParams<T extends VideoGenerationParamsV2>(
     diagnostics.push({ code: "CAPABILITY_CORRECTED", field: String(key), value: next[key], message: "Value was corrected to match the selected video model" });
     next[key] = value;
   };
-  if (!capabilities.supportedModes.includes(next.mode)) replace("mode", capabilities.supportedModes[0] ?? "text_to_video");
   if (!capabilities.aspectRatios.includes(next.aspectRatio)) replace("aspectRatio", (capabilities.defaults?.aspectRatio ?? capabilities.aspectRatios[0] ?? "16:9") as T["aspectRatio"]);
   if (!capabilities.resolutions.includes(next.resolution)) replace("resolution", (capabilities.defaults?.resolution ?? capabilities.resolutions[0] ?? "720P") as T["resolution"]);
   if (capabilities.supportedDurations?.length) {

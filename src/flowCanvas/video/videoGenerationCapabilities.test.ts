@@ -37,7 +37,7 @@ describe("video generation capabilities", () => {
     });
   });
 
-  test("merges route values immutably and corrects unsupported selections", () => {
+  test("preserves unsupported all-reference mode while correcting other route parameters", () => {
     const route = {
       aspectRatios: ["16:9"] as const,
       durationStepSeconds: 2,
@@ -55,7 +55,7 @@ describe("video generation capabilities", () => {
       count: 4 as const,
       durationSeconds: 5,
       generateAudio: true,
-      mode: "text_to_video" as const,
+      mode: "all_reference" as const,
       resolution: "4K" as const,
     };
 
@@ -76,11 +76,10 @@ describe("video generation capabilities", () => {
       count: 1,
       durationSeconds: 6,
       generateAudio: false,
-      mode: "image_to_video",
+      mode: "all_reference",
       resolution: "1080P",
     });
     expect(corrected.diagnostics.map((item) => item.field)).toEqual([
-      "mode",
       "aspectRatio",
       "resolution",
       "durationSeconds",
