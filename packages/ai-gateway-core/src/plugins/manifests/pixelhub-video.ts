@@ -49,7 +49,7 @@ export const pixelHubVideoManifest: AiPluginManifest = {
     { bindingKey: "veo31-fast", label: "Veo 3.1 Fast", modelKey: "veo31-fast", routeKey: "video.pixelhub.veo31-fast" },
   ],
   credentials: { fields: [{ key: "apiKey", label: "Bearer API Key", required: true, secret: true }], type: "bearer" },
-  description: "PixelHub asynchronous video generation.", displayName: "PixelHub Video", modality: "video", packageKey: "pixelhub.video", version: "1.0.0",
+  description: "PixelHub asynchronous video generation.", displayName: "PixelHub Video", modality: "video", packageKey: "pixelhub.video", version: "1.0.1",
   provider: { capabilities: { requiresBaseUrlOverride: true, supportedVideoWorkflows: ["video_generation"] }, defaultBaseUrl: "", key: "pixelhub", kind: "pixelhub-video", name: "PixelHub" },
   models: [model("gemini-omni-flash", "Gemini Omni Flash", "pixelhub-gemini-omni-flash", gemini, 10), model("sora-v3-pro", "Sora V3 Pro", "pixelhub-sora-v3-pro", sora, 20), model("veo31-fast", "Veo 3.1 Fast", "pixelhub-veo31-fast", veo, 30)],
   routes: [route("gemini-omni-flash", "pixelhub-gemini-omni-flash", gemini), route("sora-v3-pro", "pixelhub-sora-v3-pro", sora), route("veo31-fast", "pixelhub-veo31-fast", veo)],
