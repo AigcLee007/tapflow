@@ -23,9 +23,17 @@ describe("AI plugin registry", () => {
       "mouxihub.nano-banana-pro-t3",
       "pixellelabs.nano-banana-pro",
       "pixelhub.video",
+      "pixellelabs.h3video",
       "tapflow.video-editor-ffmpeg",
     ]);
-    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(11);
+    expect(BUILTIN_AI_PLUGIN_MANIFESTS).toHaveLength(12);
+  });
+
+  test("returns H3video-2k with independent credentials and four supported modes", () => {
+    const manifest = builtinAiPluginRegistry.require("pixellelabs.h3video");
+    expect(manifest.provider).toMatchObject({ key: "pixellelabs-h3video", kind: "pixellelabs-h3video", defaultBaseUrl: "https://api.pixellelabs.com" });
+    expect(manifest.credentialBindings).toEqual([{ bindingKey: "h3video-2k", label: "H3video-2k", modelKey: "H3video-2k", routeKey: "video.pixellelabs.h3video-2k" }]);
+    expect(manifest.routes[0]?.requestConfig.capabilities).toMatchObject({ resolutions: ["2K"], supportedDurations: [15], supportedModes: ["text_to_video", "image_to_video", "image_reference", "all_reference"] });
   });
 
   test("returns the PixelHub video package with three independent product routes", () => {

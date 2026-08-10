@@ -399,3 +399,5 @@ Launch posture declarations:
 PIXELHUB_GEMINI_OMNI_FLASH_API_KEY=
 PIXELHUB_SORA_V3_PRO_API_KEY=
 PIXELHUB_VEO31_FAST_API_KEY=
+# H3video-2k uses a separate CredentialVault credential entered through the AI Plugin install flow.
+# Do not reuse any PixelHub key and do not expose this key to x-tapflow-env or the frontend.

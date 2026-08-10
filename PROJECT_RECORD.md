@@ -3,6 +3,12 @@
 Last updated: 2026-08-10
 Maintainers: project team + Codex sessions
 
+## 2026-08-10 - PixelleLabs H3video-2k Provider
+
+- added the independent `pixellelabs.h3video` AI Gateway plugin and `video.pixellelabs.h3video-2k` route for `H3video-2k` at `https://api.pixellelabs.com`.
+- added a dedicated `pixellelabs-h3video` async adapter with fixed `2K`/`15` second payloads, ordered image mapping, singular/plural video and audio reference fields, and sanitized polling results.
+- H3 exposes text-to-video, image-to-video, image-reference, and all-reference modes; first/last-frame is intentionally unsupported. Its API key is a separate CredentialVault binding and is not an environment variable.
+
 ## 2026-08-10 - Video Mode Input Availability Implementation
 
 - implemented the approved input-driven video-mode matrix across the Flow canvas: no media enables only text-to-video; one image enables image-to-video, first/last frame, image reference, and all reference; two images default to image reference; three or more images disable image-to-video and first/last frame; video or audio requires all reference. Text inputs do not affect the matrix.

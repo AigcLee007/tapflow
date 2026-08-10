@@ -4,6 +4,7 @@ import { MockProviderAdapter } from "./mock-provider-adapter.js";
 import { OpenAiCompatibleTextAdapter } from "./openai-compatible-text-adapter.js";
 import { PixelleLabsGeminiImageAdapter } from "./pixellelabs-gemini-image-adapter.js";
 import { PixelHubVideoAdapter } from "./pixelhub-video-adapter.js";
+import { PixelleLabsH3VideoAdapter } from "./pixellelabs-h3video-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import { VisionaryNanoBananaAdapter } from "./visionary-nano-banana-adapter.js";
 
@@ -83,6 +84,10 @@ export function createDefaultProviderAdapterRegistry(): ProviderAdapterRegistry 
     {
       create: () => new PixelHubVideoAdapter(),
       kind: "pixelhub-video",
+    },
+    {
+      create: () => new PixelleLabsH3VideoAdapter(),
+      kind: "pixellelabs-h3video",
     },
     {
       create: () => new PixelleLabsGeminiImageAdapter(),

@@ -11,7 +11,7 @@ export type VideoMediaKind = "image" | "video" | "audio";
 
 export type VideoAspectRatio = "auto" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "21:9";
 
-export type VideoResolution = "480P" | "720P" | "1080P" | "4K";
+export type VideoResolution = "480P" | "720P" | "1080P" | "2K" | "4K";
 
 export type VideoAudioControlMode = "toggle" | "always_on_implicit" | "unsupported";
 
@@ -102,7 +102,7 @@ const VIDEO_MODES = new Set<VideoGenerationMode>([
   "all_reference",
 ]);
 const VIDEO_ASPECT_RATIOS = new Set<VideoAspectRatio>(["auto", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]);
-const VIDEO_RESOLUTIONS = new Set<VideoResolution>(["480P", "720P", "1080P", "4K"]);
+const VIDEO_RESOLUTIONS = new Set<VideoResolution>(["480P", "720P", "1080P", "2K", "4K"]);
 const VIDEO_MEDIA_KINDS = new Set<VideoMediaKind>(["image", "video", "audio"]);
 const VIDEO_REFERENCE_ROLES = new Set<VideoReferenceRole>([
   "main_image",
