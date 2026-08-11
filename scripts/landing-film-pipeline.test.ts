@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { LANDING_FILM_BRIEFS, LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
-import { assertLandingFilmProbeResults, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, parseLandingFilmCommand, selectApprovedFilms } from "./landing-film-pipeline.js";
+import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, parseLandingFilmCommand, selectApprovedFilms } from "./landing-film-pipeline.js";
 
 describe("landing film generation contracts", () => {
   test("defines twelve literal Gemini briefs and produces desktop plus mobile jobs", () => {
@@ -23,6 +23,12 @@ describe("landing film generation contracts", () => {
       master: "brand-media/tapflow/landing-film-v1/imagination/variant-a/desktop/master.mp4",
       poster: "brand-media/tapflow/landing-film-v1/imagination/variant-a/desktop/poster.webp",
       video: "brand-media/tapflow/landing-film-v1/imagination/variant-a/desktop/loop.mp4",
+    });
+  });
+
+  test("uses an atomic no-overwrite condition for every published object", () => {
+    expect(buildImmutableLandingFilmPutInput("bucket", "brand-media/tapflow/landing-film-v1/loop.mp4", Buffer.from("video"), "video/mp4")).toMatchObject({
+      Bucket: "bucket", ContentType: "video/mp4", IfNoneMatch: "*", Key: "brand-media/tapflow/landing-film-v1/loop.mp4",
     });
   });
 

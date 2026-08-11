@@ -15,6 +15,10 @@ export function buildLandingFilmObjectKeys(chapter: string, variant: string, vie
   return { master: `${base}/master.mp4`, poster: `${base}/poster.webp`, video: `${base}/loop.mp4` };
 }
 
+export function buildImmutableLandingFilmPutInput(bucket: string, key: string, body: Buffer, contentType: string) {
+  return { Body: body, Bucket: bucket, CacheControl: "public, max-age=31536000, immutable", ContentType: contentType, IfNoneMatch: "*", Key: key };
+}
+
 export function parseLandingFilmCommand(args: string[]): LandingFilmCommand {
   const publish = args.includes("--publish");
   const generationConfirmed = args.includes("--confirm-generation-cost");
@@ -115,13 +119,23 @@ async function assertMissingObject(client: S3Client, bucket: string, key: string
   throw new Error(`Refusing to overwrite existing immutable landing-film object: ${key}`);
 }
 
+async function putImmutableObject(client: S3Client, bucket: string, key: string, body: Buffer, contentType: string) {
+  try {
+    await client.send(new PutObjectCommand(buildImmutableLandingFilmPutInput(bucket, key, body, contentType)));
+  } catch (error) {
+    const status = typeof error === "object" && error && "$metadata" in error ? Number((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode) : 0;
+    if (status === 412 || (error instanceof Error && /PreconditionFailed/i.test(error.name))) throw new Error(`Refusing to overwrite existing immutable landing-film object: ${key}`);
+    throw error;
+  }
+}
+
 export async function publishApprovedFilm(options: { bucket: string; client: S3Client; outputDirectory: string; approval: ApprovedFilm; masterPath: string }) {
   const { approval, client, bucket } = options;
   const keys = buildLandingFilmObjectKeys(approval.chapter, approval.variant, approval.viewport);
   const { videoPath, posterPath } = await transcodeApprovedFilm(options.masterPath, options.outputDirectory, approval);
   await assertMissingObject(client, bucket, keys.video);
-  await client.send(new PutObjectCommand({ Body: await readFile(videoPath), Bucket: bucket, CacheControl: "public, max-age=31536000, immutable", ContentType: "video/mp4", Key: keys.video }));
+  await putImmutableObject(client, bucket, keys.video, await readFile(videoPath), "video/mp4");
   await assertMissingObject(client, bucket, keys.poster);
-  await client.send(new PutObjectCommand({ Body: await readFile(posterPath), Bucket: bucket, CacheControl: "public, max-age=31536000, immutable", ContentType: "image/webp", Key: keys.poster }));
+  await putImmutableObject(client, bucket, keys.poster, await readFile(posterPath), "image/webp");
   return keys;
 }
