@@ -5,6 +5,7 @@ import http, { type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import sharp from "sharp";
 
 export const CINEMATIC_AUTH_HOME_OUTPUT_DIR = path.join("output", "playwright", "cinematic-auth-home");
 export const CINEMATIC_AUTH_HOME_VIEWPORTS = [
@@ -16,7 +17,7 @@ type Viewport = (typeof CINEMATIC_AUTH_HOME_VIEWPORTS)[number];
 type CheckOptions = { outputDirectory: string; reducedMotion: boolean; viewport: Viewport };
 
 export function buildCinematicAuthHomeCheckCode({ outputDirectory, reducedMotion, viewport }: CheckOptions): string {
-  const screenshot = path.join(outputDirectory, `${viewport.name}${reducedMotion ? "-reduced-motion" : ""}.png`).replaceAll("\\", "/");
+  const snapshotPrefix = path.join(outputDirectory, `${viewport.name}${reducedMotion ? "-reduced-motion" : ""}`).replaceAll("\\", "/");
   return `(async (page) => {
 const browser = page.context().browser();
 if (!browser) throw new Error('Smoke browser is unavailable');
@@ -25,39 +26,24 @@ const viewport = ${JSON.stringify({ width: viewport.width, height: viewport.heig
 const context = await browser.newContext({ viewport, reducedMotion: ${JSON.stringify(reducedMotion ? "reduce" : "no-preference")} });
 const smokePage = await context.newPage();
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
-const uniformity = async (imageUrl) => smokePage.evaluate(async (imageUrl) => {
-  const response = await fetch(imageUrl, { mode: 'cors' });
-  if (!response.ok) throw new Error('Poster fetch failed: ' + response.status);
-  const bitmap = await createImageBitmap(await response.blob());
-  const canvas = new OffscreenCanvas(32, 32);
-  const context2d = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context2d) throw new Error('Poster canvas unavailable');
-  context2d.drawImage(bitmap, 0, 0, 32, 32);
-  const pixels = context2d.getImageData(0, 0, 32, 32).data;
-  let min = 255, max = 0, variance = 0;
-  let mean = 0;
-  for (let index = 0; index < pixels.length; index += 4) { const value = (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3; mean += value; min = Math.min(min, value); max = Math.max(max, value); }
-  mean /= pixels.length / 4;
-  for (let index = 0; index < pixels.length; index += 4) { const value = (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3; variance += (value - mean) ** 2; }
-  return { range: max - min, variance: variance / (pixels.length / 4) };
-}, imageUrl);
-const assertLandmarkVisibility = async () => {
-  const issue = await smokePage.evaluate(() => {
-    const selectors = ['.cinematic-auth-home__nav', '.cinematic-auth-home__rail', '.cinematic-auth-home__content', '.cinematic-auth-home__workspace'];
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (!element) { if (selector.endsWith('__workspace')) continue; return 'Missing landmark ' + selector; }
+const assertLandmarkVisibility = async (requireCta) => {
+  const issue = await smokePage.evaluate((requireCta) => {
+    const active = document.querySelector('.cinematic-auth-home__chapter[data-active="true"]');
+    if (!active) return 'Missing active chapter';
+    const landmarks = [['nav', document.querySelector('.cinematic-auth-home__nav')], ['rail', document.querySelector('.cinematic-auth-home__rail')], ['heading', active.querySelector('.cinematic-auth-home__content h1')]];
+    if (requireCta) landmarks.push(['CTA', active.querySelector('.cinematic-auth-home__workspace')]);
+    for (const [name, element] of landmarks) {
+      if (!(element instanceof Element)) return 'Missing landmark ' + name;
       const rect = element.getBoundingClientRect();
-      if (rect.width < 2 || rect.height < 2) return 'Collapsed landmark ' + selector;
-      if (rect.right < 0 || rect.left > innerWidth || rect.bottom < 0 || rect.top > innerHeight) continue;
+      if (rect.width < 2 || rect.height < 2 || rect.right < 0 || rect.left > innerWidth || rect.bottom < 0 || rect.top > innerHeight) return 'Invisible landmark ' + name;
       const points = [[rect.left + rect.width / 2, rect.top + rect.height / 2], [Math.max(rect.left + 2, 1), Math.max(rect.top + 2, 1)]];
       for (const [x, y] of points) {
         const top = document.elementsFromPoint(x, y)[0];
-        if (!(top instanceof Element) || (!element.contains(top) && !top.contains(element))) return 'Landmark overlapped ' + selector + ' by ' + top?.className;
+        if (!(top instanceof Element) || (!element.contains(top) && !top.contains(element))) return 'Landmark overlapped ' + name + ' by ' + top?.className;
       }
     }
     return null;
-  });
+  }, requireCta);
   assert(!issue, String(issue));
 };
 try {
@@ -65,13 +51,12 @@ try {
   await smokePage.locator('.cinematic-auth-home').waitFor({ state: 'visible', timeout: 20000 });
   const posters = smokePage.locator('[data-testid="landing-film-poster"]');
   assert(await posters.count() === 4, 'Expected four film posters');
-  const posterState = await uniformity(await posters.first().getAttribute('src'));
-  assert(posterState.range > 14 && posterState.variance > 5, 'Primary media is near-uniform or blank: ' + JSON.stringify(posterState));
-  await assertLandmarkVisibility();
   if (${JSON.stringify(reducedMotion)}) {
     assert(await smokePage.locator('[data-testid="landing-film-video"]').count() === 0, 'Reduced motion rendered videos');
-    await smokePage.screenshot({ path: ${JSON.stringify(screenshot)}, fullPage: true });
-    return JSON.stringify({ reducedMotion: true, screenshot: ${JSON.stringify(screenshot)}, status: 'ok' });
+    await assertLandmarkVisibility(false);
+    const screenshot = ${JSON.stringify(`${snapshotPrefix}.png`)};
+    await smokePage.screenshot({ path: screenshot });
+    return JSON.stringify({ reducedMotion: true, screenshot, status: 'ok' });
   }
   const videos = smokePage.locator('[data-testid="landing-film-video"]');
   assert(await videos.count() === 4, 'Expected desktop/mobile video layers');
@@ -88,12 +73,20 @@ try {
     const expected = distance === 0 ? 'auto' : distance === 1 ? 'metadata' : 'none';
     assert(item.preload === expected, 'Unexpected preload policy: ' + JSON.stringify({ expected, index, item }));
   });
-  await smokePage.locator('.cinematic-auth-home__chapter').nth(1).scrollIntoViewIfNeeded();
-  await smokePage.waitForTimeout(900);
-  const scrolledActive = await smokePage.locator('.cinematic-auth-home__chapter[data-active="true"]').evaluate((element) => element.getAttribute('aria-label'));
-  const secondLabel = await smokePage.locator('.cinematic-auth-home__chapter').nth(1).getAttribute('aria-label');
-  assert(scrolledActive === secondLabel, 'Scroll did not activate the next chapter');
-  await assertLandmarkVisibility();
+  const chapterStates = [];
+  const chapters = smokePage.locator('.cinematic-auth-home__chapter');
+  for (let index = 0; index < await chapters.count(); index += 1) {
+    const chapter = chapters.nth(index);
+    await chapter.scrollIntoViewIfNeeded();
+    await smokePage.waitForTimeout(900);
+    const activeLabel = await smokePage.locator('.cinematic-auth-home__chapter[data-active="true"]').evaluate((element) => element.getAttribute('aria-label'));
+    const expectedLabel = await chapter.getAttribute('aria-label');
+    assert(activeLabel === expectedLabel, 'Scroll did not activate chapter ' + index);
+    await assertLandmarkVisibility(index === 3);
+    const screenshot = ${JSON.stringify(`${snapshotPrefix}-chapter-`)} + (index + 1) + '.png';
+    await smokePage.screenshot({ path: screenshot });
+    chapterStates.push({ index, screenshot });
+  }
   await smokePage.getByRole('button', { name: '登录' }).click();
   const dialog = smokePage.getByRole('dialog');
   await dialog.waitFor({ state: 'visible' });
@@ -106,8 +99,7 @@ try {
   await smokePage.goto(targetUrl.replace(/\\/login(?:\\?.*)?$/, '/forgot-password'), { waitUntil: 'networkidle' });
   await smokePage.getByRole('dialog', { name: 'Reset password' }).waitFor({ state: 'visible' });
   assert(await smokePage.getByLabel('Email').count() === 1, 'Forgot route did not show reset panel');
-  await smokePage.screenshot({ path: ${JSON.stringify(screenshot)}, fullPage: true });
-  return JSON.stringify({ posterState, screenshot: ${JSON.stringify(screenshot)}, status: 'ok', viewport });
+  return JSON.stringify({ chapterStates, status: 'ok', viewport });
 } finally { await context.close(); }
 })`;
 }
@@ -153,6 +145,24 @@ async function waitFor(url: string) { const deadline = Date.now() + 30_000; whil
 async function closeServer(server: Server) { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
 async function stop(child: ChildProcessWithoutNullStreams) { if (!child.pid) return; if (process.platform === "win32") await run("taskkill", ["/PID", String(child.pid), "/T", "/F"], 30_000).catch(() => undefined); else child.kill("SIGTERM"); }
 
+async function assertRenderedPrimaryMedia(screenshotPath: string) {
+  const image = sharp(screenshotPath);
+  const metadata = await image.metadata();
+  if (!metadata.width || !metadata.height) throw new Error(`Rendered screenshot is unreadable: ${screenshotPath}`);
+  const crop = {
+    left: Math.floor(metadata.width * 0.2),
+    top: Math.floor(metadata.height * 0.16),
+    width: Math.max(1, Math.floor(metadata.width * 0.48)),
+    height: Math.max(1, Math.floor(metadata.height * 0.42)),
+  };
+  const stats = await image.extract(crop).stats();
+  const channels = stats.channels.slice(0, 3);
+  const range = Math.max(...channels.map((channel) => channel.max)) - Math.min(...channels.map((channel) => channel.min));
+  const deviation = channels.reduce((sum, channel) => sum + channel.stdev, 0) / channels.length;
+  if (range <= 14 || deviation <= 5) throw new Error(`Rendered primary media is near-uniform or blank: ${JSON.stringify({ crop, deviation, range, screenshotPath })}`);
+  return { crop, deviation, range, screenshotPath };
+}
+
 async function main() {
   const fixturePort = await freePort(); const frontendPort = await freePort(); const fixture = fixtureServer();
   const baseUrl = `http://127.0.0.1:${fixturePort}/landing-films/v1`;
@@ -173,7 +183,11 @@ async function main() {
       const checkPath = path.join(CINEMATIC_AUTH_HOME_OUTPUT_DIR, `${viewport.name}${reducedMotion ? "-reduced-motion" : ""}-check.js`);
       await writeFile(checkPath, buildCinematicAuthHomeCheckCode({ outputDirectory: CINEMATIC_AUTH_HOME_OUTPUT_DIR, reducedMotion, viewport }), "utf8");
       const raw = await run(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "--raw", "run-code", "--filename", checkPath], 90_000);
-      results.push(JSON.parse(JSON.parse(raw)));
+      const result = JSON.parse(JSON.parse(raw));
+      if (!reducedMotion) {
+        result.renderedPrimaryMedia = await assertRenderedPrimaryMedia(result.chapterStates[0].screenshot);
+      }
+      results.push(result);
     }
     console.log(JSON.stringify({ mediaBaseUrl: baseUrl, results, status: "ok" }, null, 2));
   } finally {

@@ -18,7 +18,7 @@ describe("cinematic auth home deployment and smoke contract", () => {
 
     expect(dockerfile).toContain("ARG VITE_LANDING_MEDIA_BASE_URL=/landing-films/v1");
     expect(dockerfile).toContain("ENV VITE_LANDING_MEDIA_BASE_URL=$VITE_LANDING_MEDIA_BASE_URL");
-    expect(compose).toContain("VITE_LANDING_MEDIA_BASE_URL: ${VITE_LANDING_MEDIA_BASE_URL:-/landing-films/v1}");
+    expect(compose).toContain("VITE_LANDING_MEDIA_BASE_URL: ${VITE_LANDING_MEDIA_BASE_URL}");
     expect(stagingTemplate).toContain("VITE_LANDING_MEDIA_BASE_URL = https://cdn.example.com/landing-films/v1");
     expect(stagingTemplate).not.toMatch(/VITE_LANDING_MEDIA_BASE_URL\s*=\s*(?:sk-|[A-Za-z0-9_]{24,})/);
   });
@@ -36,11 +36,16 @@ describe("cinematic auth home deployment and smoke contract", () => {
       viewport: CINEMATIC_AUTH_HOME_VIEWPORTS[0],
     });
     expect(code).toContain("document.elementsFromPoint");
+    expect(code).toContain("chapterStates");
+    expect(code).toContain("heading");
+    expect(code).toContain("CTA");
+    expect(code).toContain("smokePage.screenshot");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("sharp(screenshotPath)");
     expect(code).toContain("currentTime");
     expect(code).toContain("preload");
     expect(code).toContain("Escape");
     expect(code).toContain("/register");
     expect(code).toContain("/forgot-password");
-    expect(code).toContain("near-uniform");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("near-uniform or blank");
   });
 });
