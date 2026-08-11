@@ -16,10 +16,15 @@ describe("landing film manifest", () => {
 
   test("constructs stable public media URLs from the configured base path", () => {
     expect(getLandingFilmUrl("imagination", "b", "poster", "/media/films/")).toBe(
-      "/media/films/gemini-omni-flash/imagination/variant-b/poster.webp",
+      "/media/films/gemini-omni-flash/imagination/variant-b/desktop/poster.webp",
     );
     expect(getLandingFilmUrl("resolution", "c", "video", "/media/films")).toBe(
-      "/media/films/gemini-omni-flash/resolution/variant-c/video.mp4",
+      "/media/films/gemini-omni-flash/resolution/variant-c/desktop/video.mp4",
     );
+  });
+
+  test("provides orientation-specific video and poster paths", () => {
+    expect(getLandingFilmUrl("form", "a", "video", "/media", "desktop")).toContain("/desktop/video.mp4");
+    expect(getLandingFilmUrl("form", "a", "poster", "/media", "mobile")).toContain("/mobile/poster.webp");
   });
 });

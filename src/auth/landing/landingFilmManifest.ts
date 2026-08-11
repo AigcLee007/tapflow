@@ -1,6 +1,7 @@
 export type LandingChapterId = "imagination" | "rewrite" | "form" | "resolution";
 export type LandingFilmVariantId = "a" | "b" | "c";
 export type LandingFilmKind = "poster" | "video";
+export type LandingFilmOrientation = "desktop" | "mobile";
 
 export type LandingFilmChapter = {
   id: LandingChapterId;
@@ -25,4 +26,5 @@ export const getLandingFilmUrl = (
   variant: LandingFilmVariantId,
   kind: LandingFilmKind,
   baseUrl?: string,
-) => `${getLandingMediaBaseUrl(baseUrl)}gemini-omni-flash/${chapter}/variant-${variant}/${kind}.${kind === "poster" ? "webp" : "mp4"}`;
+  orientation: LandingFilmOrientation = "desktop",
+) => `${getLandingMediaBaseUrl(baseUrl)}gemini-omni-flash/${chapter}/variant-${variant}/${orientation}/${kind}.${kind === "poster" ? "webp" : "mp4"}`;

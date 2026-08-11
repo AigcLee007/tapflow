@@ -1,6 +1,6 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { FilmStage } from "./FilmStage";
 
@@ -16,6 +16,18 @@ function mockMotion(reduced: boolean) {
   Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: reduced, addEventListener: vi.fn(), removeEventListener: vi.fn() }) });
 }
 
+const mockPlay = vi.fn<() => Promise<void>>();
+const mockPause = vi.fn();
+
+beforeEach(() => {
+  mockPlay.mockReset().mockResolvedValue(undefined);
+  mockPause.mockReset();
+  Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, value: mockPlay });
+  Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: mockPause });
+});
+
+afterEach(() => vi.restoreAllMocks());
+
 describe("FilmStage", () => {
   test("switches to the highest-visible chapter and updates preload", () => {
     mockMotion(false);
@@ -27,6 +39,8 @@ describe("FilmStage", () => {
     });
     expect(sections[1].getAttribute("data-active")).toBe("true");
     expect(screen.getAllByTestId("landing-film-video")[1].getAttribute("preload")).toBe("auto");
+    expect(mockPause).toHaveBeenCalled();
+    expect(mockPlay).toHaveBeenCalledTimes(2);
   });
 
   test("uses posters only for reduced motion", () => {
@@ -36,26 +50,47 @@ describe("FilmStage", () => {
     expect(screen.getAllByTestId("landing-film-poster")).toHaveLength(4);
   });
 
-  test("keeps a poster after video errors and exposes user playback control", () => {
+  test("keeps a poster after video errors and hides the failed playback control", () => {
     mockMotion(false);
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     const video = screen.getAllByTestId("landing-film-video")[0];
     fireEvent.error(video);
     expect(screen.getAllByTestId("landing-film-poster")[0]).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "暂停背景视频" }));
-    expect(screen.getByRole("button", { name: "播放背景视频" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "暂停背景视频" })).toBeNull();
   });
 
-  test("routes nav and CTA actions and marks the current chapter rail item", () => {
+  test("shows a retryable play action when browser autoplay is rejected", async () => {
+    mockMotion(false);
+    mockPlay.mockRejectedValueOnce(new Error("autoplay blocked"));
+    render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "重试播放背景视频" })).toBeTruthy();
+    const callsBeforeRetry = mockPlay.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "重试播放背景视频" }));
+    await waitFor(() => expect(mockPlay.mock.calls.length).toBeGreaterThan(callsBeforeRetry));
+  });
+
+  test("routes nav and CTA actions, scrolls home, and marks the current chapter rail item", () => {
     mockMotion(false);
     const onOpenAuth = vi.fn();
     const onEnterWorkspace = vi.fn();
     render(<FilmStage onEnterWorkspace={onEnterWorkspace} onOpenAuth={onOpenAuth} />);
+    const scrollIntoView = vi.fn();
+    screen.getAllByRole("region")[0].scrollIntoView = scrollIntoView;
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     fireEvent.click(screen.getByRole("button", { name: "进入工作区" }));
     expect(onOpenAuth).toHaveBeenCalledOnce();
     expect(onEnterWorkspace).toHaveBeenCalledOnce();
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
     expect(screen.getByRole("button", { name: "想象" }).getAttribute("aria-current")).toBe("true");
+  });
+
+  test("keeps background video decorative and supplies mobile media sources", () => {
+    mockMotion(false);
+    render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
+    const video = screen.getAllByTestId("landing-film-video")[0];
+    expect(video.getAttribute("aria-hidden")).toBe("true");
+    expect(video.querySelector('source[media="(max-width: 640px)"]')?.getAttribute("src")).toContain("/mobile/video.mp4");
   });
 
   test("slows the active film while an auth dialog is open", () => {
