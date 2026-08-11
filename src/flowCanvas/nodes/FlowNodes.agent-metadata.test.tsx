@@ -1258,6 +1258,105 @@ describe("FlowNodes agent metadata", () => {
     expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledTimes(1);
   });
 
+  it("submits image-to-video from connected text and image without a local prompt", () => {
+    const model = createVideoCatalogModel({
+      capabilities: {
+        aspectRatios: ["16:9"],
+        audioControlMode: "unsupported",
+        confirmedByRoute: true,
+        durationStepSeconds: 1,
+        maxCount: 1,
+        maxDurationSeconds: 8,
+        maxImages: 1,
+        maxTotal: 1,
+        maxVideos: 0,
+        minDurationSeconds: 4,
+        modeConstraints: { image_to_video: { maxImages: 1, maxTotal: 1, minImages: 1 } },
+        referenceSemantics: "style_images_and_source_video",
+        resolutions: ["720P"],
+        supportedModes: ["image_to_video"],
+        supportsAudio: false,
+        supportsHumanReview: false,
+      },
+      id: "image-video-model",
+      routeKey: "video.image-video-model",
+    });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, {
+      text: "The cat stretches and jumps down from the window.",
+      title: "Motion prompt",
+    } as any);
+    const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 200 }, {
+      assetId: "asset-cat",
+      kind: "image",
+      title: "Cat reference",
+    } as any);
+    const video = useFlowCanvasStore.getState().addNode("video", { x: 420, y: 0 }, createVideoNodeData({
+      generationPrompt: "",
+      modelId: model.id,
+      params: {
+        videoGeneration: {
+          aspectRatio: "16:9",
+          cameraMotionId: null,
+          count: 1,
+          durationSeconds: 4,
+          generateAudio: false,
+          mode: "image_to_video",
+          referenceInputs: [{
+            mediaKind: "image",
+            order: 0,
+            referenceKey: `upstream:${image.id}`,
+            role: "main_image",
+            source: { kind: "upstream", id: image.id },
+          }],
+          resolution: "720P",
+          schemaVersion: 2,
+          visualTone: null,
+        },
+      },
+      routeKey: model.routeKey,
+    }) as any, { selected: true });
+
+    act(() => {
+      useFlowCanvasStore.getState().onConnect({ source: text.id, sourceHandle: "out", target: video.id, targetHandle: "in" });
+      useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: "out", target: video.id, targetHandle: "in" });
+    });
+    render(<StoreBackedVideoNode nodeId={video.id} />);
+    fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: "target_node",
+      targetNodeId: video.id,
+    });
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === video.id)?.data.errorCode).toBeUndefined();
+  });
+
+  it("blocks video generation when local and connected text are empty", () => {
+    const model = createVideoCatalogModel({ id: "text-video-model", routeKey: "video.text-video-model" });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, {
+      text: "   ",
+      title: "Empty prompt",
+    } as any);
+    const video = useFlowCanvasStore.getState().addNode("video", { x: 420, y: 0 }, createVideoNodeData({
+      generationPrompt: "",
+      modelId: model.id,
+      routeKey: model.routeKey,
+    }) as any, { selected: true });
+    act(() => {
+      useFlowCanvasStore.getState().onConnect({ source: text.id, sourceHandle: "out", target: video.id, targetHandle: "in" });
+    });
+
+    render(<StoreBackedVideoNode nodeId={video.id} />);
+    fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
+
+    expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === video.id)?.data).toMatchObject({
+      errorCode: "VIDEO_PROMPT_REQUIRED",
+      generationStatus: "error",
+    });
+  });
+
   it("keeps provider-wait feedback visible when the node is unselected", () => {
     const node = useFlowCanvasStore.getState().addNode("video", { x: 0, y: 0 }, createVideoNodeData({ generationStatus: "generating", modelId: "gemini-id" }) as any, { selected: false });
     useFlowCanvasStore.setState((state) => ({ nodeRunStatusByNodeId: { ...state.nodeRunStatusByNodeId, [node.id]: "waiting_provider" } }));

@@ -7899,6 +7899,9 @@ export const VideoNodeComponent = memo(function VideoNode({
     });
   }, [d.aspectRatio, d.height, d.width, hasReadyVideo, id, requestedVideoSize.height, requestedVideoSize.width, updateNodeData, videoParams.aspectRatio]);
 
+  const hasUpstreamTextPrompt = resolvedVideoInputItems.some(
+    (item) => item.kind === "text" && Boolean(item.textExcerpt?.trim()),
+  );
 
   const handleGenerate = () => {
     if (isGenerating) return;
@@ -7913,7 +7916,7 @@ export const VideoNodeComponent = memo(function VideoNode({
           ? option.blocker
           : normalized.requiresUserCorrection
             ? 'VIDEO_MODE_INPUT_REQUIRED'
-            : getVideoGenerationBlocker(option, corrected.params, d.generationPrompt);
+            : getVideoGenerationBlocker(option, corrected.params, String(d.generationPrompt || ''), hasUpstreamTextPrompt);
     if (blocker) {
       const errorMessage = videoGenerationBlockerMessage(blocker);
       updateNodeData(id, {
