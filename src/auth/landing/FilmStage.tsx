@@ -13,9 +13,12 @@ export function FilmStage({ dialogOpen = false, onEnterWorkspace, onOpenAuth }: 
   const stage = useFilmStage();
   const videos = useRef<(HTMLVideoElement | null)[]>([]);
   const activeIndexRef = useRef(stage.activeIndex);
+  const mediaSourceKey = `${stage.activeIndex}:${stage.mobile ? "mobile" : "desktop"}`;
+  const mediaSourceKeyRef = useRef(mediaSourceKey);
   const [failedVideos, setFailedVideos] = useState<Set<number>>(() => new Set());
   const [blockedVideos, setBlockedVideos] = useState<Set<number>>(() => new Set());
   activeIndexRef.current = stage.activeIndex;
+  mediaSourceKeyRef.current = mediaSourceKey;
 
   useEffect(() => {
     videos.current.forEach((video, index) => {
@@ -24,14 +27,14 @@ export function FilmStage({ dialogOpen = false, onEnterWorkspace, onOpenAuth }: 
       if (index === stage.activeIndex && !stage.paused && !failedVideos.has(index) && !blockedVideos.has(index)) {
         const playback = video.play();
         playback?.catch(() => {
-          if (activeIndexRef.current !== index || videos.current[index] !== video) return;
+          if (activeIndexRef.current !== index || videos.current[index] !== video || mediaSourceKeyRef.current !== mediaSourceKey) return;
           setBlockedVideos((current) => new Set(current).add(index));
           stage.setPaused(true);
         });
       }
       else video.pause();
     });
-  }, [blockedVideos, dialogOpen, failedVideos, stage.activeIndex, stage.paused, stage.setPaused]);
+  }, [blockedVideos, dialogOpen, failedVideos, mediaSourceKey, stage.activeIndex, stage.mobile, stage.paused, stage.setPaused]);
 
   const scrollToChapter = (index: number) => {
     stage.setActiveIndex(index);

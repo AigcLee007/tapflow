@@ -120,6 +120,29 @@ describe("FilmStage", () => {
     expect(screen.getByRole("button", { name: "暂停背景视频" })).toBeTruthy();
   });
 
+  test("replays the selected source after an orientation change and ignores the old rejection", async () => {
+    let mobile = false;
+    let mobileListener: (() => void) | undefined;
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn((query: string) => ({
+      get matches() { return query.includes("max-width") ? mobile : false; },
+      addEventListener: vi.fn((_event: string, listener: () => void) => { if (query.includes("max-width")) mobileListener = listener; }),
+      removeEventListener: vi.fn(),
+    })) });
+    let rejectOldPlay: (reason?: unknown) => void = () => undefined;
+    mockPlay.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOldPlay = reject; }));
+    render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
+    mobile = true;
+    act(() => mobileListener?.());
+    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/video.mp4");
+    expect(mockPlay).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      rejectOldPlay(new Error("old orientation rejected"));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "重试播放背景视频" })).toBeNull();
+    expect(screen.getByRole("button", { name: "暂停背景视频" })).toBeTruthy();
+  });
+
   test("slows the active film while an auth dialog is open", () => {
     mockMotion(false);
     const { rerender } = render(<FilmStage dialogOpen={false} onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
