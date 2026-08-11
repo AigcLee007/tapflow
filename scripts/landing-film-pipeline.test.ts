@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { LANDING_FILM_BRIEFS, LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
 import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, getLandingFilmPublicUrl, isImmutablePreconditionFailure, parseLandingFilmCommand, requireLandingMediaPublicBaseUrl, selectApprovedFilms, selectJobs } from "./landing-film-pipeline.js";
-import { buildLandingFilmRouteQuery, buildVideoDownloadRequest, resolveLandingFilmRouteScope } from "./generate-landing-films.js";
+import { buildGenerationFailureMessage, buildLandingFilmRouteQuery, buildVideoDownloadRequest, redactLandingFilmError, resolveLandingFilmRouteScope } from "./generate-landing-films.js";
 
 describe("landing film generation contracts", () => {
   test("defines twelve literal Gemini briefs and produces desktop plus mobile jobs", () => {
@@ -43,6 +43,14 @@ describe("landing film generation contracts", () => {
   test("downloads provider output without forwarding the provider credential", () => {
     expect(buildVideoDownloadRequest("https://provider.example/video.mp4", 0)).toEqual({ headers: {}, url: "https://provider.example/video.mp4" });
     expect(buildVideoDownloadRequest("https://provider.example/video.mp4", 123)).toEqual({ headers: { Range: "bytes=123-" }, url: "https://provider.example/video.mp4" });
+  });
+
+  test("reports a safe provider failure category without revealing a bearer credential", () => {
+    expect(redactLandingFilmError({ code: "PROVIDER_UNAVAILABLE", message: "Bearer secret-value failed", statusCode: 502 })).toEqual({ code: "PROVIDER_UNAVAILABLE", message: "Bearer [redacted] failed", statusCode: 502 });
+  });
+
+  test("keeps a provider task id when an asynchronous generation fails", () => {
+    expect(buildGenerationFailureMessage("imagination", "variant-a", "mobile", "task-123")).toBe("Generation failed for imagination/variant-a/mobile (provider task task-123)");
   });
 
   test("requires exactly one explicit live-generation route selection mode", () => {

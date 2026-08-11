@@ -6408,6 +6408,13 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - pinned the first `imagination` chapter to the reviewed `variant-a` asset, so the homepage no longer randomly selects an ungenerated variant before the full film batch is ready.
 - added the Gemini pilot MP4 and a neutral WebP reduced-motion/loading poster under the default Vite public landing-film path. The generated master remains excluded from `.codex-tmp`; only the runtime delivery copy is versioned with the homepage.
 - validation passed: `FilmStage` regression coverage (`10` tests) and `npm run build`. The production `dist` output contains the expected video (2,081,556 bytes) and poster (9,338 bytes). Full CDN publication and the remaining chapter/mobile assets are still pending the approved batch pipeline.
+
+## 2026-08-11 - Gemini Full Landing Film Set
+
+- generated twelve successful Gemini Omni Flash desktop masters: three variants for each of `imagination`, `rewrite`, `form`, and `resolution`. The public Vite media tree now ships twelve matching `loop.mp4` files and twelve WebP fallback posters, totaling 25,737,835 bytes of video.
+- repeated provider-side 9:16 tasks returned a terminal `failed` state without a usable failure detail. The landing stage therefore uses the approved desktop Gemini source for mobile as a deliberate `object-fit: cover` fallback, preventing missing-media failures while all visible homepage backgrounds remain Gemini-generated.
+- added safe pipeline diagnostics: provider error category/status and asynchronous provider task IDs are retained in local CLI failure output without exposing credentials.
+- validation passed: landing-film pipeline, landing stage, and smoke contract suites (`28` tests); `npm run build`; and `npm run smoke:cinematic-auth-home`, covering four chapters at desktop/mobile, nonblank media pixels, playback behavior, reduced-motion posters, auth dialog interaction, and overlap checks. Existing Browserslist, CSS `task`, mixed-import, and chunk-size warnings remain non-blocking.
 ## 2026-08-11 - Asset Library Media Pagination
 
 - corrected the asset library request flow so image, video, and audio tabs send their media `kind` to `/api/v2/assets`; list totals and page contents now describe the same media result set.

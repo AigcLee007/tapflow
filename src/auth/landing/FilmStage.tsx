@@ -66,7 +66,7 @@ export function FilmStage({ dialogOpen = false, onEnterWorkspace, onOpenAuth }: 
       {stage.chapters.map((chapter, index) => {
         const distance = Math.abs(index - stage.activeIndex) === 0 ? "active" : Math.abs(index - stage.activeIndex) === 1 ? "adjacent" : "distant";
         const policy = getFilmPlaybackPolicy(stage.signals, distance);
-        const orientation = stage.mobile ? "mobile" : "desktop";
+        const orientation = "desktop";
         const variant = chapter.id === "imagination" ? "a" : stage.variant;
         const poster = getLandingFilmUrl(chapter.id, variant, "poster", undefined, orientation);
         const failed = failedVideos.has(index);

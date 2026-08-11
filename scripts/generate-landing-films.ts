@@ -17,7 +17,19 @@ type Route = { auth_tag: Buffer; base_url_override: string | null; connection_ba
 export type LandingFilmRouteScope = { tenantId: string; type: "tenant" } | { type: "system" };
 const root = resolve(".codex-tmp/landing-films/v1");
 
-function redactError(error: unknown) { return error instanceof Error ? error.message.replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]") : "Unknown error"; }
+export function redactLandingFilmError(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown; statusCode?: unknown };
+  const message = typeof value?.message === "string" ? value.message.replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]") : "Unknown error";
+  return {
+    ...(typeof value?.code === "string" ? { code: value.code } : {}),
+    message,
+    ...(typeof value?.statusCode === "number" ? { statusCode: value.statusCode } : {}),
+  };
+}
+export function buildGenerationFailureMessage(chapter: string, variant: string, viewport: string, providerTaskId?: string) {
+  const task = providerTaskId ? ` (provider task ${providerTaskId})` : "";
+  return `Generation failed for ${chapter}/${variant}/${viewport}${task}`;
+}
 export function resolveLandingFilmRouteScope(environment: Pick<NodeJS.ProcessEnv, "LANDING_FILM_ROUTE_SCOPE" | "LANDING_FILM_TENANT_ID">): LandingFilmRouteScope {
   const tenantId = environment.LANDING_FILM_TENANT_ID?.trim();
   const routeScope = environment.LANDING_FILM_ROUTE_SCOPE?.trim();
@@ -81,9 +93,9 @@ async function generate() {
   if (!process.env.DATABASE_URL || !process.env.CREDENTIAL_MASTER_KEY) throw new Error("DATABASE_URL and CREDENTIAL_MASTER_KEY are required for live generation");
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
   try { const activeRoute = await route(pool, routeScope); const apiKey = new CredentialVault({ keyVersion: process.env.CREDENTIAL_KEY_VERSION, masterKey: process.env.CREDENTIAL_MASTER_KEY }).getSecretForProviderCall({ authTag: activeRoute.auth_tag, encryptedSecret: activeRoute.encrypted_secret, nonce: activeRoute.nonce }); const adapter = new PixelHubVideoAdapter(); const providerContext = context(activeRoute, apiKey);
-    for (const job of jobs) { const output = resolve(root, job.chapter, job.variant, job.viewport, "master.mp4"); let result = await adapter.generateVideo(providerContext, { prompt: job.viewport === "desktop" ? job.desktopPrompt : job.mobilePrompt, params: { aspectRatio: job.aspectRatio, count: 1, durationSeconds: job.durationSeconds, generateAudio: true, mode: "text_to_video", resolution: job.resolution }, routeKey: LANDING_FILM_ROUTE_KEY } as VideoGenerationRequest); const stableTaskId = result.providerTaskId; const deadline = Date.now() + 1800000; while (["waiting_provider", "pending", "running"].includes(result.status)) { if (!stableTaskId || Date.now() >= deadline) throw new Error("Provider task did not complete before deadline"); await new Promise((done) => setTimeout(done, result.pollIntervalMs ?? 12000)); result = await adapter.pollTask(providerContext, { providerTaskId: stableTaskId }); } const url = result.outputs?.find((asset) => asset.mimeType.startsWith("video/"))?.url; if (result.status !== "succeeded" || !url) throw new Error(`Generation failed for ${job.chapter}/${job.variant}/${job.viewport}`); await download(url, output); process.stdout.write(JSON.stringify({ chapter: job.chapter, status: "downloaded", variant: job.variant, viewport: job.viewport }) + "\n"); }
+    for (const job of jobs) { const output = resolve(root, job.chapter, job.variant, job.viewport, "master.mp4"); let result = await adapter.generateVideo(providerContext, { prompt: job.viewport === "desktop" ? job.desktopPrompt : job.mobilePrompt, params: { aspectRatio: job.aspectRatio, count: 1, durationSeconds: job.durationSeconds, generateAudio: true, mode: "text_to_video", resolution: job.resolution }, routeKey: LANDING_FILM_ROUTE_KEY } as VideoGenerationRequest); const stableTaskId = result.providerTaskId; const deadline = Date.now() + 1800000; while (["waiting_provider", "pending", "running"].includes(result.status)) { if (!stableTaskId || Date.now() >= deadline) throw new Error("Provider task did not complete before deadline"); await new Promise((done) => setTimeout(done, result.pollIntervalMs ?? 12000)); result = await adapter.pollTask(providerContext, { providerTaskId: stableTaskId }); } const url = result.outputs?.find((asset) => asset.mimeType.startsWith("video/"))?.url; if (result.status !== "succeeded" || !url) throw new Error(buildGenerationFailureMessage(job.chapter, job.variant, job.viewport, stableTaskId)); await download(url, output); process.stdout.write(JSON.stringify({ chapter: job.chapter, status: "downloaded", variant: job.variant, viewport: job.viewport }) + "\n"); }
   } finally { await pool.end(); }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  generate().catch((error) => { process.stderr.write(JSON.stringify({ error: redactError(error), status: "failed" }) + "\n"); process.exitCode = 1; });
+  generate().catch((error) => { process.stderr.write(JSON.stringify({ error: redactLandingFilmError(error), status: "failed" }) + "\n"); process.exitCode = 1; });
 }

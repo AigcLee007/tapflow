@@ -96,11 +96,11 @@ describe("FilmStage", () => {
     expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/desktop/poster.webp");
   });
 
-  test("uses mobile media paths for a mobile viewport", () => {
+  test("uses the approved desktop film as a mobile fallback when vertical Gemini tasks fail", () => {
     mockMotion(false, true);
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
-    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/loop.mp4");
-    expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/mobile/poster.webp");
+    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/desktop/loop.mp4");
+    expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/desktop/poster.webp");
   });
 
   test("ignores an old chapter play rejection after active chapter changes", async () => {
@@ -122,7 +122,7 @@ describe("FilmStage", () => {
     expect(screen.getByRole("button", { name: "暂停背景视频" })).toBeTruthy();
   });
 
-  test("replays the selected source after an orientation change and ignores the old rejection", async () => {
+  test("replays the desktop fallback after an orientation change and ignores the old rejection", async () => {
     let mobile = false;
     let mobileListener: (() => void) | undefined;
     Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn((query: string) => ({
@@ -135,7 +135,7 @@ describe("FilmStage", () => {
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     mobile = true;
     act(() => mobileListener?.());
-    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/loop.mp4");
+    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/desktop/loop.mp4");
     expect(mockPlay).toHaveBeenCalledTimes(2);
     await act(async () => {
       rejectOldPlay(new Error("old orientation rejected"));
