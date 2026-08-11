@@ -47,8 +47,10 @@ export type AssetLibraryState = {
     action: () => Promise<void>,
   ) => Promise<void>;
   setQuery: (query: string) => void;
+  setPage: (page: number) => void;
   query: string;
   total: number;
+  totalPages: number;
 };
 
 const DEFAULT_MEDIA_COUNTS: AssetMediaCounts = {
@@ -63,13 +65,13 @@ export function useAssetLibrary(): AssetLibraryState {
   const { authenticated, sessionId, tenant, user } = useAuth();
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [folders, setFolders] = useState<AssetFolder[]>([]);
-  const [selectedMediaTab, setSelectedMediaTab] = useState<AssetMediaTab>("image");
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [favoriteOnly, setFavoriteOnly] = useState(false);
-  const [query, setQuery] = useState("");
+  const [selectedMediaTab, setSelectedMediaTabState] = useState<AssetMediaTab>("image");
+  const [selectedFolderId, setSelectedFolderIdState] = useState<string | null>(null);
+  const [favoriteOnly, setFavoriteOnlyState] = useState(false);
+  const [query, setQueryState] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page] = useState(1);
+  const [page, setPageState] = useState(1);
   const [pageSize] = useState(30);
   const [total, setTotal] = useState(0);
   const [mediaCounts, setMediaCounts] = useState<AssetMediaCounts>(DEFAULT_MEDIA_COUNTS);
@@ -84,22 +86,24 @@ export function useAssetLibrary(): AssetLibraryState {
     folderId: selectedFolderId,
     favorite: favoriteOnly || undefined,
     includePreviewUrls: true,
+    kind: selectedMediaTab === "all" ? undefined : selectedMediaTab,
     page,
     pageSize,
     previewExpiresInSeconds: 900,
     query: query.trim() || undefined,
-  }), [favoriteOnly, page, pageSize, query, selectedFolderId]);
+  }), [favoriteOnly, page, pageSize, query, selectedFolderId, selectedMediaTab]);
 
   const paramsKey = useMemo(
     () =>
       JSON.stringify({
         favoriteOnly,
         folderId: selectedFolderId,
+        mediaTab: selectedMediaTab,
         page,
         pageSize,
         query: query.trim() || undefined,
       }),
-    [favoriteOnly, page, pageSize, query, selectedFolderId],
+    [favoriteOnly, page, pageSize, query, selectedFolderId, selectedMediaTab],
   );
 
   const refresh = useCallback(async (options: { silent?: boolean } = {}) => {
@@ -128,6 +132,11 @@ export function useAssetLibrary(): AssetLibraryState {
       ]);
 
       if (requestSequenceRef.current !== requestId) return;
+      const nextTotalPages = Math.max(1, Math.ceil(assetResult.total / pageSize));
+      if (page > nextTotalPages) {
+        setPageState(nextTotalPages);
+        return;
+      }
       const cachedCounts = getAssetSessionSnapshot(identityKey, paramsKey)?.mediaCounts ?? DEFAULT_MEDIA_COUNTS;
       const nextCounts = {
         all: assetResult.total,
@@ -174,7 +183,7 @@ export function useAssetLibrary(): AssetLibraryState {
         setLoading(false);
       }
     }
-  }, [authenticated, identityKey, params, paramsKey, tenant, user]);
+  }, [authenticated, identityKey, page, pageSize, params, paramsKey, tenant, user]);
 
   const updateAssetOptimistically = useCallback(
     async (assetId: string, updater: (asset: AssetItem) => AssetItem | null, action: () => Promise<void>) => {
@@ -235,6 +244,27 @@ export function useAssetLibrary(): AssetLibraryState {
     () => groupAssetsByCreatedDate(filterAssetsByMediaTab(assets, selectedMediaTab)),
     [assets, selectedMediaTab],
   );
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const setPage = useCallback((nextPage: number) => {
+    if (!Number.isFinite(nextPage)) return;
+    setPageState(Math.max(1, Math.floor(nextPage)));
+  }, []);
+  const setSelectedMediaTab = useCallback((tab: AssetMediaTab) => {
+    setPageState(1);
+    setSelectedMediaTabState(tab);
+  }, []);
+  const setSelectedFolderId = useCallback((folderId: string | null) => {
+    setPageState(1);
+    setSelectedFolderIdState(folderId);
+  }, []);
+  const setFavoriteOnly = useCallback((nextFavoriteOnly: boolean) => {
+    setPageState(1);
+    setFavoriteOnlyState(nextFavoriteOnly);
+  }, []);
+  const setQuery = useCallback((nextQuery: string) => {
+    setPageState(1);
+    setQueryState(nextQuery);
+  }, []);
 
   return {
     assets,
@@ -252,9 +282,11 @@ export function useAssetLibrary(): AssetLibraryState {
     selectedFolderId,
     setSelectedMediaTab,
     setFavoriteOnly,
+    setPage,
     setQuery,
     setSelectedFolderId,
     updateAssetOptimistically,
     total,
+    totalPages,
   };
 }
