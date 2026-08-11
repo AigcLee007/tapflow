@@ -1,30 +1,16 @@
-import { useState } from "react";
-import { AuthErrorMessage, AuthField, AuthPrimaryButton, AuthSecondaryButton, AuthShell } from "./LoginPage";
-import { confirmPasswordReset, requestPasswordReset, resendPasswordReset } from "../services/v2AuthClient";
+import React, { FormEvent, useEffect, useState } from "react";
 
-export function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
-  const [challengeToken, setChallengeToken] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function submit(event: React.FormEvent) {
-    event.preventDefault(); setError(null); setBusy(true);
-    try {
-      if (!challengeToken) { const result = await requestPasswordReset({ email }); setChallengeToken(result.challengeToken); }
-      else { if (password !== confirm) throw new Error("两次输入的密码不一致"); await confirmPasswordReset({ challengeToken, code, newPassword: password }); window.location.assign("/login?passwordReset=success"); }
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "操作失败，请稍后重试"); } finally { setBusy(false); }
-  }
-  return <AuthShell eyebrow="Account recovery" heading="找回密码" intro="输入邮箱获取验证码" mode="forgot-password" onSubmit={submit}>
-    <AuthErrorMessage message={error} />
-    {!challengeToken ? <AuthField label="邮箱" type="email" value={email} onChange={setEmail} autoComplete="email" /> : <>
-      <AuthField label="6 位验证码" value={code} onChange={setCode} inputMode="numeric" maxLength={6} />
-      <AuthField label="新密码" type="password" value={password} onChange={setPassword} autoComplete="new-password" />
-      <AuthField label="确认新密码" type="password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
-    </>}
-    <AuthPrimaryButton disabled={busy}>{busy ? "处理中..." : challengeToken ? "重置密码" : "发送验证码"}</AuthPrimaryButton>
-    {challengeToken && <AuthSecondaryButton type="button" onClick={() => void resendPasswordReset({ challengeToken })}>重新发送</AuthSecondaryButton>}
-  </AuthShell>;
+import { confirmPasswordReset, requestPasswordReset, resendPasswordReset } from "../services/v2AuthClient";
+import { AuthErrorMessage, AuthField, AuthPrimaryButton, AuthSecondaryButton } from "./AuthFormControls";
+import { navigate, navigateAuthMode } from "./authNavigation";
+import { type AuthPanelProps } from "./LoginPage";
+
+export function ForgotPasswordPanel({ onModeChange, onPendingChange }: AuthPanelProps) {
+  const [email, setEmail] = useState(""); const [challengeToken, setChallengeToken] = useState<string | null>(null); const [code, setCode] = useState(""); const [password, setPassword] = useState(""); const [confirm, setConfirm] = useState(""); const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false);
+  useEffect(() => { onPendingChange?.(pending); }, [onPendingChange, pending]);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setPending(true); setError(null); try { if (!challengeToken) { setChallengeToken((await requestPasswordReset({ email })).challengeToken); return; } if (!/^\d{6}$/.test(code)) throw new Error("Enter the 6 digit verification code."); if (password !== confirm) throw new Error("Passwords do not match."); await confirmPasswordReset({ challengeToken, code, newPassword: password }); navigate("/login?passwordReset=success"); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to reset your password."); } finally { setPending(false); } };
+  const resend = async () => { if (!challengeToken) return; setPending(true); setError(null); try { await resendPasswordReset({ challengeToken }); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to resend the code."); } finally { setPending(false); } };
+  return <form onSubmit={submit}><AuthErrorMessage message={error} />{!challengeToken ? <AuthField autoComplete="email" label="Email" onChange={setEmail} required type="email" value={email} /> : <><AuthField autoComplete="one-time-code" inputMode="numeric" label="6 digit verification code" maxLength={6} onChange={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))} required value={code} /><AuthField autoComplete="new-password" label="New password" minLength={8} onChange={setPassword} required type="password" value={password} /><AuthField autoComplete="new-password" label="Confirm new password" minLength={8} onChange={setConfirm} required type="password" value={confirm} /></>}<AuthPrimaryButton disabled={pending}>{pending ? "Please wait..." : challengeToken ? "Reset password" : "Send verification code"}</AuthPrimaryButton>{challengeToken ? <AuthSecondaryButton disabled={pending} onClick={() => void resend()}>Resend code</AuthSecondaryButton> : <AuthSecondaryButton onClick={() => onModeChange ? onModeChange("login") : navigateAuthMode("login")}>Back to sign in</AuthSecondaryButton>}</form>;
 }
+
+export function ForgotPasswordPage() { return <main className="grid min-h-screen place-items-center bg-neutral-100 p-5"><section className="w-full max-w-md rounded-xl bg-white p-7 shadow-xl"><h1 className="mb-2 text-2xl font-semibold text-neutral-950">Reset password</h1><p className="mb-6 text-sm text-neutral-600">We will send a verification code to your email.</p><ForgotPasswordPanel /></section></main>; }

@@ -1,152 +1,23 @@
 import React, { FormEvent, useEffect, useState } from "react";
 
-import { LOGIN_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
 import type { VerificationRequired } from "../services/v2AuthClient";
+import { AuthErrorMessage, AuthField, AuthPrimaryButton, AuthSecondaryButton } from "./AuthFormControls";
+import { getSafeReturnTo, navigate, navigateAuthMode } from "./authNavigation";
 import { EmailVerificationStep } from "./EmailVerificationStep";
-import {
-  AuthErrorMessage,
-  AuthField,
-  AuthPrimaryButton,
-  AuthSecondaryButton,
-  AuthShell,
-} from "./LoginPage";
+import { type AuthPanelProps } from "./LoginPage";
 import { useAuth } from "./useAuth";
 
-function navigate(path: string) {
-  window.history.pushState(null, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-export function RegisterPage() {
+export function RegisterPanel({ onModeChange, onPendingChange }: AuthPanelProps) {
   const { authenticated, register, resendEmailVerification, verifyEmail } = useAuth();
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [tenantName, setTenantName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [challenge, setChallenge] = useState<VerificationRequired | null>(null);
-
-  useEffect(() => {
-    if (authenticated && typeof window !== "undefined") {
-      navigate(WORKSPACE_ROUTE);
-    }
-  }, [authenticated]);
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const result = await register({
-        displayName: displayName.trim() || undefined,
-        email,
-        password,
-        tenantName: tenantName.trim() || undefined,
-      });
-      if (result.status === "verification_required") {
-        setChallenge(result);
-        return;
-      }
-      navigate(WORKSPACE_ROUTE);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "注册失败，请稍后重试。");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleVerify = async (code: string) => {
-    if (!challenge) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await verifyEmail({ challengeToken: challenge.challengeToken, code });
-      navigate(WORKSPACE_ROUTE);
-    } catch (verifyError) {
-      setError(verifyError instanceof Error ? verifyError.message : "验证失败，请重试");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleResend = async () => {
-    if (!challenge) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const nextChallenge = await resendEmailVerification({
-        challengeToken: challenge.challengeToken,
-      });
-      setChallenge(nextChallenge);
-    } catch (resendError) {
-      setError(resendError instanceof Error ? resendError.message : "验证码发送失败，请重试");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <AuthShell
-      eyebrow="创建工作区"
-      heading={challenge ? "验证邮箱" : "创建 TapFlow 账号"}
-      intro="创建你的专属工作区，开始沉淀可复用的 AI 创作流程。"
-      mode="register"
-      onSubmit={handleSubmit}
-    >
-      {challenge ? (
-        <>
-          <AuthErrorMessage message={error} />
-          <EmailVerificationStep
-            challenge={challenge}
-            error={error}
-            onBack={() => {
-              setChallenge(null);
-              setError(null);
-            }}
-            onResend={handleResend}
-            onVerify={handleVerify}
-            submitting={submitting}
-          />
-        </>
-      ) : (
-        <>
-          <AuthErrorMessage message={error} />
-          <AuthField
-            autoComplete="name"
-            label="显示名称"
-            onChange={setDisplayName}
-            value={displayName}
-          />
-          <AuthField
-            autoComplete="email"
-            label="邮箱"
-            onChange={setEmail}
-            required
-            type="email"
-            value={email}
-          />
-          <AuthField
-            autoComplete="new-password"
-            label="密码"
-            minLength={8}
-            onChange={setPassword}
-            required
-            type="password"
-            value={password}
-          />
-          <AuthField
-            label="工作区名称"
-            onChange={setTenantName}
-            placeholder="选填"
-            value={tenantName}
-          />
-          <AuthPrimaryButton disabled={submitting}>
-            {submitting ? "正在创建..." : "创建账号"}
-          </AuthPrimaryButton>
-          <AuthSecondaryButton onClick={() => navigate(LOGIN_ROUTE)}>返回登录</AuthSecondaryButton>
-        </>
-      )}
-    </AuthShell>
-  );
+  const [displayName, setDisplayName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null); const [challenge, setChallenge] = useState<VerificationRequired | null>(null);
+  useEffect(() => { onPendingChange?.(pending); }, [onPendingChange, pending]);
+  useEffect(() => { if (authenticated) navigate(getSafeReturnTo()); }, [authenticated]);
+  const mode = (next: "login" | "forgot-password" | "register") => onModeChange ? onModeChange(next) : navigateAuthMode(next);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setPending(true); setError(null); try { const result = await register({ displayName: displayName.trim() || undefined, email, password }); if (result.status === "verification_required") { setChallenge(result); return; } navigate(getSafeReturnTo()); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to create your account."); } finally { setPending(false); } };
+  const verify = async (code: string) => { if (!challenge) return; setPending(true); setError(null); try { await verifyEmail({ challengeToken: challenge.challengeToken, code }); navigate(getSafeReturnTo()); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to verify the code."); } finally { setPending(false); } };
+  const resend = async () => { if (!challenge) return; setPending(true); setError(null); try { setChallenge(await resendEmailVerification({ challengeToken: challenge.challengeToken })); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to resend the code."); } finally { setPending(false); } };
+  return <form onSubmit={submit}>{challenge ? <><AuthErrorMessage message={error} /><EmailVerificationStep challenge={challenge} error={error} onBack={() => { setChallenge(null); setError(null); }} onResend={resend} onVerify={verify} submitting={pending} /></> : <><AuthErrorMessage message={error} /><AuthField autoComplete="name" label="Display name" onChange={setDisplayName} value={displayName} /><AuthField autoComplete="email" label="Email" onChange={setEmail} required type="email" value={email} /><AuthField autoComplete="new-password" label="Password" minLength={8} onChange={setPassword} required type="password" value={password} /><AuthPrimaryButton disabled={pending}>{pending ? "Creating account..." : "Create account"}</AuthPrimaryButton><AuthSecondaryButton onClick={() => mode("login")}>Back to sign in</AuthSecondaryButton></>}</form>;
 }
+
+export function RegisterPage() { return <main className="grid min-h-screen place-items-center bg-neutral-100 p-5"><section className="w-full max-w-md rounded-xl bg-white p-7 shadow-xl"><h1 className="mb-6 text-2xl font-semibold text-neutral-950">Create account</h1><RegisterPanel /></section></main>; }
