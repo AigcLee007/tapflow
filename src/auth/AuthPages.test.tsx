@@ -37,6 +37,15 @@ function authState(overrides: Partial<AuthState> = {}): AuthState {
   return { authenticated: false, error: null, loading: false, login: vi.fn(async () => session), logout: vi.fn(async () => undefined), permissions: [], refreshMe: vi.fn(async () => undefined), register: vi.fn(async () => session), resendEmailVerification: vi.fn(async () => challenge), roles: [], sessionId: null, tenant: null, user: null, verifyEmail: vi.fn(async () => undefined), ...overrides };
 }
 function renderAuth(ui: React.ReactElement, state = authState()) { return render(<AuthContext.Provider value={state}>{ui}</AuthContext.Provider>); }
+function AuthExperienceRouteHarness() {
+  const [, rerender] = React.useState(0);
+  React.useEffect(() => {
+    const handleRouteChange = () => rerender((version) => version + 1);
+    window.addEventListener("popstate", handleRouteChange);
+    return () => window.removeEventListener("popstate", handleRouteChange);
+  }, []);
+  return <AuthExperiencePage />;
+}
 
 describe("embeddable auth panels", () => {
   beforeEach(() => { window.history.replaceState(null, "", "/login"); vi.clearAllMocks(); });
@@ -176,16 +185,40 @@ describe("AuthExperiencePage", () => {
     expect(screen.getByText("Password reset. You can sign in now.")).toBeTruthy();
   });
 
-  test("opens the matching direct-route dialog and closes it back to login", () => {
+  test("closes the direct register dialog back to login", () => {
     window.history.replaceState(null, "", "/register?returnTo=%2Fassets");
-    const { rerender } = renderAuth(<AuthExperiencePage />);
+    renderAuth(<AuthExperienceRouteHarness />);
     expect(screen.getByRole("dialog", { name: "Create account" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     expect(window.location.pathname + window.location.search).toBe("/login?returnTo=%2Fassets");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 
+  test("closes the direct password recovery dialog back to login", () => {
     window.history.replaceState(null, "", "/forgot-password");
-    rerender(<AuthContext.Provider value={authState()}><AuthExperiencePage /></AuthContext.Provider>);
+    renderAuth(<AuthExperienceRouteHarness />);
     expect(screen.getByRole("dialog", { name: "Reset password" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(window.location.pathname).toBe("/login");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("keeps the direct register dialog open while a submission is pending", async () => {
+    let resolveRegister: ((result: AuthAttemptResult) => void) | undefined;
+    const register = vi.fn(() => new Promise<AuthAttemptResult>((resolve) => { resolveRegister = resolve; }));
+    window.history.replaceState(null, "", "/register");
+    renderAuth(<AuthExperienceRouteHarness />, authState({ register }));
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "creator@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "StrongPass123!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(register).toHaveBeenCalledOnce());
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.mouseDown(screen.getByTestId("auth-dialog-backdrop"));
+    expect(window.location.pathname).toBe("/register");
+    expect(screen.getByRole("dialog", { name: "Create account" })).toBeTruthy();
+
+    await act(async () => { resolveRegister?.(session); });
   });
 
   test("uses the film CTA to open auth for anonymous users and workspace for authenticated users", () => {
