@@ -36,6 +36,7 @@ scratch/
 runtime-logs/
 .tmp-*
 .tmp-*.png
+.codex-tmp/landing-films/v1/
 tmp_*.png
 tmp_fix_*.ps1
 .worktrees/
