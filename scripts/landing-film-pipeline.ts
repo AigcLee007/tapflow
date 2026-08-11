@@ -33,7 +33,7 @@ export function parseLandingFilmCommand(args: string[]): LandingFilmCommand {
 
 export function selectJobs(jobs: LandingFilmJob[], include: string[]) {
   if (!include.length) return jobs;
-  return jobs.filter((job) => include.some((needle) => `${job.chapter}/${job.variant}`.startsWith(needle)));
+  return jobs.filter((job) => include.some((needle) => `${job.chapter}/${job.variant}/${job.viewport}`.startsWith(needle)));
 }
 
 export function selectApprovedFilms(jobs: LandingFilmJob[], manifest: ApprovedFilmManifest) {

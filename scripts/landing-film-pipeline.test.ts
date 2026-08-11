@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { LANDING_FILM_BRIEFS, LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
-import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, getLandingFilmPublicUrl, isImmutablePreconditionFailure, parseLandingFilmCommand, requireLandingMediaPublicBaseUrl, selectApprovedFilms } from "./landing-film-pipeline.js";
+import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, getLandingFilmPublicUrl, isImmutablePreconditionFailure, parseLandingFilmCommand, requireLandingMediaPublicBaseUrl, selectApprovedFilms, selectJobs } from "./landing-film-pipeline.js";
 import { buildLandingFilmRouteQuery, buildVideoDownloadRequest, resolveLandingFilmRouteScope } from "./generate-landing-films.js";
 
 describe("landing film generation contracts", () => {
@@ -69,6 +69,13 @@ describe("landing film generation contracts", () => {
     expect(parseLandingFilmCommand([])).toMatchObject({ dryRun: true, generationConfirmed: false, publish: false });
     expect(() => parseLandingFilmCommand(["--generate"])).toThrow(/confirm-generation-cost/);
     expect(parseLandingFilmCommand(["--generate", "--confirm-generation-cost"])).toMatchObject({ dryRun: false, generationConfirmed: true });
+  });
+
+  test("selects an individual viewport when the include filter is fully qualified", () => {
+    const jobs = makeLandingFilmJobs();
+    expect(selectJobs(jobs, ["imagination/variant-a/desktop"])).toEqual([
+      expect.objectContaining({ chapter: "imagination", variant: "variant-a", viewport: "desktop" }),
+    ]);
   });
 
   test("publishes only explicit approved manifest selections", () => {
