@@ -123,14 +123,15 @@ export function getVideoGenerationBlocker(
   option: VideoModelOption | null | undefined,
   params: VideoGenerationParamsV2,
   prompt?: string,
+  hasUpstreamTextPrompt = false,
 ): VideoGenerationBlocker | null {
   if (option == null) return "NO_VIDEO_GENERATION_ROUTE";
   if (!option.capabilities.confirmedByRoute) return "NO_VIDEO_GENERATION_ROUTE";
   if (option.blocker) return option.blocker;
-  if (prompt !== undefined) {
-    const normalizedPrompt = prompt.trim();
-    if (!normalizedPrompt) return "VIDEO_PROMPT_REQUIRED";
-    if (option.capabilities.maxPromptLength && normalizedPrompt.length > option.capabilities.maxPromptLength) {
+  if (prompt !== undefined || hasUpstreamTextPrompt) {
+    const normalizedPrompt = prompt?.trim() ?? "";
+    if (!normalizedPrompt && !hasUpstreamTextPrompt) return "VIDEO_PROMPT_REQUIRED";
+    if (normalizedPrompt && option.capabilities.maxPromptLength && normalizedPrompt.length > option.capabilities.maxPromptLength) {
       return "VIDEO_PROMPT_TOO_LONG";
     }
   }

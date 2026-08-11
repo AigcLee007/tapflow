@@ -149,7 +149,9 @@ describe("video generation capabilities", () => {
     const params = createDefaultVideoGenerationParams();
 
     expect(getVideoGenerationBlocker(option, params, "  ")).toBe("VIDEO_PROMPT_REQUIRED");
+    expect(getVideoGenerationBlocker(option, params, "  ", true)).toBeNull();
     expect(getVideoGenerationBlocker(option, params, "1234567890123")).toBe("VIDEO_PROMPT_TOO_LONG");
+    expect(getVideoGenerationBlocker(option, params, "1234567890123", true)).toBe("VIDEO_PROMPT_TOO_LONG");
     expect(getVideoGenerationBlocker(option, params, "Short prompt")).toBeNull();
   });
 });
