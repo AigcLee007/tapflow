@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { LANDING_FILM_BRIEFS, LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
 import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, getLandingFilmPublicUrl, isImmutablePreconditionFailure, parseLandingFilmCommand, requireLandingMediaPublicBaseUrl, selectApprovedFilms } from "./landing-film-pipeline.js";
-import { buildLandingFilmRouteQuery, buildVideoDownloadRequest, requireLandingFilmTenantId } from "./generate-landing-films.js";
+import { buildLandingFilmRouteQuery, buildVideoDownloadRequest, resolveLandingFilmRouteScope } from "./generate-landing-films.js";
 
 describe("landing film generation contracts", () => {
   test("defines twelve literal Gemini briefs and produces desktop plus mobile jobs", () => {
@@ -45,11 +45,24 @@ describe("landing film generation contracts", () => {
     expect(buildVideoDownloadRequest("https://provider.example/video.mp4", 123)).toEqual({ headers: { Range: "bytes=123-" }, url: "https://provider.example/video.mp4" });
   });
 
-  test("requires an explicit tenant-scoped route query for live generation", () => {
-    expect(() => requireLandingFilmTenantId(undefined)).toThrow(/LANDING_FILM_TENANT_ID/);
-    expect(requireLandingFilmTenantId(" 00000000-0000-4000-8000-000000000001 ")).toBe("00000000-0000-4000-8000-000000000001");
-    expect(buildLandingFilmRouteQuery()).toContain("r.tenant_id = $2::uuid");
-    expect(buildLandingFilmRouteQuery()).not.toMatch(/LIMIT 1/);
+  test("requires exactly one explicit live-generation route selection mode", () => {
+    expect(resolveLandingFilmRouteScope({ LANDING_FILM_TENANT_ID: " 00000000-0000-4000-8000-000000000001 " })).toEqual({ tenantId: "00000000-0000-4000-8000-000000000001", type: "tenant" });
+    expect(resolveLandingFilmRouteScope({ LANDING_FILM_ROUTE_SCOPE: "system" })).toEqual({ type: "system" });
+    expect(() => resolveLandingFilmRouteScope({})).toThrow(/LANDING_FILM_TENANT_ID.*LANDING_FILM_ROUTE_SCOPE/i);
+    expect(() => resolveLandingFilmRouteScope({ LANDING_FILM_TENANT_ID: "00000000-0000-4000-8000-000000000001", LANDING_FILM_ROUTE_SCOPE: "system" })).toThrow(/either.*or/i);
+    expect(() => resolveLandingFilmRouteScope({ LANDING_FILM_ROUTE_SCOPE: "tenant" })).toThrow(/system/i);
+    expect(() => resolveLandingFilmRouteScope({ LANDING_FILM_TENANT_ID: "not-a-uuid" })).toThrow(/uuid/i);
+  });
+
+  test("queries only the explicitly selected tenant or system route", () => {
+    const tenant = buildLandingFilmRouteQuery({ tenantId: "00000000-0000-4000-8000-000000000001", type: "tenant" });
+    const system = buildLandingFilmRouteQuery({ type: "system" });
+    expect(tenant).toMatchObject({ params: [LANDING_FILM_ROUTE_KEY, "00000000-0000-4000-8000-000000000001"] });
+    expect(tenant.text).toContain("r.tenant_id = $2::uuid");
+    expect(system).toMatchObject({ params: [LANDING_FILM_ROUTE_KEY] });
+    expect(system.text).toContain("r.tenant_id IS NULL");
+    expect(tenant.text).not.toMatch(/LIMIT 1/);
+    expect(system.text).not.toMatch(/LIMIT 1/);
   });
 
   test("defaults to dry run and requires explicit cost confirmation for generation", () => {

@@ -344,6 +344,8 @@ Relay D:
 - `LANDING_MEDIA_PUBLIC_BASE_URL = https://cdn.example.com/brand-media/tapflow/landing-film-v1`
 - `Landing film public root consistency = LANDING_MEDIA_PUBLIC_BASE_URL must equal VITE_LANDING_MEDIA_BASE_URL. Both are browser-visible public roots for the published landing-film prefix and must never contain credentials, signed query parameters, or provider endpoints.`
 - `Landing film media note = Public, versioned CDN origin only. This is a browser-visible URL and must never contain credentials, signed query parameters, or a provider API endpoint.`
+- `Landing film live-generation route selection = Set exactly one of the following only when running landing-film generation: LANDING_FILM_TENANT_ID=<tenant UUID> to use one active tenant route, or LANDING_FILM_ROUTE_SCOPE=system to use one active system route (tenant_id IS NULL). Do not set both. The generator rejects absent, invalid, or ambiguous route selection; it never falls back to another route or credential.`
+- `Landing film dry-run = npm run landing-films:dry-run remains independent of DATABASE_URL, CREDENTIAL_MASTER_KEY, provider credentials, and either route-selection variable.`
 
 - `Deployment platform = RainYun VPS + Docker Compose`
 - `API deployment method = Docker service running API behind reverse proxy at https://api-art.aittco.com`
