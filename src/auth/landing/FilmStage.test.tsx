@@ -90,14 +90,14 @@ describe("FilmStage", () => {
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     const video = screen.getAllByTestId("landing-film-video")[0];
     expect(video.getAttribute("aria-hidden")).toBe("true");
-    expect(video.getAttribute("src")).toContain("/desktop/video.mp4");
+    expect(video.getAttribute("src")).toContain("/desktop/loop.mp4");
     expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/desktop/poster.webp");
   });
 
   test("uses mobile media paths for a mobile viewport", () => {
     mockMotion(false, true);
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
-    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/video.mp4");
+    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/loop.mp4");
     expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/mobile/poster.webp");
   });
 
@@ -133,7 +133,7 @@ describe("FilmStage", () => {
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     mobile = true;
     act(() => mobileListener?.());
-    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/video.mp4");
+    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/loop.mp4");
     expect(mockPlay).toHaveBeenCalledTimes(2);
     await act(async () => {
       rejectOldPlay(new Error("old orientation rejected"));

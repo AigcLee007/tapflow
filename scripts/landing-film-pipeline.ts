@@ -6,7 +6,7 @@ import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s
 
 import { LANDING_FILM_PREFIX, type LandingFilmJob, type LandingViewport } from "./landing-film-prompts.js";
 
-export type LandingFilmCommand = { dryRun: boolean; generationConfirmed: boolean; include: string[]; manifestPath: string; publish: boolean };
+export type LandingFilmCommand = { dryRun: boolean; generationConfirmed: boolean; include: string[]; manifestPath: string; publish: boolean; verifyPublic: boolean };
 export type ApprovedFilm = { chapter: string; durationSeconds: number; startSeconds: number; variant: string; viewport: LandingViewport };
 export type ApprovedFilmManifest = { approved: ApprovedFilm[] };
 type ProbeResult = { format?: { format_name?: string }; streams?: Array<{ codec_name?: string; codec_type?: string }> };
@@ -22,12 +22,13 @@ export function buildImmutableLandingFilmPutInput(bucket: string, key: string, b
 
 export function parseLandingFilmCommand(args: string[]): LandingFilmCommand {
   const publish = args.includes("--publish");
+  const verifyPublic = args.includes("--verify-public");
   const generationConfirmed = args.includes("--confirm-generation-cost");
   const generate = args.includes("--generate");
   if (generate && !generationConfirmed) throw new Error("Live generation requires --confirm-generation-cost");
-  if (publish && !args.some((arg) => arg.startsWith("--approved-manifest="))) throw new Error("Publishing requires --approved-manifest=<local file>");
+  if ((publish || verifyPublic) && !args.some((arg) => arg.startsWith("--approved-manifest="))) throw new Error("Publishing or public verification requires --approved-manifest=<local file>");
   const include = args.find((arg) => arg.startsWith("--include="))?.slice("--include=".length).split(",").filter(Boolean) ?? [];
-  return { dryRun: !generate && !publish, generationConfirmed, include, manifestPath: args.find((arg) => arg.startsWith("--approved-manifest="))?.slice("--approved-manifest=".length) ?? "", publish };
+  return { dryRun: !generate && !publish && !verifyPublic, generationConfirmed, include, manifestPath: args.find((arg) => arg.startsWith("--approved-manifest="))?.slice("--approved-manifest=".length) ?? "", publish, verifyPublic };
 }
 
 export function selectJobs(jobs: LandingFilmJob[], include: string[]) {
@@ -37,13 +38,38 @@ export function selectJobs(jobs: LandingFilmJob[], include: string[]) {
 
 export function selectApprovedFilms(jobs: LandingFilmJob[], manifest: ApprovedFilmManifest) {
   if (!Array.isArray(manifest.approved) || !manifest.approved.length) throw new Error("Approval manifest must select at least one film");
-  return manifest.approved.map((approval) => {
+  if (manifest.approved.length !== jobs.length) throw new Error("Approval manifest must provide complete coverage for every landing film output");
+  const selected = manifest.approved.map((approval) => {
     if (approval.durationSeconds < 8 || approval.durationSeconds > 12) throw new Error("Approved loop duration must be between 8 and 12 seconds");
     if (approval.startSeconds < 0) throw new Error("Approved loop start must not be negative");
     const job = jobs.find((candidate) => candidate.chapter === approval.chapter && candidate.variant === approval.variant && candidate.viewport === approval.viewport);
     if (!job) throw new Error(`Approval references an unknown job: ${approval.chapter}/${approval.variant}/${approval.viewport}`);
     return { ...approval, job };
   });
+  const identities = new Set(selected.map((item) => `${item.chapter}/${item.variant}/${item.viewport}`));
+  if (identities.size !== selected.length) throw new Error("Approval manifest contains duplicate landing film outputs");
+  if (identities.size !== jobs.length) throw new Error("Approval manifest must provide complete coverage for every landing film output");
+  return selected;
+}
+
+export function requireLandingMediaPublicBaseUrl(value: string | undefined) {
+  const baseUrl = value?.trim().replace(/\/+$/, "");
+  if (!baseUrl) throw new Error("LANDING_MEDIA_PUBLIC_BASE_URL is required for publishing or public verification");
+  let parsed: URL;
+  try { parsed = new URL(baseUrl); } catch { throw new Error("LANDING_MEDIA_PUBLIC_BASE_URL must be an absolute http(s) URL"); }
+  if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error("LANDING_MEDIA_PUBLIC_BASE_URL must be a credential-free http(s) URL without query parameters");
+  return baseUrl;
+}
+
+export function getLandingFilmPublicUrl(baseUrl: string, objectKey: string) {
+  const keyPrefix = `${LANDING_FILM_PREFIX}/`;
+  if (!objectKey.startsWith(keyPrefix)) throw new Error(`Object key is outside the landing film prefix: ${objectKey}`);
+  return `${baseUrl}/${objectKey.slice(keyPrefix.length)}`;
+}
+
+export async function verifyPublicLandingFilmObject(baseUrl: string, objectKey: string) {
+  const response = await fetch(getLandingFilmPublicUrl(baseUrl, objectKey), { method: "HEAD", signal: AbortSignal.timeout(30000) });
+  if (!response.ok || Number(response.headers.get("content-length") || 0) <= 0) throw new Error(`Public landing film object verification failed: ${objectKey}`);
 }
 
 export async function readApprovalManifest(path: string): Promise<ApprovedFilmManifest> {

@@ -16,10 +16,10 @@ describe("cinematic auth home deployment and smoke contract", () => {
     const compose = read("docker-compose.staging.yml");
     const stagingTemplate = read("docs/STAGING_ENV_TEMPLATE.md");
 
-    expect(dockerfile).toContain("ARG VITE_LANDING_MEDIA_BASE_URL=/landing-films/v1");
+    expect(dockerfile).toContain("ARG VITE_LANDING_MEDIA_BASE_URL=/brand-media/tapflow/landing-film-v1");
     expect(dockerfile).toContain("ENV VITE_LANDING_MEDIA_BASE_URL=$VITE_LANDING_MEDIA_BASE_URL");
     expect(compose).toContain("VITE_LANDING_MEDIA_BASE_URL: ${VITE_LANDING_MEDIA_BASE_URL}");
-    expect(stagingTemplate).toContain("VITE_LANDING_MEDIA_BASE_URL = https://cdn.example.com/landing-films/v1");
+    expect(stagingTemplate).toContain("VITE_LANDING_MEDIA_BASE_URL = https://cdn.example.com/brand-media/tapflow/landing-film-v1");
     expect(stagingTemplate).not.toMatch(/VITE_LANDING_MEDIA_BASE_URL\s*=\s*(?:sk-|[A-Za-z0-9_]{24,})/);
   });
 

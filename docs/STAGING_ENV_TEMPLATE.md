@@ -340,7 +340,7 @@ Relay D:
 
 ## 10. Deployment
 
-- `VITE_LANDING_MEDIA_BASE_URL = https://cdn.example.com/landing-films/v1`
+- `VITE_LANDING_MEDIA_BASE_URL = https://cdn.example.com/brand-media/tapflow/landing-film-v1`
 - `Landing film media note = Public, versioned CDN origin only. This is a browser-visible URL and must never contain credentials, signed query parameters, or a provider API endpoint.`
 
 - `Deployment platform = RainYun VPS + Docker Compose`

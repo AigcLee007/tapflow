@@ -18,7 +18,7 @@ export const LANDING_FILM_MANIFEST: LandingFilmChapter[] = [
   { id: "resolution", label: "抵达", title: "让创作持续向前", description: "回到工作区，继续下一步。", variants: [{ id: "a" }, { id: "b" }, { id: "c" }] },
 ];
 
-export const getLandingMediaBaseUrl = (baseUrl = import.meta.env.VITE_LANDING_MEDIA_BASE_URL || "/landing-films/v1") =>
+export const getLandingMediaBaseUrl = (baseUrl = import.meta.env.VITE_LANDING_MEDIA_BASE_URL || "/brand-media/tapflow/landing-film-v1") =>
   `${baseUrl.replace(/\/+$/, "")}/`;
 
 export const getLandingFilmUrl = (
@@ -27,4 +27,4 @@ export const getLandingFilmUrl = (
   kind: LandingFilmKind,
   baseUrl?: string,
   orientation: LandingFilmOrientation = "desktop",
-) => `${getLandingMediaBaseUrl(baseUrl)}gemini-omni-flash/${chapter}/variant-${variant}/${orientation}/${kind}.${kind === "poster" ? "webp" : "mp4"}`;
+) => `${getLandingMediaBaseUrl(baseUrl)}${chapter}/variant-${variant}/${orientation}/${kind === "poster" ? "poster.webp" : "loop.mp4"}`;

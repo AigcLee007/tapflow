@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { LANDING_FILM_BRIEFS, LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
-import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, isImmutablePreconditionFailure, parseLandingFilmCommand, selectApprovedFilms } from "./landing-film-pipeline.js";
+import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, getLandingFilmPublicUrl, isImmutablePreconditionFailure, parseLandingFilmCommand, requireLandingMediaPublicBaseUrl, selectApprovedFilms } from "./landing-film-pipeline.js";
 import { buildLandingFilmRouteQuery, buildVideoDownloadRequest, requireLandingFilmTenantId } from "./generate-landing-films.js";
 
 describe("landing film generation contracts", () => {
@@ -60,9 +60,18 @@ describe("landing film generation contracts", () => {
 
   test("publishes only explicit approved manifest selections", () => {
     const jobs = makeLandingFilmJobs();
-    expect(selectApprovedFilms(jobs, { approved: [{ chapter: "imagination", variant: "variant-a", viewport: "desktop", startSeconds: 0, durationSeconds: 8 }] })).toHaveLength(1);
+    const complete = jobs.map(({ chapter, variant, viewport }) => ({ chapter, variant, viewport, startSeconds: 0, durationSeconds: 8 }));
+    expect(selectApprovedFilms(jobs, { approved: complete })).toHaveLength(24);
     expect(() => selectApprovedFilms(jobs, { approved: [] })).toThrow(/at least one/i);
-    expect(() => selectApprovedFilms(jobs, { approved: [{ chapter: "imagination", variant: "variant-a", viewport: "desktop", startSeconds: 0, durationSeconds: 7 }] })).toThrow(/8 and 12/i);
+    expect(() => selectApprovedFilms(jobs, { approved: complete.slice(1) })).toThrow(/complete coverage/i);
+    expect(() => selectApprovedFilms(jobs, { approved: [...complete.slice(1), complete[1]] })).toThrow(/duplicate/i);
+    expect(() => selectApprovedFilms(jobs, { approved: complete.map((item, index) => index === 0 ? { ...item, durationSeconds: 7 } : item) })).toThrow(/8 and 12/i);
+  });
+
+  test("requires a public root for the canonical prefix and builds public media URLs", () => {
+    expect(() => requireLandingMediaPublicBaseUrl(undefined)).toThrow(/LANDING_MEDIA_PUBLIC_BASE_URL/);
+    const base = requireLandingMediaPublicBaseUrl("https://cdn.example.com/brand-media/tapflow/landing-film-v1/");
+    expect(getLandingFilmPublicUrl(base, "brand-media/tapflow/landing-film-v1/form/variant-a/mobile/loop.mp4")).toBe("https://cdn.example.com/brand-media/tapflow/landing-film-v1/form/variant-a/mobile/loop.mp4");
   });
 
   test("accepts an H.264 silent faststart MP4 and readable WebP poster", () => {

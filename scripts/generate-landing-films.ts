@@ -11,7 +11,7 @@ import { PixelHubVideoAdapter } from "../packages/ai-gateway-core/src/pixelhub-v
 import { pixelHubVideoManifest } from "../packages/ai-gateway-core/src/plugins/manifests/pixelhub-video.js";
 import type { ProviderCallContext, VideoGenerationRequest } from "../packages/ai-gateway-core/src/types.js";
 import { LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
-import { parseLandingFilmCommand, publishApprovedFilm, readApprovalManifest, selectApprovedFilms, selectJobs } from "./landing-film-pipeline.js";
+import { buildLandingFilmObjectKeys, parseLandingFilmCommand, publishApprovedFilm, readApprovalManifest, requireLandingMediaPublicBaseUrl, selectApprovedFilms, selectJobs, verifyPublicLandingFilmObject } from "./landing-film-pipeline.js";
 
 type Route = { auth_tag: Buffer; base_url_override: string | null; connection_base_url: string | null; default_base_url: string | null; encrypted_secret: Buffer; model_key: string | null; nonce: Buffer; provider_key: string; request_config: Record<string, unknown> | null; route_id: string; upstream_model: string | null };
 const root = resolve(".codex-tmp/landing-films/v1");
@@ -50,11 +50,20 @@ async function download(url: string, target: string) {
 async function generate() {
   const command = parseLandingFilmCommand(process.argv.slice(2)); const jobs = selectJobs(makeLandingFilmJobs(), command.include);
   if (command.dryRun) { process.stdout.write(JSON.stringify({ jobCount: jobs.length, routeKey: LANDING_FILM_ROUTE_KEY, status: "dry_run" }) + "\n"); return; }
-  if (command.publish) {
+  if (command.publish || command.verifyPublic) {
     const approval = selectApprovedFilms(makeLandingFilmJobs(), await readApprovalManifest(command.manifestPath));
-    const bucket = process.env.S3_BUCKET; if (!bucket) throw new Error("S3_BUCKET is required for publishing");
-    const client = new S3Client({ region: process.env.S3_REGION, endpoint: process.env.S3_ENDPOINT, forcePathStyle: Boolean(process.env.S3_ENDPOINT), credentials: process.env.S3_ACCESS_KEY_ID ? { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY! } : undefined });
-    for (const item of approval) { const base = resolve(root, item.chapter, item.variant, item.viewport); const keys = await publishApprovedFilm({ approval: item, bucket, client, masterPath: resolve(base, "master.mp4"), outputDirectory: base }); process.stdout.write(JSON.stringify({ keys, status: "published" }) + "\n"); }
+    const publicBaseUrl = requireLandingMediaPublicBaseUrl(process.env.LANDING_MEDIA_PUBLIC_BASE_URL);
+    if (command.publish) {
+      const bucket = process.env.S3_BUCKET; if (!bucket) throw new Error("S3_BUCKET is required for publishing");
+      const client = new S3Client({ region: process.env.S3_REGION, endpoint: process.env.S3_ENDPOINT, forcePathStyle: Boolean(process.env.S3_ENDPOINT), credentials: process.env.S3_ACCESS_KEY_ID ? { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY! } : undefined });
+      for (const item of approval) { const base = resolve(root, item.chapter, item.variant, item.viewport); await publishApprovedFilm({ approval: item, bucket, client, masterPath: resolve(base, "master.mp4"), outputDirectory: base }); }
+    }
+    for (const item of approval) {
+      const keys = buildLandingFilmObjectKeys(item.chapter, item.variant, item.viewport);
+      await verifyPublicLandingFilmObject(publicBaseUrl, keys.video);
+      await verifyPublicLandingFilmObject(publicBaseUrl, keys.poster);
+      process.stdout.write(JSON.stringify({ chapter: item.chapter, status: command.publish ? "published_and_verified" : "verified", variant: item.variant, viewport: item.viewport }) + "\n");
+    }
     return;
   }
   if (!process.env.DATABASE_URL || !process.env.CREDENTIAL_MASTER_KEY) throw new Error("DATABASE_URL and CREDENTIAL_MASTER_KEY are required for live generation");
