@@ -6402,6 +6402,12 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - the landing-film generator now supports a fully qualified `--include=<chapter>/<variant>/<desktop|mobile>` filter, allowing one paid pilot asset to be generated without also creating the alternate viewport output.
 - using the explicitly selected system-scoped `video.pixelhub.gemini-omni-flash` route, generated and downloaded one local 16:9, 8-second, 1080P `imagination/variant-a/desktop` master. The master remains in the ignored local generation directory and has not been transcoded, uploaded, published, or wired into the landing page.
 - validation passed: the landing-film pipeline suite (`14` tests) and a one-job dry run. The downloaded file is 2,081,556 bytes and identifies as an MP4 through its `ftyp` file header. `ffprobe` is still unavailable on this host, so codec, duration, and audio-stream verification remain pending before publication.
+
+## 2026-08-11 - Gemini Pilot Wired Into The Homepage
+
+- pinned the first `imagination` chapter to the reviewed `variant-a` asset, so the homepage no longer randomly selects an ungenerated variant before the full film batch is ready.
+- added the Gemini pilot MP4 and a neutral WebP reduced-motion/loading poster under the default Vite public landing-film path. The generated master remains excluded from `.codex-tmp`; only the runtime delivery copy is versioned with the homepage.
+- validation passed: `FilmStage` regression coverage (`10` tests) and `npm run build`. The production `dist` output contains the expected video (2,081,556 bytes) and poster (9,338 bytes). Full CDN publication and the remaining chapter/mobile assets are still pending the approved batch pipeline.
 ## 2026-08-11 - Asset Library Media Pagination
 
 - corrected the asset library request flow so image, video, and audio tabs send their media `kind` to `/api/v2/assets`; list totals and page contents now describe the same media result set.

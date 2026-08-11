@@ -87,9 +87,11 @@ describe("FilmStage", () => {
 
   test("uses the desktop media paths for a desktop viewport", () => {
     mockMotion(false);
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     const video = screen.getAllByTestId("landing-film-video")[0];
     expect(video.getAttribute("aria-hidden")).toBe("true");
+    expect(video.getAttribute("src")).toContain("/imagination/variant-a/desktop/loop.mp4");
     expect(video.getAttribute("src")).toContain("/desktop/loop.mp4");
     expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/desktop/poster.webp");
   });

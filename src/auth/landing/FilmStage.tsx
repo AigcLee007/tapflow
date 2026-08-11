@@ -67,12 +67,13 @@ export function FilmStage({ dialogOpen = false, onEnterWorkspace, onOpenAuth }: 
         const distance = Math.abs(index - stage.activeIndex) === 0 ? "active" : Math.abs(index - stage.activeIndex) === 1 ? "adjacent" : "distant";
         const policy = getFilmPlaybackPolicy(stage.signals, distance);
         const orientation = stage.mobile ? "mobile" : "desktop";
-        const poster = getLandingFilmUrl(chapter.id, stage.variant, "poster", undefined, orientation);
+        const variant = chapter.id === "imagination" ? "a" : stage.variant;
+        const poster = getLandingFilmUrl(chapter.id, variant, "poster", undefined, orientation);
         const failed = failedVideos.has(index);
         const blocked = blockedVideos.has(index);
         return <section aria-label={chapter.label} className="cinematic-auth-home__chapter" data-active={index === stage.activeIndex ? "true" : "false"} key={chapter.id} ref={(node) => { stage.sectionsRef.current[index] = node; }} role="region">
           <img alt="" className="cinematic-auth-home__poster" data-testid="landing-film-poster" src={poster} />
-          {policy.renderVideo && !failed ? <video aria-hidden="true" className="cinematic-auth-home__video" data-testid="landing-film-video" loop muted onError={() => { setFailedVideos((current) => new Set(current).add(index)); if (index === stage.activeIndex) stage.setPaused(true); }} playsInline poster={poster} preload={policy.preload} ref={(node) => { videos.current[index] = node; }} src={getLandingFilmUrl(chapter.id, stage.variant, "video", undefined, orientation)} /> : null}
+          {policy.renderVideo && !failed ? <video aria-hidden="true" className="cinematic-auth-home__video" data-testid="landing-film-video" loop muted onError={() => { setFailedVideos((current) => new Set(current).add(index)); if (index === stage.activeIndex) stage.setPaused(true); }} playsInline poster={poster} preload={policy.preload} ref={(node) => { videos.current[index] = node; }} src={getLandingFilmUrl(chapter.id, variant, "video", undefined, orientation)} /> : null}
           <div className="cinematic-auth-home__shade" />
           <div className="cinematic-auth-home__content"><p>{String(index + 1).padStart(2, "0")}</p><h1>{chapter.title}</h1><span>{chapter.description}</span>{index === stage.chapters.length - 1 ? <button className="cinematic-auth-home__workspace" type="button" onClick={onEnterWorkspace}>进入工作区</button> : null}</div>
           {index === stage.activeIndex && policy.renderVideo && !failed ? <button aria-label={blocked ? "重试播放背景视频" : stage.paused ? "播放背景视频" : "暂停背景视频"} className="cinematic-auth-home__playback" type="button" onClick={() => handlePlayback(index)}>{blocked || stage.paused ? <Play aria-hidden="true" size={16} /> : <Pause aria-hidden="true" size={16} />}</button> : null}
