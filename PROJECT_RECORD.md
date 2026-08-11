@@ -6433,3 +6433,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - empty local and connected text remains blocked before workflow submission; the worker regression confirms that upstream-only text becomes the provider prompt exactly once.
 - validation passed: video capability, composer, FlowNodes integration, input projection, and worker runtime regression suites; `npm run build` also passed. Local authenticated canvas end-to-end verification was not run because no frontend (`5188`) or API (`3366`) service was listening in this environment.
 - the root `npm test -- --exclude ".worktrees/**" --exclude ".codex-tmp/**" --exclude "output/**"` exited `1` after 252 seconds in unrelated suites: `packages/ai-gateway-core/test/runtime.test.ts` multipart image-edit expectations and existing `src/flowCanvas/video/VideoReferenceStrip.test.tsx` input-label expectations. These files are outside this branch's diff; the focused video prompt regressions remain passing.
+
+## 2026-08-11 - Video Static Text Runtime Prompt Recovery
+
+- fixed the worker upstream-output merge so an empty prior runtime output no longer suppresses the connected text node's persisted static text. Video requests now receive that text as their prompt when the video's local editor is empty.
+- non-empty runtime output remains authoritative, while static node configuration fills only missing fields. Whitespace-only static text remains invalid and does not create a prompt.
+- validation passed: worker runtime suite (`31` passed, `17` skipped) and `npm run build`.

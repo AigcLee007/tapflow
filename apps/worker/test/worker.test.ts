@@ -641,6 +641,54 @@ describe("worker skeleton", () => {
     ]);
   });
 
+  test("keeps static text available when its prior runtime output is empty", () => {
+    const getDependencyOutputsByNodeId = (__workerTestUtils as {
+      getDependencyOutputsByNodeId: (node: {
+        config: Record<string, unknown>;
+        dependencies: string[];
+      }, nodeRuns: Array<{ node_id: string; output_json: Record<string, unknown> | null }>, runtimeFlow: {
+        compiled_graph_json: { nodes: Array<{ config: Record<string, unknown>; id: string }> };
+      }) => ReadonlyMap<string, Record<string, unknown> | null>;
+    }).getDependencyOutputsByNodeId;
+
+    const outputsByNodeId = getDependencyOutputsByNodeId({
+      config: { inputOrder: ["upstream:copy"] },
+      dependencies: ["copy"],
+    }, [
+      { node_id: "copy", output_json: {} },
+    ], {
+      compiled_graph_json: {
+        nodes: [{ config: { text: "A kitten stretches in a sunlit room." }, id: "copy" }],
+      },
+    });
+
+    expect(outputsByNodeId.get("copy")).toEqual({ text: "A kitten stretches in a sunlit room." });
+  });
+
+  test("does not treat whitespace-only static text as an upstream prompt", () => {
+    const getDependencyOutputsByNodeId = (__workerTestUtils as {
+      getDependencyOutputsByNodeId: (node: {
+        config: Record<string, unknown>;
+        dependencies: string[];
+      }, nodeRuns: Array<{ node_id: string; output_json: Record<string, unknown> | null }>, runtimeFlow: {
+        compiled_graph_json: { nodes: Array<{ config: Record<string, unknown>; id: string }> };
+      }) => ReadonlyMap<string, Record<string, unknown> | null>;
+    }).getDependencyOutputsByNodeId;
+
+    const outputsByNodeId = getDependencyOutputsByNodeId({
+      config: { inputOrder: ["upstream:copy"] },
+      dependencies: ["copy"],
+    }, [
+      { node_id: "copy", output_json: {} },
+    ], {
+      compiled_graph_json: {
+        nodes: [{ config: { text: "   " }, id: "copy" }],
+      },
+    });
+
+    expect(outputsByNodeId.get("copy")).toEqual({});
+  });
+
   test("preserves ordered dependency source identity for video references", () => {
     const getDependencyOutputsByNodeId = (__workerTestUtils as {
       getDependencyOutputsByNodeId?: (node: {

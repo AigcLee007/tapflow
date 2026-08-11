@@ -518,11 +518,14 @@ function getDependencyOutputsByNodeIdFromRuntimeGraph(
 ): ReadonlyMap<string, Record<string, unknown> | null> {
   return new Map(getOrderedDependencyIds(node).map((dependencyId) => {
     const dependencyRun = nodeRuns.find((row) => row.node_id === dependencyId);
-    if (dependencyRun?.output_json) {
-      return [dependencyId, dependencyRun.output_json];
-    }
     const dependencyNode = runtimeFlow.compiled_graph_json.nodes.find((candidate) => candidate.id === dependencyId);
-    return [dependencyId, buildOutputFromNodeConfig(dependencyNode)];
+    const staticOutput = buildOutputFromNodeConfig(dependencyNode);
+    if (dependencyRun?.output_json) {
+      return [dependencyId, staticOutput
+        ? { ...staticOutput, ...dependencyRun.output_json }
+        : dependencyRun.output_json];
+    }
+    return [dependencyId, staticOutput];
   }));
 }
 
