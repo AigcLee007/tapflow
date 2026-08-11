@@ -771,6 +771,35 @@ describe("worker skeleton", () => {
     ]);
   });
 
+  test("video.generate uses upstream text when the local prompt is empty", () => {
+    const request = (__workerTestUtils as {
+      buildVideoRequest: (
+        upstreamOutputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        config: Record<string, unknown>,
+      ) => { prompt: string };
+    }).buildVideoRequest(new Map([
+      ["copy", { text: "The cat stretches and jumps down from the window." }],
+    ]), {
+      generationPrompt: "",
+      params: {
+        videoGeneration: {
+          aspectRatio: "16:9",
+          cameraMotionId: null,
+          count: 1,
+          durationSeconds: 4,
+          generateAudio: false,
+          mode: "text_to_video",
+          referenceInputs: [],
+          resolution: "720P",
+          schemaVersion: 2,
+          visualTone: null,
+        },
+      },
+    });
+
+    expect(request.prompt).toBe("The cat stretches and jumps down from the window.");
+  });
+
   test("video.generate keeps local image and video mentions with upstream text and media order", () => {
     const request = (__workerTestUtils as {
       buildVideoRequest: (

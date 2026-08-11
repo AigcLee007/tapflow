@@ -6426,3 +6426,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - translated all user-facing authentication UI to Chinese across the login, registration, email-verification, and password-recovery flows, including dialog titles, labels, actions, progress states, and local fallback messages.
 - retained the TapFlow brand name, email addresses, auth routes, client calls, and server-provided error messages unchanged.
+
+## 2026-08-11 - Video Upstream Text Preflight
+
+- video generation preflight now accepts a non-empty connected text node as a valid prompt source, including mixed text-and-image input flows, without copying text into the video's local prompt field.
+- empty local and connected text remains blocked before workflow submission; the worker regression confirms that upstream-only text becomes the provider prompt exactly once.
+- validation passed: video capability, composer, FlowNodes integration, input projection, and worker runtime regression suites; `npm run build` also passed. Local authenticated canvas end-to-end verification was not run because no frontend (`5188`) or API (`3366`) service was listening in this environment.
