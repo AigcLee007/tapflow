@@ -16,9 +16,9 @@ function getAuthMode(pathname: string): AuthMode {
 }
 
 function getDialogTitle(mode: AuthMode): string {
-  if (mode === "register") return "Create account";
-  if (mode === "forgot-password") return "Reset password";
-  return "Welcome back";
+  if (mode === "register") return "创建账号";
+  if (mode === "forgot-password") return "重置密码";
+  return "欢迎回来";
 }
 
 function getDialogContent(mode: AuthMode, onModeChange: (mode: AuthMode) => void, onPendingChange: (pending: boolean) => void) {

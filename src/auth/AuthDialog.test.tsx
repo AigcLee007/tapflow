@@ -41,7 +41,7 @@ describe("AuthDialog", () => {
     const { onClose } = renderDialog({ pending: true });
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.mouseDown(screen.getByTestId("auth-dialog-backdrop"));
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -54,9 +54,9 @@ describe("AuthDialog", () => {
     document.body.style.overflow = "auto";
     render(<Harness />);
     expect(document.body.style.overflow).toBe("hidden");
-    fireEvent.click(screen.getByRole("dialog", { name: "First" }).querySelector("button[aria-label='Close dialog']")!);
+    fireEvent.click(screen.getByRole("dialog", { name: "First" }).querySelector("button[aria-label='关闭弹窗']")!);
     expect(document.body.style.overflow).toBe("hidden");
-    fireEvent.click(screen.getByRole("dialog", { name: "Second" }).querySelector("button[aria-label='Close dialog']")!);
+    fireEvent.click(screen.getByRole("dialog", { name: "Second" }).querySelector("button[aria-label='关闭弹窗']")!);
     expect(document.body.style.overflow).toBe("auto");
   });
 });

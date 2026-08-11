@@ -6421,3 +6421,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added server-backed numbered pagination at 30 assets per page, with compact previous/next controls, boundary disabled states, current-page semantics, and bounded page-number rendering for large libraries.
 - changing media tab, search query, folder, or favorite state now returns to page 1; stale page results remain protected by the existing request sequence guard and cache entries are scoped by media tab and page.
 - validation passed: `npm test -- src/assets/useAssetLibrary.test.tsx src/assets/AssetLibraryPage.test.tsx` (26 tests) and `npm run build`. Full `npm test` completed with two unrelated failures in `src/flowCanvas/video/VideoReferenceStrip.test.tsx`: its two Veo frame-removal tests expect numbered input labels while the rendered controls currently expose `undefined`; this pagination branch does not modify that component or test.
+
+## 2026-08-11 - Chinese Auth Experience
+
+- translated all user-facing authentication UI to Chinese across the login, registration, email-verification, and password-recovery flows, including dialog titles, labels, actions, progress states, and local fallback messages.
+- retained the TapFlow brand name, email addresses, auth routes, client calls, and server-provided error messages unchanged.
