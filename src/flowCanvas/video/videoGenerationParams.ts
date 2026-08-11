@@ -36,7 +36,7 @@ const VIDEO_ASPECT_RATIOS: readonly VideoAspectRatio[] = [
   "21:9",
 ];
 
-const VIDEO_RESOLUTIONS: readonly VideoResolution[] = ["480P", "720P", "1080P", "4K"];
+const VIDEO_RESOLUTIONS: readonly VideoResolution[] = ["480P", "720P", "1080P", "2K", "4K"];
 const VIDEO_COUNTS: readonly VideoCount[] = [1, 2, 4];
 const VIDEO_REFERENCE_ROLES: readonly VideoReferenceRole[] = [
   "subject",
@@ -206,6 +206,7 @@ function normalizeResolution(
 
   const quality = readString(source.quality).toLowerCase();
   if (quality.includes("4k")) return "4K";
+  if (quality.includes("2k")) return "2K";
   if (quality.includes("1080")) return "1080P";
   if (quality.includes("480")) return "480P";
   if (source.hd === true) return "1080P";

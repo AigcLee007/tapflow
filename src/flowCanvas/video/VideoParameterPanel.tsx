@@ -22,7 +22,7 @@ type VideoParameterPanelProps = {
   value: VideoGenerationParamsV1;
 };
 
-const RESOLUTIONS: readonly VideoResolution[] = ["480P", "720P", "1080P", "4K"];
+const RESOLUTIONS: readonly VideoResolution[] = ["480P", "720P", "1080P", "2K", "4K"];
 const COUNTS: readonly VideoCount[] = [1, 2, 4];
 const UNSUPPORTED_BY_MODEL = "当前模型不支持此选项";
 const UNSUPPORTED_AUDIO = "当前模型不支持生成音频";
@@ -64,8 +64,11 @@ export function VideoParameterPanel({ capabilities, onChange, pricing = null, va
     applyDurationChange(Number.isFinite(parsed) ? parsed : value.durationSeconds);
   };
 
-  const resolutionOptions = RESOLUTIONS.map((resolution) => ({
-    disabled: routeCapabilitiesConfirmed && !effectiveCapabilities.resolutions.includes(resolution),
+  const availableResolutions = routeCapabilitiesConfirmed
+    ? effectiveCapabilities.resolutions
+    : RESOLUTIONS;
+  const resolutionOptions = availableResolutions.map((resolution) => ({
+    disabled: false,
     disabledReason: UNSUPPORTED_BY_MODEL,
     label: resolution,
     value: resolution,

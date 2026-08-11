@@ -475,7 +475,7 @@ describe("VideoNodeComposer", () => {
     const onUpdate = vi.fn();
     const model: VideoModelOption = {
       blocker: null,
-      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, maxDurationSeconds: 4 }),
+      capabilities: mergeVideoCapabilities({ confirmedByRoute: true, defaults: { resolution: "2K" }, maxDurationSeconds: 4, resolutions: ["2K"] }),
       description: "Narrow model",
       estimatedCredits: 1,
       id: "narrow-model",
@@ -486,16 +486,17 @@ describe("VideoNodeComposer", () => {
     const data = {
       generationPrompt: "",
       modelId: model.id,
-      params: { videoGeneration: { ...createDefaultVideoGenerationParams(), durationSeconds: 8 } },
+      params: { videoGeneration: { ...createDefaultVideoGenerationParams(), durationSeconds: 8, resolution: "4K" } },
     } as any;
     const { rerender } = render(<VideoNodeComposer catalog={catalog} data={data} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);
 
     expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status").textContent).toContain("当前模型仅支持 2K，已自动调整");
     const correctedData = {
       ...data,
       params: {
         ...data.params,
-        videoGeneration: { ...data.params.videoGeneration, durationSeconds: 4 },
+        videoGeneration: { ...data.params.videoGeneration, durationSeconds: 4, resolution: "2K" },
       },
     };
     rerender(<VideoNodeComposer catalog={catalog} data={correctedData} generating={false} nodeId="video-1" onGenerate={vi.fn()} onUpdate={onUpdate} selected />);

@@ -31,7 +31,7 @@ describe("video generation capabilities", () => {
       maxDurationSeconds: 15,
       maxCount: 4,
       minDurationSeconds: 4,
-      resolutions: ["480P", "720P", "1080P", "4K"],
+      resolutions: ["480P", "720P", "1080P", "2K", "4K"],
       supportedModes: ["text_to_video", "all_reference", "image_to_video", "first_last_frame", "image_reference"],
       supportsAudio: true,
     });

@@ -3,6 +3,12 @@
 Last updated: 2026-08-10
 Maintainers: project team + Codex sessions
 
+## 2026-08-11 - H3video-2k Resolution Capability Alignment
+
+- added `2K` to the canonical video-resolution type, capability parser, and legacy parameter normalization so route-declared `2K` values no longer fall back to the generic resolution list.
+- confirmed video routes now render only their declared resolution choices. H3video-2k displays only `2K`; stale H3 drafts using `480P`, `720P`, `1080P`, or `4K` are automatically corrected to `2K` by the existing route-capability correction flow.
+- focused parameter, capability, normalization, and Video Node Composer regressions passed with H3-specific `2K` coverage.
+
 ## 2026-08-10 - PixelleLabs H3video-2k Provider
 
 - added the independent `pixellelabs.h3video` AI Gateway plugin and `video.pixellelabs.h3video-2k` route for `H3video-2k` at `https://api.pixellelabs.com`.

@@ -13,7 +13,7 @@ import { normalizeReferenceRolesForMode, validateVideoReferenceInputs } from "./
 
 const MODES: VideoGenerationMode[] = ["text_to_video", "all_reference", "image_to_video", "first_last_frame", "image_reference"];
 const RATIOS: VideoAspectRatio[] = ["auto", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
-const RESOLUTIONS: VideoResolution[] = ["480P", "720P", "1080P", "4K"];
+const RESOLUTIONS: VideoResolution[] = ["480P", "720P", "1080P", "2K", "4K"];
 const COUNTS = [1, 2, 4] as const;
 
 export function createSafeDefaultVideoCapabilities(): VideoGenerationCapabilities {

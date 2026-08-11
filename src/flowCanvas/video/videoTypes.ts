@@ -42,7 +42,7 @@ export type VideoModeAvailabilityResult = {
   recommendedMode: VideoGenerationMode;
 };
 
-export type VideoResolution = "480P" | "720P" | "1080P" | "4K";
+export type VideoResolution = "480P" | "720P" | "1080P" | "2K" | "4K";
 
 export type VideoAspectRatio =
   | "auto"

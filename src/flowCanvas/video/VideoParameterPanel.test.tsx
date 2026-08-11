@@ -53,7 +53,7 @@ describe("VideoParameterPanel", () => {
       expect(screen.getAllByRole("radio", { name: ratio })).toHaveLength(1);
     }
     expect(screen.getByRole("radio", { name: "16:9" }).className).toContain("h-[70px]");
-    for (const resolution of ["480P", "720P", "1080P", "4K"]) {
+    for (const resolution of ["480P", "720P", "1080P", "2K", "4K"]) {
       expect(screen.getAllByRole("radio", { name: resolution })).toHaveLength(1);
     }
     expect(screen.getByRole("radio", { name: "720P" }).className).toContain("h-9");
@@ -72,7 +72,29 @@ describe("VideoParameterPanel", () => {
     expect(screen.queryByText(/^最长 /)).toBeNull();
   });
 
-  test("keeps unsupported resolution and count visible but disabled with a Chinese reason", () => {
+  test("renders only the confirmed route resolutions and keeps H3 at 2K", () => {
+    const capabilities = mergeVideoCapabilities({
+      confirmedByRoute: true,
+      defaults: { durationSeconds: 15, resolution: "2K" },
+      resolutions: ["2K"],
+      supportedDurations: [15],
+    });
+    render(
+      <VideoParameterPanel
+        capabilities={capabilities}
+        onChange={vi.fn()}
+        value={{ ...createDefaultVideoGenerationParams(), resolution: "4K", durationSeconds: 15 }}
+      />,
+    );
+
+    expect(screen.getByRole("radio", { name: "2K" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "480P" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "720P" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "1080P" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "4K" })).toBeNull();
+  });
+
+  test("shows only route-supported resolutions while keeping unsupported counts disabled", () => {
     const capabilities = createSafeDefaultVideoCapabilities();
     capabilities.confirmedByRoute = true;
     capabilities.resolutions = ["720P"];
@@ -87,11 +109,8 @@ describe("VideoParameterPanel", () => {
       />,
     );
 
-    const unsupported4K = screen.getByRole("radio", { name: /^4K/ });
-    expect(unsupported4K.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.mouseEnter(unsupported4K);
-    expect(screen.getByRole("note").textContent).toContain("当前模型不支持");
-    fireEvent.click(unsupported4K);
+    expect(screen.getByRole("radio", { name: "720P" })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: /^4K/ })).toBeNull();
 
     const unsupportedCount = screen.getByRole("radio", { name: /^4 个/ });
     expect(unsupportedCount.getAttribute("aria-disabled")).toBe("true");

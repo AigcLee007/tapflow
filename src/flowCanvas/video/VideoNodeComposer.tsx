@@ -59,6 +59,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [capabilityNotice, setCapabilityNotice] = useState<string | null>(null);
   const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [manifest, setManifest] = useState<VideoCameraManifest>({ version: 2, attribution: "DramaClaw commercial license", items: [] });
   const cameraButtonRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +111,9 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     const signature = JSON.stringify({ capabilities, modelId: data.modelId, params });
     if (appliedCorrectionRef.current === signature) return;
     appliedCorrectionRef.current = signature;
+    if (capabilityCorrection.diagnostics.some((diagnostic) => diagnostic.field === "resolution")) {
+      setCapabilityNotice(`当前模型仅支持 ${capabilityCorrection.params.resolution}，已自动调整。`);
+    }
     emitVideoComposerDiagnostic("capability_corrected", { errorCode: "CAPABILITY_CORRECTED", modelId: data.modelId, motionId: params.cameraMotionId });
     onUpdate({ params: { ...(data.params ?? {}), videoGeneration: capabilityCorrection.params } });
   }, [capabilities, capabilityCorrection, data.modelId, data.params, onUpdate, params]);
@@ -136,6 +140,12 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
       },
     });
   }, [data.params, effectiveCapabilities.referenceSemantics, modeInputs, modeResolution.incompatible, modeResolution.mode, modeResolution.switched, onUpdate, params]);
+
+  useEffect(() => {
+    if (!capabilityNotice) return;
+    const timeout = window.setTimeout(() => setCapabilityNotice(null), 4_000);
+    return () => window.clearTimeout(timeout);
+  }, [capabilityNotice]);
 
   useEffect(() => {
     if (!modeNotice) return;
@@ -222,6 +232,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
       <VideoReferenceStrip allowMediaAdd={allowMediaAdd} capabilities={capabilities ?? createSafeDefaultVideoCapabilities()} currentNodeId={nodeId} disabled={generating} inputItems={inputItems} onChange={(next) => setParams({ ...params, ...next })} onConnectCanvasReference={onConnectCanvasReference} onFocusInput={onFocusInput} onRemoveInput={onRemoveInput} onRemoveAllText={onRemoveAllText} onReorderInputs={onReorderInputs} onRetryInputPreview={onRetryInputPreview} onUploadReference={onUploadReference} value={params} />
     </div>
 
+    {capabilityNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{capabilityNotice}</div> : null}
     {modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{modeNotice}</div> : null}
     {!selectedModeEnabled && !modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{VIDEO_UI_COPY.unsupportedByCurrentModel}</div> : null}
     {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}
