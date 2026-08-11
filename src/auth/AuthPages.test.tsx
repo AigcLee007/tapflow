@@ -221,6 +221,14 @@ describe("AuthExperiencePage", () => {
     await act(async () => { resolveRegister?.(session); });
   });
 
+  test("moves focus to the new panel content when the dialog switches to registration", async () => {
+    renderAuth(<AuthExperienceRouteHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Open sign in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    const displayName = await screen.findByLabelText("Display name");
+    expect(document.activeElement).toBe(displayName);
+  });
+
   test("uses the film CTA to open auth for anonymous users and workspace for authenticated users", () => {
     const { rerender } = renderAuth(<AuthExperiencePage />);
     fireEvent.click(screen.getByRole("button", { name: "Enter workspace" }));

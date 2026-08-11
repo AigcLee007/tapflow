@@ -44,9 +44,9 @@ import {
   WORKSPACE_ROUTE,
 } from "./routes";
 
-function getCurrentPath() {
-  if (typeof window === "undefined") return ROOT_ROUTE;
-  return window.location.pathname;
+function getCurrentLocation() {
+  if (typeof window === "undefined") return { hash: "", pathname: ROOT_ROUTE, search: "" };
+  return { hash: window.location.hash, pathname: window.location.pathname, search: window.location.search };
 }
 
 function navigate(path: string, replace = false) {
@@ -59,16 +59,16 @@ function navigate(path: string, replace = false) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-function usePathname() {
-  const [pathname, setPathname] = useState(getCurrentPath);
+function useCurrentLocation() {
+  const [location, setLocation] = useState(getCurrentLocation);
 
   useEffect(() => {
-    const handleChange = () => setPathname(getCurrentPath());
+    const handleChange = () => setLocation(getCurrentLocation());
     window.addEventListener("popstate", handleChange);
     return () => window.removeEventListener("popstate", handleChange);
   }, []);
 
-  return pathname;
+  return location;
 }
 
 function Redirect({ to }: { to: string }) {
@@ -170,7 +170,7 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
 }
 
 export function AppRouter() {
-  const pathname = usePathname();
+  const { pathname } = useCurrentLocation();
 
   if (pathname === LOGIN_ROUTE || pathname === REGISTER_ROUTE || pathname === FORGOT_PASSWORD_ROUTE) {
     return (

@@ -68,7 +68,7 @@ export function AuthExperiencePage() {
   return (
     <>
       <FilmStage dialogOpen={dialogOpen} onEnterWorkspace={handleEnterWorkspace} onOpenAuth={() => setOpenedFromStage(true)} />
-      <AuthDialog onClose={handleClose} open={dialogOpen} pending={pending} title={getDialogTitle(mode)}>
+      <AuthDialog focusKey={mode} onClose={handleClose} open={dialogOpen} pending={pending} title={getDialogTitle(mode)}>
         {getDialogContent(mode, handleModeChange, setPending)}
       </AuthDialog>
     </>
