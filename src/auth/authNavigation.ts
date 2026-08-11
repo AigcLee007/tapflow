@@ -6,7 +6,9 @@ const AUTH_LOOP_PATHS = new Set([LOGIN_ROUTE, REGISTER_ROUTE, FORGOT_PASSWORD_RO
 
 export function getSafeReturnTo(search = typeof window === "undefined" ? "" : window.location.search): string {
   const raw = new URLSearchParams(search).get("returnTo");
-  if (!raw || typeof window === "undefined") return WORKSPACE_ROUTE;
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || typeof window === "undefined") {
+    return WORKSPACE_ROUTE;
+  }
 
   try {
     const parsed = new URL(raw, window.location.origin);

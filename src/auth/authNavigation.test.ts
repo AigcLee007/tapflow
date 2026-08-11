@@ -10,7 +10,7 @@ describe("auth navigation", () => {
     expect(getSafeReturnTo()).toBe("/projects/project-1?tab=canvas");
   });
 
-  test.each(["//evil.example", "https://evil.example/workspace", "/login", "/register?x=1", "/forgot-password"]) (
+  test.each(["//evil.example", "https://evil.example/workspace", "projects/project-1", "/login", "/register?x=1", "/forgot-password"]) (
     "rejects unsafe or looping return target %s",
     (returnTo) => {
       window.history.replaceState(null, "", `/login?returnTo=${encodeURIComponent(returnTo)}`);

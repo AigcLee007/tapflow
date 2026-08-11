@@ -91,4 +91,35 @@ describe("embeddable auth panels", () => {
     renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
     expect(screen.getByText("Password reset. You can sign in now.")).toBeTruthy();
   });
+
+  test("uses the password reset cooldown before enabling resend", async () => {
+    vi.useFakeTimers();
+    requestPasswordReset.mockResolvedValue({ challengeToken: "reset-token", expiresInSeconds: 600, message: "Sent", resendAvailableInSeconds: 2 });
+    renderAuth(<ForgotPasswordPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "creator@example.com" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send verification code" }));
+      await Promise.resolve();
+    });
+    const resend = screen.getByRole("button", { name: "Resend code (2s)" });
+    expect((resend as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect((screen.getByRole("button", { name: "Resend code" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("disables reset resend while pending and recovers after a failure", async () => {
+    requestPasswordReset.mockResolvedValue({ challengeToken: "reset-token", expiresInSeconds: 600, message: "Sent", resendAvailableInSeconds: 0 });
+    let rejectResend: ((error: Error) => void) | undefined;
+    resendPasswordReset.mockImplementation(() => new Promise((_resolve, reject) => { rejectResend = reject; }));
+    renderAuth(<ForgotPasswordPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "creator@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send verification code" }));
+    const resend = await screen.findByRole("button", { name: "Resend code" });
+    fireEvent.click(resend);
+    await waitFor(() => expect(resendPasswordReset).toHaveBeenCalledWith({ challengeToken: "reset-token" }));
+    expect((resend as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { rejectResend?.(new Error("Resend failed")); });
+    expect(await screen.findByText("Resend failed")).toBeTruthy();
+    expect((resend as HTMLButtonElement).disabled).toBe(false);
+  });
 });
