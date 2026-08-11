@@ -2,10 +2,11 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import http, { type Server } from "node:http";
-import net from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
+
+import { createApp } from "./serve-dist.cjs";
 
 export const CINEMATIC_AUTH_HOME_OUTPUT_DIR = path.join("output", "playwright", "cinematic-auth-home");
 export const CINEMATIC_AUTH_HOME_VIEWPORTS = [
@@ -124,8 +125,6 @@ function run(command: string, args: string[], timeoutMs = 180_000): Promise<stri
   });
 }
 
-async function freePort() { return await new Promise<number>((resolve, reject) => { const server = net.createServer(); server.on("error", reject); server.listen(0, "127.0.0.1", () => { const address = server.address() as net.AddressInfo; server.close(() => resolve(address.port)); }); }); }
-
 function fixtureServer(): Server {
   const video = path.resolve(process.cwd(), "public", "video-camera-library", "v2", "fixed.mp4");
   const poster = path.resolve(process.cwd(), "public", "video-camera-library", "v1", "fixed.webp");
@@ -138,19 +137,6 @@ function fixtureServer(): Server {
   });
 }
 
-type ManagedProcess = { child: ChildProcessWithoutNullStreams; stderr: () => string; stdout: () => string };
-
-function startBuiltFrontend(port: number): ManagedProcess {
-  const entry = invocation(process.platform === "win32" ? "node.exe" : "node", ["scripts/serve-dist.cjs", String(port)]);
-  const child = spawn(entry.command, entry.args, { cwd: process.cwd(), detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-  let stdout = ""; let stderr = "";
-  child.stdout.on("data", (chunk) => { stdout += String(chunk); });
-  child.stderr.on("data", (chunk) => { stderr += String(chunk); });
-  return { child, stderr: () => stderr, stdout: () => stdout };
-}
-
-function processDiagnostics(process: ManagedProcess) { return `stdout:\n${process.stdout()}\nstderr:\n${process.stderr()}`; }
-async function waitFor(url: string, process: ManagedProcess, timeoutMs = 15_000) { const deadline = Date.now() + timeoutMs; while (Date.now() < deadline) { if (process.child.exitCode !== null) throw new Error(`Frontend exited before readiness (${process.child.exitCode}).\n${processDiagnostics(process)}`); try { if ((await fetch(url)).ok) return; } catch { /* poll */ } await new Promise((resolve) => setTimeout(resolve, 250)); } throw new Error(`Timed out waiting for ${url}.\n${processDiagnostics(process)}`); }
 async function closeServer(server: Server) { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
 async function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs = 10_000) {
   if (child.exitCode !== null) return;
@@ -171,11 +157,6 @@ async function terminateProcessTree(child: ChildProcessWithoutNullStreams) {
   }
   await waitForChildExit(child);
 }
-async function stop(processHandle: ManagedProcess) {
-  const child = processHandle.child;
-  if (!child.pid || child.exitCode !== null) { await waitForChildExit(child).catch(() => undefined); return; }
-  await terminateProcessTree(child).catch(async () => { child.kill(); await waitForChildExit(child, 5_000); });
-}
 async function listenFixture(fixture: Server) {
   return await new Promise<number>((resolve, reject) => {
     fixture.once("error", reject);
@@ -187,15 +168,17 @@ async function listenFixture(fixture: Server) {
     });
   });
 }
-async function startBuiltFrontendWithRetry() {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const port = await freePort();
-    const frontend = startBuiltFrontend(port);
-    try { await waitFor(`http://127.0.0.1:${port}/login`, frontend); return { frontend, port }; }
-    catch (error) { lastError = error; await stop(frontend).catch(() => undefined); }
-  }
-  throw new Error(`Could not start built frontend after 3 attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+async function startBuiltFrontend() {
+  const server = createApp().listen(0, "127.0.0.1") as Server;
+  return await new Promise<{ server: Server; url: string }>((resolve, reject) => {
+    server.once("error", reject);
+    server.once("listening", () => {
+      server.off("error", reject);
+      const address = server.address();
+      if (!address || typeof address === "string") { reject(new Error("Built frontend did not expose a TCP port.")); return; }
+      resolve({ server, url: `http://127.0.0.1:${address.port}` });
+    });
+  });
 }
 
 async function assertRenderedPrimaryMedia(screenshotPath: string) {
@@ -220,15 +203,15 @@ async function main() {
   const fixture = fixtureServer();
   const session = `cinematic-auth-home-${Date.now()}`;
   const previousMediaBaseUrl = process.env.VITE_LANDING_MEDIA_BASE_URL;
-  let frontend: ManagedProcess | null = null;
+  let frontend: Server | null = null;
   try {
     const fixturePort = await listenFixture(fixture);
     const baseUrl = `http://127.0.0.1:${fixturePort}/landing-films/v1`;
     await mkdir(CINEMATIC_AUTH_HOME_OUTPUT_DIR, { recursive: true });
     process.env.VITE_LANDING_MEDIA_BASE_URL = baseUrl;
     await run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"], 300_000);
-    const started = await startBuiltFrontendWithRetry(); frontend = started.frontend;
-    const pageUrl = `http://127.0.0.1:${started.port}/login`;
+    const started = await startBuiltFrontend(); frontend = started.server;
+    const pageUrl = `${started.url}/login`;
     const npx = process.platform === "win32" ? "npx.cmd" : "npx";
     await run(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "open", pageUrl], 90_000);
     const results: unknown[] = [];
@@ -246,7 +229,7 @@ async function main() {
   } finally {
     const npx = process.platform === "win32" ? "npx.cmd" : "npx";
     await run(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "close"], 30_000).catch(() => undefined);
-    if (frontend) await stop(frontend);
+    if (frontend) await closeServer(frontend).catch(() => undefined);
     await closeServer(fixture).catch(() => undefined);
     if (previousMediaBaseUrl === undefined) delete process.env.VITE_LANDING_MEDIA_BASE_URL;
     else process.env.VITE_LANDING_MEDIA_BASE_URL = previousMediaBaseUrl;
