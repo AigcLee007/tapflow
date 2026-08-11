@@ -12,8 +12,8 @@ class IntersectionObserverMock {
   constructor(callback: IntersectionObserverCallback) { IntersectionObserverMock.callback = callback; }
 }
 
-function mockMotion(reduced: boolean) {
-  Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({ matches: reduced, addEventListener: vi.fn(), removeEventListener: vi.fn() }) });
+function mockMotion(reduced: boolean, mobile = false) {
+  Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn((query: string) => ({ matches: query.includes("max-width") ? mobile : reduced, addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
 }
 
 const mockPlay = vi.fn<() => Promise<void>>();
@@ -85,12 +85,39 @@ describe("FilmStage", () => {
     expect(screen.getByRole("button", { name: "想象" }).getAttribute("aria-current")).toBe("true");
   });
 
-  test("keeps background video decorative and supplies mobile media sources", () => {
+  test("uses the desktop media paths for a desktop viewport", () => {
     mockMotion(false);
     render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     const video = screen.getAllByTestId("landing-film-video")[0];
     expect(video.getAttribute("aria-hidden")).toBe("true");
-    expect(video.querySelector('source[media="(max-width: 640px)"]')?.getAttribute("src")).toContain("/mobile/video.mp4");
+    expect(video.getAttribute("src")).toContain("/desktop/video.mp4");
+    expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/desktop/poster.webp");
+  });
+
+  test("uses mobile media paths for a mobile viewport", () => {
+    mockMotion(false, true);
+    render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
+    expect(screen.getAllByTestId("landing-film-video")[0].getAttribute("src")).toContain("/mobile/video.mp4");
+    expect(screen.getAllByTestId("landing-film-poster")[0].getAttribute("src")).toContain("/mobile/poster.webp");
+  });
+
+  test("ignores an old chapter play rejection after active chapter changes", async () => {
+    mockMotion(false);
+    let rejectOldPlay: (reason?: unknown) => void = () => undefined;
+    mockPlay.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOldPlay = reject; }));
+    vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
+    render(<FilmStage onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
+    const sections = screen.getAllByRole("region");
+    act(() => {
+      IntersectionObserverMock.callback?.([{ target: sections[1], intersectionRatio: 0.8, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    expect(sections[1].getAttribute("data-active")).toBe("true");
+    await act(async () => {
+      rejectOldPlay(new Error("late rejection"));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "重试播放背景视频" })).toBeNull();
+    expect(screen.getByRole("button", { name: "暂停背景视频" })).toBeTruthy();
   });
 
   test("slows the active film while an auth dialog is open", () => {

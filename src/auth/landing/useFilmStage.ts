@@ -16,6 +16,7 @@ function getSignals() {
 export function useFilmStage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [signals, setSignals] = useState(getSignals);
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" && (window.matchMedia?.("(max-width: 640px)").matches ?? false));
   const [paused, setPaused] = useState(false);
   const sectionsRef = useRef<(HTMLElement | null)[]>([]);
   const ratios = useRef(new Map<number, number>());
@@ -26,6 +27,15 @@ export function useFilmStage() {
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
     query?.addEventListener?.("change", update);
     return () => query?.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 640px)");
+    if (!query) return;
+    const update = () => setMobile(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
   }, []);
 
   useEffect(() => {
@@ -46,5 +56,5 @@ export function useFilmStage() {
     return () => observer.disconnect();
   }, [activeIndex]);
 
-  return { activeIndex, chapters: LANDING_FILM_MANIFEST, paused, sectionsRef, setActiveIndex, setPaused, signals, variant };
+  return { activeIndex, chapters: LANDING_FILM_MANIFEST, mobile, paused, sectionsRef, setActiveIndex, setPaused, signals, variant };
 }
