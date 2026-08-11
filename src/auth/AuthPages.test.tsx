@@ -7,6 +7,16 @@ import { ForgotPasswordPanel } from "./ForgotPasswordPage";
 import { LoginPanel } from "./LoginPage";
 import { RegisterPanel } from "./RegisterPage";
 import { AuthContext, type AuthState } from "./useAuth";
+import { AuthExperiencePage } from "./AuthExperiencePage";
+
+vi.mock("./landing/FilmStage", () => ({
+  FilmStage: ({ onEnterWorkspace, onOpenAuth }: { onEnterWorkspace: () => void; onOpenAuth: () => void }) => (
+    <main data-testid="film-stage">
+      <button onClick={onOpenAuth} type="button">Open sign in</button>
+      <button onClick={onEnterWorkspace} type="button">Enter workspace</button>
+    </main>
+  ),
+}));
 
 const { requestPasswordReset, resendPasswordReset, confirmPasswordReset } = vi.hoisted(() => ({
   requestPasswordReset: vi.fn(),
@@ -149,5 +159,45 @@ describe("embeddable auth panels", () => {
     unmount();
     await act(async () => { resolveRequest?.({ challengeToken: "reset-token", expiresInSeconds: 600, message: "Sent", resendAvailableInSeconds: 30 }); });
     expect(window.location.pathname).toBe("/login");
+  });
+});
+
+describe("AuthExperiencePage", () => {
+  beforeEach(() => { window.history.replaceState(null, "", "/login"); vi.clearAllMocks(); });
+
+  test("derives the closed and login-success dialog states from the login URL", () => {
+    const { rerender } = renderAuth(<AuthExperiencePage />);
+    expect(screen.getByTestId("film-stage")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    window.history.replaceState(null, "", "/login?passwordReset=success");
+    rerender(<AuthContext.Provider value={authState()}><AuthExperiencePage /></AuthContext.Provider>);
+    expect(screen.getByRole("dialog", { name: "Welcome back" })).toBeTruthy();
+    expect(screen.getByText("Password reset. You can sign in now.")).toBeTruthy();
+  });
+
+  test("opens the matching direct-route dialog and closes it back to login", () => {
+    window.history.replaceState(null, "", "/register?returnTo=%2Fassets");
+    const { rerender } = renderAuth(<AuthExperiencePage />);
+    expect(screen.getByRole("dialog", { name: "Create account" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(window.location.pathname + window.location.search).toBe("/login?returnTo=%2Fassets");
+
+    window.history.replaceState(null, "", "/forgot-password");
+    rerender(<AuthContext.Provider value={authState()}><AuthExperiencePage /></AuthContext.Provider>);
+    expect(screen.getByRole("dialog", { name: "Reset password" })).toBeTruthy();
+  });
+
+  test("uses the film CTA to open auth for anonymous users and workspace for authenticated users", () => {
+    const { rerender } = renderAuth(<AuthExperiencePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter workspace" }));
+    expect(screen.getByRole("dialog", { name: "Welcome back" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/login");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    rerender(<AuthContext.Provider value={authState({ authenticated: true })}><AuthExperiencePage /></AuthContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "Enter workspace" }));
+    expect(window.location.pathname).toBe("/workspace");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

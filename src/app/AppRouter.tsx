@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { AuthGate } from "../auth/AuthGate";
-import { LoginPage } from "../auth/LoginPage";
-import { RegisterPage } from "../auth/RegisterPage";
-import { ForgotPasswordPage } from "../auth/ForgotPasswordPage";
+import { AuthExperiencePage } from "../auth/AuthExperiencePage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
 import { InspectionDashboardPage } from "../account/InspectionDashboardPage";
@@ -174,24 +172,14 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
 export function AppRouter() {
   const pathname = usePathname();
 
-  if (pathname === LOGIN_ROUTE) {
+  if (pathname === LOGIN_ROUTE || pathname === REGISTER_ROUTE || pathname === FORGOT_PASSWORD_ROUTE) {
     return (
       <>
-        <LoginPage />
+        <AuthExperiencePage />
         <AppVersionReminder />
       </>
     );
   }
-
-  if (pathname === REGISTER_ROUTE) {
-    return (
-      <>
-        <RegisterPage />
-        <AppVersionReminder />
-      </>
-    );
-  }
-  if (pathname === FORGOT_PASSWORD_ROUTE) return <ForgotPasswordPage />;
 
   return (
     <>
