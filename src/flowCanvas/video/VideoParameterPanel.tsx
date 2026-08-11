@@ -64,12 +64,11 @@ export function VideoParameterPanel({ capabilities, onChange, pricing = null, va
     applyDurationChange(Number.isFinite(parsed) ? parsed : value.durationSeconds);
   };
 
-  const availableResolutions = routeCapabilitiesConfirmed
-    ? effectiveCapabilities.resolutions
-    : RESOLUTIONS;
-  const resolutionOptions = availableResolutions.map((resolution) => ({
-    disabled: false,
-    disabledReason: UNSUPPORTED_BY_MODEL,
+  const resolutionOptions = RESOLUTIONS.map((resolution) => ({
+    disabled: routeCapabilitiesConfirmed && !effectiveCapabilities.resolutions.includes(resolution),
+    disabledReason: routeCapabilitiesConfirmed && !effectiveCapabilities.resolutions.includes(resolution)
+      ? `${UNSUPPORTED_BY_MODEL}: ${resolution}`
+      : undefined,
     label: resolution,
     value: resolution,
   }));

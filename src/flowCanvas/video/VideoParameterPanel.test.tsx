@@ -72,7 +72,7 @@ describe("VideoParameterPanel", () => {
     expect(screen.queryByText(/^最长 /)).toBeNull();
   });
 
-  test("renders only the confirmed route resolutions and keeps H3 at 2K", () => {
+  test("renders all resolutions but disables unsupported H3 choices", () => {
     const capabilities = mergeVideoCapabilities({
       confirmedByRoute: true,
       defaults: { durationSeconds: 15, resolution: "2K" },
@@ -87,14 +87,18 @@ describe("VideoParameterPanel", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: "2K" })).toBeTruthy();
-    expect(screen.queryByRole("radio", { name: "480P" })).toBeNull();
-    expect(screen.queryByRole("radio", { name: "720P" })).toBeNull();
-    expect(screen.queryByRole("radio", { name: "1080P" })).toBeNull();
-    expect(screen.queryByRole("radio", { name: "4K" })).toBeNull();
+    for (const resolution of ["480P", "720P", "1080P", "2K", "4K"]) {
+      expect(screen.getByRole("radio", { name: new RegExp(`^${resolution}`) })).toBeTruthy();
+    }
+    expect(screen.getByRole("radio", { name: "2K" }).getAttribute("aria-disabled")).toBe("false");
+    for (const resolution of ["480P", "720P", "1080P", "4K"]) {
+      const option = screen.getByRole("radio", { name: new RegExp(`^${resolution}`) });
+      expect(option.getAttribute("aria-disabled")).toBe("true");
+      expect(option.getAttribute("title")).toContain(resolution);
+    }
   });
 
-  test("shows only route-supported resolutions while keeping unsupported counts disabled", () => {
+  test("keeps all resolution choices visible while disabling unsupported route resolutions", () => {
     const capabilities = createSafeDefaultVideoCapabilities();
     capabilities.confirmedByRoute = true;
     capabilities.resolutions = ["720P"];
@@ -110,7 +114,8 @@ describe("VideoParameterPanel", () => {
     );
 
     expect(screen.getByRole("radio", { name: "720P" })).toBeTruthy();
-    expect(screen.queryByRole("radio", { name: /^4K/ })).toBeNull();
+    expect(screen.getByRole("radio", { name: "720P" }).getAttribute("aria-disabled")).toBe("false");
+    expect(screen.getByRole("radio", { name: /^4K/ }).getAttribute("aria-disabled")).toBe("true");
 
     const unsupportedCount = screen.getByRole("radio", { name: /^4 个/ });
     expect(unsupportedCount.getAttribute("aria-disabled")).toBe("true");
