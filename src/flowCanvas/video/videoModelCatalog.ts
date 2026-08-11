@@ -33,7 +33,10 @@ export function toVideoModelOptions(
       const label = getCreatorModelLabel(model);
       if (!label) return [];
 
-      const rawCapabilities = mergeVideoCapabilities(model.capabilities, route.capabilities, { confirmedByRoute: true });
+      const rawCapabilities = constrainKnownVideoModelCapabilities(
+        model.modelKey,
+        mergeVideoCapabilities(model.capabilities, route.capabilities, { confirmedByRoute: true }),
+      );
       const description = sanitizeVideoModelDescription(readUiDescription(model.uiSchema) ?? rawCapabilities.description);
       const estimatedDurationLabel = sanitizeVideoModelEstimatedDuration(rawCapabilities.estimatedDurationLabel);
       const capabilities = {
@@ -82,4 +85,17 @@ function positiveNumber(value: unknown): number | null {
 function readUiDescription(schema: Record<string, unknown>): string | undefined {
   const value = schema.description;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function constrainKnownVideoModelCapabilities(
+  modelKey: string,
+  capabilities: VideoModelOption["capabilities"],
+): VideoModelOption["capabilities"] {
+  if (modelKey.trim().toLowerCase() !== "h3video-2k") return capabilities;
+  return {
+    ...capabilities,
+    confirmedByRoute: true,
+    defaults: { ...capabilities.defaults, resolution: "2K" },
+    resolutions: ["2K"],
+  };
 }

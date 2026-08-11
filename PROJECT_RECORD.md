@@ -9,6 +9,7 @@ Maintainers: project team + Codex sessions
 - confirmed video routes now render only their declared resolution choices. H3video-2k displays only `2K`; stale H3 drafts using `480P`, `720P`, `1080P`, or `4K` are automatically corrected to `2K` by the existing route-capability correction flow.
 - focused parameter, capability, normalization, and Video Node Composer regressions passed with H3-specific `2K` coverage.
 - added platform migration `000065_pixellelabs_h3video_2k_resolution.sql` to repair already-installed H3 routes whose persisted capability JSON still advertises generic resolutions; it changes only the H3 route capabilities/default and preserves pricing, credentials, and connections.
+- added a frontend catalog-boundary constraint for the product model key `H3video-2k`. This makes the canvas use only `2K` even before a stale server capability record has been migrated, preventing any fallback path from exposing or accepting other resolutions.
 
 ## 2026-08-10 - PixelleLabs H3video-2k Provider
 

@@ -141,6 +141,25 @@ describe("toVideoModelOptions", () => {
     expect(options[0]).toMatchObject({ blocker: "PRICING_NOT_FOUND", label: "No Pricing" });
   });
 
+  test("hard-locks H3video-2k to 2K when persisted catalog capabilities are stale", () => {
+    const options = toVideoModelOptions([
+      videoModel({
+        capabilities: { resolutions: ["480P", "720P", "1080P", "4K"] },
+        displayName: "H3video-2k",
+        modelKey: "H3video-2k",
+        uiSchema: { creatorLabel: "H3video-2k" },
+      }),
+    ], {
+      "H3video-2k": [route({
+        modelKey: "H3video-2k",
+        capabilities: { resolutions: ["480P", "720P", "1080P", "4K"], supportedVideoWorkflows: ["video_generation"] },
+      })],
+    });
+
+    expect(options[0]?.capabilities.resolutions).toEqual(["2K"]);
+    expect(options[0]?.capabilities.defaults?.resolution).toBe("2K");
+  });
+
   test("sanitizes model descriptions and estimated durations at the catalog boundary", () => {
     const unsafeDescription = "Fast cinematic shots";
     const options = toVideoModelOptions([
