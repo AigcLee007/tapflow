@@ -44,4 +44,19 @@ describe("AuthDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  test("keeps body scroll locked until concurrent dialogs close in any order", () => {
+    function Harness() {
+      const [first, setFirst] = React.useState(true);
+      const [second, setSecond] = React.useState(true);
+      return <><AuthDialog onClose={() => setFirst(false)} open={first} pending={false} title="First"><button type="button">First action</button></AuthDialog><AuthDialog onClose={() => setSecond(false)} open={second} pending={false} title="Second"><button type="button">Second action</button></AuthDialog></>;
+    }
+    document.body.style.overflow = "auto";
+    render(<Harness />);
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.click(screen.getByRole("dialog", { name: "First" }).querySelector("button[aria-label='Close dialog']")!);
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.click(screen.getByRole("dialog", { name: "Second" }).querySelector("button[aria-label='Close dialog']")!);
+    expect(document.body.style.overflow).toBe("auto");
+  });
 });

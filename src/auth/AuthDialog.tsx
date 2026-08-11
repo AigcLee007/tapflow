@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 const FOCUSABLE = "button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+let scrollLockCount = 0;
+let previousBodyOverflow = "";
 
 export function AuthDialog({ children, onClose, open, pending, title }: { children: ReactNode; onClose: () => void; open: boolean; pending: boolean; title: string }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -12,10 +14,15 @@ export function AuthDialog({ children, onClose, open, pending, title }: { childr
   useLayoutEffect(() => {
     if (!open) return;
     invokerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
+    if (scrollLockCount === 0) previousBodyOverflow = document.body.style.overflow;
+    scrollLockCount += 1;
     document.body.style.overflow = "hidden";
     dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-    return () => { document.body.style.overflow = previousOverflow; invokerRef.current?.focus(); };
+    return () => {
+      scrollLockCount = Math.max(0, scrollLockCount - 1);
+      if (scrollLockCount === 0) document.body.style.overflow = previousBodyOverflow;
+      invokerRef.current?.focus();
+    };
   }, [open]);
 
   if (!open || typeof document === "undefined") return null;

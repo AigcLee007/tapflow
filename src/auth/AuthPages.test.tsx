@@ -66,6 +66,23 @@ describe("embeddable auth panels", () => {
     await waitFor(() => { expect(verifyEmail).toHaveBeenCalledWith({ challengeToken: "challenge-token", code: "123456" }); expect((code as HTMLInputElement).value).toBe(""); expect(document.activeElement).toBe(code); });
   });
 
+  test("does not navigate after verification resolves following unmount", async () => {
+    let resolveVerification: (() => void) | undefined;
+    const verifyEmail = vi.fn(() => new Promise<void>((resolve) => { resolveVerification = resolve; }));
+    const { unmount } = renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />, authState({ login: vi.fn(async () => challenge), verifyEmail }));
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "creator@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    const code = await screen.findByLabelText("6 digit verification code");
+    fireEvent.change(code, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+    await waitFor(() => expect(verifyEmail).toHaveBeenCalledOnce());
+    expect((screen.getByRole("button", { name: "Back" }) as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+    await act(async () => { resolveVerification?.(); });
+    expect(window.location.pathname).toBe("/login");
+  });
+
   test("resends verification through the existing v2 auth action", async () => {
     const resendEmailVerification = vi.fn(async () => challenge);
     renderAuth(<RegisterPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />, authState({ register: vi.fn(async () => challenge), resendEmailVerification }));
@@ -121,5 +138,16 @@ describe("embeddable auth panels", () => {
     await act(async () => { rejectResend?.(new Error("Resend failed")); });
     expect(await screen.findByText("Resend failed")).toBeTruthy();
     expect((resend as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("does not update after an unmounted password reset request resolves", async () => {
+    let resolveRequest: ((value: { challengeToken: string; expiresInSeconds: number; message: string; resendAvailableInSeconds: number }) => void) | undefined;
+    requestPasswordReset.mockImplementation(() => new Promise((resolve) => { resolveRequest = resolve; }));
+    const { unmount } = renderAuth(<ForgotPasswordPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "creator@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send verification code" }));
+    unmount();
+    await act(async () => { resolveRequest?.({ challengeToken: "reset-token", expiresInSeconds: 600, message: "Sent", resendAvailableInSeconds: 30 }); });
+    expect(window.location.pathname).toBe("/login");
   });
 });

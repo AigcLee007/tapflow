@@ -9,6 +9,7 @@ import {
 import { AuthErrorMessage, AuthField, AuthPrimaryButton, AuthSecondaryButton } from "./AuthFormControls";
 import { navigate, navigateAuthMode } from "./authNavigation";
 import { type AuthPanelProps } from "./LoginPage";
+import { useAuthRequestGuard } from "./useAuthRequestGuard";
 
 export function ForgotPasswordPanel({ onModeChange, onPendingChange }: AuthPanelProps) {
   const [email, setEmail] = useState("");
@@ -19,6 +20,7 @@ export function ForgotPasswordPanel({ onModeChange, onPendingChange }: AuthPanel
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [resendSeconds, setResendSeconds] = useState(0);
+  const requestGuard = useAuthRequestGuard();
 
   useEffect(() => { onPendingChange?.(pending); }, [onPendingChange, pending]);
   useEffect(() => { setResendSeconds(challenge?.resendAvailableInSeconds ?? 0); }, [challenge]);
@@ -30,34 +32,38 @@ export function ForgotPasswordPanel({ onModeChange, onPendingChange }: AuthPanel
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    const request = requestGuard.begin();
     setPending(true);
     setError(null);
     try {
       if (!challenge) {
-        setChallenge(await requestPasswordReset({ email }));
+        const nextChallenge = await requestPasswordReset({ email });
+        if (requestGuard.isCurrent(request)) setChallenge(nextChallenge);
         return;
       }
       if (!/^\d{6}$/.test(code)) throw new Error("Enter the 6 digit verification code.");
       if (password !== confirm) throw new Error("Passwords do not match.");
       await confirmPasswordReset({ challengeToken: challenge.challengeToken, code, newPassword: password });
-      navigate("/login?passwordReset=success");
+      if (requestGuard.isCurrent(request)) navigate("/login?passwordReset=success");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to reset your password.");
+      if (requestGuard.isCurrent(request)) setError(caught instanceof Error ? caught.message : "Unable to reset your password.");
     } finally {
-      setPending(false);
+      if (requestGuard.isCurrent(request)) setPending(false);
     }
   };
 
   const resend = async () => {
     if (!challenge || resendSeconds > 0) return;
+    const request = requestGuard.begin();
     setPending(true);
     setError(null);
     try {
-      setChallenge(await resendPasswordReset({ challengeToken: challenge.challengeToken }));
+      const nextChallenge = await resendPasswordReset({ challengeToken: challenge.challengeToken });
+      if (requestGuard.isCurrent(request)) setChallenge(nextChallenge);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to resend the code.");
+      if (requestGuard.isCurrent(request)) setError(caught instanceof Error ? caught.message : "Unable to resend the code.");
     } finally {
-      setPending(false);
+      if (requestGuard.isCurrent(request)) setPending(false);
     }
   };
 
