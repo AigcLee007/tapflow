@@ -113,12 +113,14 @@ function invocation(command: string, args: string[]) {
 function run(command: string, args: string[], timeoutMs = 180_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const entry = invocation(command, args);
-    const child = spawn(entry.command, entry.args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(entry.command, entry.args, { cwd: process.cwd(), detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let stdout = ""; let stderr = "";
-    const timer = setTimeout(() => { child.kill(); reject(new Error(`${command} timed out after ${timeoutMs}ms`)); }, timeoutMs);
+    let settled = false;
+    const finish = (callback: () => void) => { if (settled) return; settled = true; clearTimeout(timer); callback(); };
+    const timer = setTimeout(() => { void terminateProcessTree(child).finally(() => finish(() => reject(new Error(`${command} timed out after ${timeoutMs}ms\n${stdout}\n${stderr}`)))); }, timeoutMs);
     child.stdout.on("data", (chunk) => { stdout += String(chunk); }); child.stderr.on("data", (chunk) => { stderr += String(chunk); });
-    child.on("error", (error) => { clearTimeout(timer); reject(error); });
-    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve(stdout.trim()) : reject(new Error(`${command} ${args.join(" ")} failed with ${code}\n${stdout}\n${stderr}`)); });
+    child.on("error", (error) => finish(() => reject(error)));
+    child.on("close", (code) => finish(() => code === 0 ? resolve(stdout.trim()) : reject(new Error(`${command} ${args.join(" ")} failed with ${code}\n${stdout}\n${stderr}`))));
   });
 }
 
@@ -136,14 +138,65 @@ function fixtureServer(): Server {
   });
 }
 
-function startBuiltFrontend(port: number): ChildProcessWithoutNullStreams {
+type ManagedProcess = { child: ChildProcessWithoutNullStreams; stderr: () => string; stdout: () => string };
+
+function startBuiltFrontend(port: number): ManagedProcess {
   const entry = invocation(process.platform === "win32" ? "node.exe" : "node", ["scripts/serve-dist.cjs", String(port)]);
-  return spawn(entry.command, entry.args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  const child = spawn(entry.command, entry.args, { cwd: process.cwd(), detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  let stdout = ""; let stderr = "";
+  child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+  child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+  return { child, stderr: () => stderr, stdout: () => stdout };
 }
 
-async function waitFor(url: string) { const deadline = Date.now() + 30_000; while (Date.now() < deadline) { try { if ((await fetch(url)).ok) return; } catch { /* poll */ } await new Promise((resolve) => setTimeout(resolve, 250)); } throw new Error(`Timed out waiting for ${url}`); }
+function processDiagnostics(process: ManagedProcess) { return `stdout:\n${process.stdout()}\nstderr:\n${process.stderr()}`; }
+async function waitFor(url: string, process: ManagedProcess, timeoutMs = 15_000) { const deadline = Date.now() + timeoutMs; while (Date.now() < deadline) { if (process.child.exitCode !== null) throw new Error(`Frontend exited before readiness (${process.child.exitCode}).\n${processDiagnostics(process)}`); try { if ((await fetch(url)).ok) return; } catch { /* poll */ } await new Promise((resolve) => setTimeout(resolve, 250)); } throw new Error(`Timed out waiting for ${url}.\n${processDiagnostics(process)}`); }
 async function closeServer(server: Server) { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
-async function stop(child: ChildProcessWithoutNullStreams) { if (!child.pid) return; if (process.platform === "win32") await run("taskkill", ["/PID", String(child.pid), "/T", "/F"], 30_000).catch(() => undefined); else child.kill("SIGTERM"); }
+async function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs = 10_000) {
+  if (child.exitCode !== null) return;
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Frontend process ${child.pid} did not exit within ${timeoutMs}ms.`)), timeoutMs);
+    child.once("close", () => { clearTimeout(timeout); resolve(); });
+  });
+}
+async function terminateProcessTree(child: ChildProcessWithoutNullStreams) {
+  if (!child.pid || child.exitCode !== null) { await waitForChildExit(child).catch(() => undefined); return; }
+  if (process.platform === "win32") {
+    await new Promise<void>((resolve) => {
+      const terminator = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      terminator.once("error", () => resolve()); terminator.once("close", () => resolve());
+    });
+  } else {
+    try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+  }
+  await waitForChildExit(child);
+}
+async function stop(processHandle: ManagedProcess) {
+  const child = processHandle.child;
+  if (!child.pid || child.exitCode !== null) { await waitForChildExit(child).catch(() => undefined); return; }
+  await terminateProcessTree(child).catch(async () => { child.kill(); await waitForChildExit(child, 5_000); });
+}
+async function listenFixture(fixture: Server) {
+  return await new Promise<number>((resolve, reject) => {
+    fixture.once("error", reject);
+    fixture.listen(0, "127.0.0.1", () => {
+      fixture.off("error", reject);
+      const address = fixture.address();
+      if (!address || typeof address === "string") { reject(new Error("Fixture server did not expose a TCP port.")); return; }
+      resolve(address.port);
+    });
+  });
+}
+async function startBuiltFrontendWithRetry() {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const port = await freePort();
+    const frontend = startBuiltFrontend(port);
+    try { await waitFor(`http://127.0.0.1:${port}/login`, frontend); return { frontend, port }; }
+    catch (error) { lastError = error; await stop(frontend).catch(() => undefined); }
+  }
+  throw new Error(`Could not start built frontend after 3 attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+}
 
 async function assertRenderedPrimaryMedia(screenshotPath: string) {
   const image = sharp(screenshotPath);
@@ -164,18 +217,18 @@ async function assertRenderedPrimaryMedia(screenshotPath: string) {
 }
 
 async function main() {
-  const fixturePort = await freePort(); const frontendPort = await freePort(); const fixture = fixtureServer();
-  const baseUrl = `http://127.0.0.1:${fixturePort}/landing-films/v1`;
+  const fixture = fixtureServer();
   const session = `cinematic-auth-home-${Date.now()}`;
   const previousMediaBaseUrl = process.env.VITE_LANDING_MEDIA_BASE_URL;
-  let frontend: ChildProcessWithoutNullStreams | null = null;
+  let frontend: ManagedProcess | null = null;
   try {
-    await new Promise<void>((resolve) => fixture.listen(fixturePort, "127.0.0.1", resolve));
+    const fixturePort = await listenFixture(fixture);
+    const baseUrl = `http://127.0.0.1:${fixturePort}/landing-films/v1`;
     await mkdir(CINEMATIC_AUTH_HOME_OUTPUT_DIR, { recursive: true });
     process.env.VITE_LANDING_MEDIA_BASE_URL = baseUrl;
     await run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"], 300_000);
-    frontend = startBuiltFrontend(frontendPort); await waitFor(`http://127.0.0.1:${frontendPort}/login`);
-    const pageUrl = `http://127.0.0.1:${frontendPort}/login`;
+    const started = await startBuiltFrontendWithRetry(); frontend = started.frontend;
+    const pageUrl = `http://127.0.0.1:${started.port}/login`;
     const npx = process.platform === "win32" ? "npx.cmd" : "npx";
     await run(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "open", pageUrl], 90_000);
     const results: unknown[] = [];
@@ -184,9 +237,9 @@ async function main() {
       await writeFile(checkPath, buildCinematicAuthHomeCheckCode({ outputDirectory: CINEMATIC_AUTH_HOME_OUTPUT_DIR, reducedMotion, viewport }), "utf8");
       const raw = await run(npx, ["--yes", "--package", "@playwright/cli", "playwright-cli", `-s=${session}`, "--raw", "run-code", "--filename", checkPath], 90_000);
       const result = JSON.parse(JSON.parse(raw));
-      if (!reducedMotion) {
-        result.renderedPrimaryMedia = await assertRenderedPrimaryMedia(result.chapterStates[0].screenshot);
-      }
+      result.renderedPrimaryMedia = reducedMotion
+        ? [await assertRenderedPrimaryMedia(result.screenshot)]
+        : await Promise.all(result.chapterStates.map(({ screenshot }: { screenshot: string }) => assertRenderedPrimaryMedia(screenshot)));
       results.push(result);
     }
     console.log(JSON.stringify({ mediaBaseUrl: baseUrl, results, status: "ok" }, null, 2));

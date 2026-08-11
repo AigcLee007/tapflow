@@ -41,6 +41,12 @@ describe("cinematic auth home deployment and smoke contract", () => {
     expect(code).toContain("CTA");
     expect(code).toContain("smokePage.screenshot");
     expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("sharp(screenshotPath)");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("result.chapterStates.map");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("await assertRenderedPrimaryMedia(result.screenshot)");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("fixture.listen(0, \"127.0.0.1\"");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("startBuiltFrontendWithRetry");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("taskkill");
+    expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("await waitForChildExit");
     expect(code).toContain("currentTime");
     expect(code).toContain("preload");
     expect(code).toContain("Escape");
