@@ -114,6 +114,7 @@ services:
       args:
         VITE_AGENT_DIRECTOR_ENABLED: ${VITE_AGENT_DIRECTOR_ENABLED:-false}
         VITE_VIDEO_COMPOSER_V2: ${VITE_VIDEO_COMPOSER_V2:-true}
+        VITE_LANDING_MEDIA_BASE_URL: ${VITE_LANDING_MEDIA_BASE_URL:-/landing-films/v1}
     restart: unless-stopped
     command: ["node", "scripts/serve-dist.cjs", "5188"]
     environment:

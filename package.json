@@ -43,6 +43,8 @@
     "landing-films:generate": "tsx scripts/generate-landing-films.ts --generate --confirm-generation-cost",
     "landing-films:publish": "tsx scripts/generate-landing-films.ts --publish",
     "test:landing-films": "vitest --run scripts/landing-film-pipeline.test.ts",
+    "smoke:cinematic-auth-home": "tsx scripts/smoke-cinematic-auth-home.ts",
+    "test:smoke-cinematic-auth-home": "vitest --run scripts/smoke-cinematic-auth-home.test.ts",
     "migrate:legacy:v2": "tsx scripts/migrate-legacy-v2/migrate.ts",
     "migrate:legacy:v2:dry-run": "tsx scripts/migrate-legacy-v2/migrate.ts --dry-run",
     "migrate:mysql": "node scripts/migrate-json-to-mysql.cjs",
