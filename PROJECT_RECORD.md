@@ -6379,3 +6379,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Controlled Lexical updates compare the actual serialized editor value before rebuilding the root, preserving the insertion caret after an immediate parent value write-back.
 - Deferred caret restoration is retried after focus and guarded against editor unmounts; disabled candidates cannot be activated through keyboard paths.
 - Focused media mention, candidate menu, image input, and video composer suites passed (`61` tests). Existing React/Lexical harness warnings remain non-blocking.
+
+## 2026-08-11 - Cinematic Auth Home Design
+
+- approved a replacement for the current AI-SaaS-style anonymous login screen: four full-screen silent video chapters with a coherent surreal-cinematic art direction and minimal TapFlow brand copy.
+- login, registration, verification, and password recovery move into one responsive overlay while retaining the v2 auth clients, tenant behavior, and `returnTo` routing.
+- the existing video-generation API is designated for curated offline brand-film production, not per-visitor generation; public CDN media, versioned manifests, poster fallback, reduced-motion behavior, and one-video-at-a-time playback are specified.
+- implementation has not started; the approved design is recorded in `docs/superpowers/specs/2026-08-11-cinematic-auth-home-design.md`.
