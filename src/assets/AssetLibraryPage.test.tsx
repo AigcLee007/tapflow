@@ -112,6 +112,8 @@ function mockLibrary(overrides: Record<string, unknown> = {}) {
     groupedAssets: [],
     loading: false,
     mediaCounts: { all: 135, audio: 0, image: 60, video: 0 },
+    page: 1,
+    pageSize: 30,
     query: "",
     refresh: vi.fn(async () => undefined),
     favoriteOnly: false,
@@ -122,9 +124,11 @@ function mockLibrary(overrides: Record<string, unknown> = {}) {
     selectedFolderId: null,
     setQuery: vi.fn(),
     setFavoriteOnly: vi.fn(),
+    setPage: vi.fn(),
     setSelectedFolderId: vi.fn(),
     setSelectedMediaTab: vi.fn(),
     total: 0,
+    totalPages: 1,
     ...overrides,
   });
 }
@@ -271,6 +275,39 @@ describe("AssetLibraryPage", () => {
     renderPage();
 
     expect(screen.getByTestId("asset-group-grid").className).toContain("lg:grid-cols-6");
+  });
+
+  test("renders numbered media pages and sends the selected page to the library", () => {
+    const setPage = vi.fn();
+    mockLibrary({
+      page: 1,
+      setPage,
+      total: 125,
+      totalPages: 5,
+    });
+
+    renderPage();
+
+    expect((screen.getByRole("button", { name: "上一页" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "下一页" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "第 1 页" }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
+
+    expect(setPage).toHaveBeenCalledWith(2);
+  });
+
+  test("disables next-page navigation on the final media page", () => {
+    mockLibrary({
+      page: 5,
+      total: 125,
+      totalPages: 5,
+    });
+
+    renderPage();
+
+    expect((screen.getByRole("button", { name: "上一页" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "下一页" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   test("limits initial thumbnail DOM nodes for large asset groups", () => {

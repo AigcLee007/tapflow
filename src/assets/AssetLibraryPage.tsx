@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckSquare, Download, Grid2X2, RefreshCw, Search, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
+import { CheckSquare, ChevronLeft, ChevronRight, Download, Grid2X2, RefreshCw, Search, SlidersHorizontal, Star, Trash2, X } from "lucide-react";
 
 import { EntityConfirmDialog } from "../components/EntityActionMenu";
 import { useAuth } from "../auth/useAuth";
@@ -32,6 +32,30 @@ function AssetLibraryLoadingState() {
       </div>
     </div>
   );
+}
+
+type PaginationItem = number | "ellipsis";
+
+function getPaginationItems(page: number, totalPages: number): PaginationItem[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pageNumbers = new Set([1, totalPages, page - 1, page, page + 1]);
+  const sortedPages = Array.from(pageNumbers)
+    .filter((item) => item >= 1 && item <= totalPages)
+    .sort((a, b) => a - b);
+  const items: PaginationItem[] = [];
+
+  sortedPages.forEach((item, index) => {
+    const previous = sortedPages[index - 1];
+    if (previous !== undefined && item - previous > 1) {
+      items.push("ellipsis");
+    }
+    items.push(item);
+  });
+
+  return items;
 }
 
 export function AssetLibraryPage() {
@@ -168,6 +192,8 @@ export function AssetLibraryPage() {
   const selectedMediaLabel =
     library.selectedMediaTab === "image" ? "图片" : library.selectedMediaTab === "video" ? "视频" : "音频";
 
+  const paginationItems = getPaginationItems(library.page, library.totalPages);
+
   return (
     <section
       className="relative min-h-[calc(100vh-92px)] overflow-hidden rounded border border-white/10 bg-[#0b0d14] shadow-2xl shadow-black/20"
@@ -266,6 +292,55 @@ export function AssetLibraryPage() {
                 selectedAssetIds={selectedAssetIds}
                 tileOnly
               />
+            )}
+            {!library.loading && library.totalPages > 1 && (
+              <nav aria-label="素材分页" className="mt-8 flex flex-wrap items-center justify-center gap-1.5">
+                <button
+                  aria-label="上一页"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded border border-white/10 text-slate-300 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={library.page <= 1}
+                  onClick={() => library.setPage(library.page - 1)}
+                  title="上一页"
+                  type="button"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                {paginationItems.map((item, index) =>
+                  item === "ellipsis" ? (
+                    <span aria-hidden="true" className="grid h-9 w-6 place-items-center text-sm text-slate-500" key={`ellipsis-${index}`}>
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      aria-current={item === library.page ? "page" : undefined}
+                      aria-label={`第 ${item} 页`}
+                      className={`inline-flex h-9 min-w-9 items-center justify-center rounded border px-2 text-xs font-bold transition ${
+                        item === library.page
+                          ? "border-sky-300/50 bg-sky-300/15 text-sky-100"
+                          : "border-white/10 text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                      }`}
+                      key={item}
+                      onClick={() => library.setPage(item)}
+                      type="button"
+                    >
+                      {item}
+                    </button>
+                  ),
+                )}
+                <button
+                  aria-label="下一页"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded border border-white/10 text-slate-300 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={library.page >= library.totalPages}
+                  onClick={() => library.setPage(library.page + 1)}
+                  title="下一页"
+                  type="button"
+                >
+                  <ChevronRight size={16} />
+                </button>
+                <span className="ml-2 whitespace-nowrap text-xs text-slate-500">
+                  {library.page} / {library.totalPages}
+                </span>
+              </nav>
             )}
           </div>
         </main>

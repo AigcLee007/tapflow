@@ -118,18 +118,35 @@ const folderB: AssetFolder = {
 };
 
 function Harness() {
-  const { assets, folders, loading, mediaCounts, setFavoriteOnly } = useAssetLibrary();
+  const {
+    assets,
+    folders,
+    loading,
+    mediaCounts,
+    page,
+    setFavoriteOnly,
+    setPage,
+    setSelectedMediaTab,
+    totalPages,
+  } = useAssetLibrary();
 
   return (
     <div>
       <div data-testid="loading">{loading ? "loading" : "idle"}</div>
       <div data-testid="assets">{assets.map((asset) => asset.title).join(",")}</div>
       <div data-testid="folders">{folders.map((folder) => folder.name).join(",")}</div>
+      <div data-testid="page">{page}/{totalPages}</div>
       <div data-testid="counts">
         {mediaCounts.all}/{mediaCounts.image}/{mediaCounts.video}/{mediaCounts.audio}
       </div>
       <button onClick={() => setFavoriteOnly(true)} type="button">
         show favorites
+      </button>
+      <button onClick={() => setPage(2)} type="button">
+        show page 2
+      </button>
+      <button onClick={() => setSelectedMediaTab("video")} type="button">
+        show videos
       </button>
     </div>
   );
@@ -216,6 +233,52 @@ describe("useAssetLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("assets").textContent).toContain("Asset A"));
     expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({ includePreviewUrls: true }));
     expect(getAssetSignedUrlsMock).not.toHaveBeenCalled();
+  });
+
+  it("requests each media category from the server and changes its page", async () => {
+    listAssetsMock.mockResolvedValue({
+      items: [assetA],
+      page: 1,
+      pageSize: 30,
+      total: 125,
+    });
+    listAssetFoldersMock.mockResolvedValue([]);
+    getAssetSummaryMock.mockResolvedValue({
+      counts: { all: 152, audio: 0, image: 125, video: 27 },
+    });
+
+    renderWithAuth(baseAuthState);
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "image",
+        page: 1,
+        pageSize: 30,
+      }));
+    });
+    expect(screen.getByTestId("page").textContent).toBe("1/5");
+
+    fireEvent.click(screen.getByRole("button", { name: "show page 2" }));
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "image",
+        page: 2,
+        pageSize: 30,
+      }));
+    });
+    expect(screen.getByTestId("page").textContent).toBe("2/5");
+
+    fireEvent.click(screen.getByRole("button", { name: "show videos" }));
+
+    await waitFor(() => {
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "video",
+        page: 1,
+        pageSize: 30,
+      }));
+    });
+    expect(screen.getByTestId("page").textContent).toBe("1/5");
   });
 
   it("clears stale assets immediately and ignores late responses from the previous identity", async () => {

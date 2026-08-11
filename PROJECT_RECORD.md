@@ -6387,3 +6387,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - login, registration, verification, and password recovery move into one responsive overlay while retaining the v2 auth clients, tenant behavior, and `returnTo` routing.
 - the existing video-generation API is designated for curated offline brand-film production, not per-visitor generation; public CDN media, versioned manifests, poster fallback, reduced-motion behavior, and one-video-at-a-time playback are specified.
 - implementation has not started; the approved design is recorded in `docs/superpowers/specs/2026-08-11-cinematic-auth-home-design.md`.
+
+## 2026-08-11 - Asset Library Media Pagination
+
+- corrected the asset library request flow so image, video, and audio tabs send their media `kind` to `/api/v2/assets`; list totals and page contents now describe the same media result set.
+- added server-backed numbered pagination at 30 assets per page, with compact previous/next controls, boundary disabled states, current-page semantics, and bounded page-number rendering for large libraries.
+- changing media tab, search query, folder, or favorite state now returns to page 1; stale page results remain protected by the existing request sequence guard and cache entries are scoped by media tab and page.
+- validation passed: `npm test -- src/assets/useAssetLibrary.test.tsx src/assets/AssetLibraryPage.test.tsx` (26 tests) and `npm run build`. Full `npm test` completed with two unrelated failures in `src/flowCanvas/video/VideoReferenceStrip.test.tsx`: its two Veo frame-removal tests expect numbered input labels while the rendered controls currently expose `undefined`; this pagination branch does not modify that component or test.
