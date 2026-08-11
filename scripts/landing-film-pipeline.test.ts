@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import { LANDING_FILM_BRIEFS, LANDING_FILM_ROUTE_KEY, makeLandingFilmJobs } from "./landing-film-prompts.js";
-import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, parseLandingFilmCommand, selectApprovedFilms } from "./landing-film-pipeline.js";
+import { assertLandingFilmProbeResults, buildImmutableLandingFilmPutInput, buildLandingFilmFfmpegArgs, buildLandingFilmObjectKeys, classifyExistingImmutableObject, isImmutablePreconditionFailure, parseLandingFilmCommand, selectApprovedFilms } from "./landing-film-pipeline.js";
+import { buildLandingFilmRouteQuery, buildVideoDownloadRequest, requireLandingFilmTenantId } from "./generate-landing-films.js";
 
 describe("landing film generation contracts", () => {
   test("defines twelve literal Gemini briefs and produces desktop plus mobile jobs", () => {
@@ -30,6 +31,25 @@ describe("landing film generation contracts", () => {
     expect(buildImmutableLandingFilmPutInput("bucket", "brand-media/tapflow/landing-film-v1/loop.mp4", Buffer.from("video"), "video/mp4")).toMatchObject({
       Bucket: "bucket", ContentType: "video/mp4", IfNoneMatch: "*", Key: "brand-media/tapflow/landing-film-v1/loop.mp4",
     });
+  });
+
+  test("recovers a matching partial publication but rejects mismatched immutable content", () => {
+    expect(classifyExistingImmutableObject("abc123", { sha256: "abc123" })).toBe("already-published");
+    expect(classifyExistingImmutableObject("abc123", undefined)).toBe("missing");
+    expect(() => classifyExistingImmutableObject("abc123", { sha256: "different" })).toThrow(/immutable/i);
+    expect(isImmutablePreconditionFailure({ $metadata: { httpStatusCode: 412 } })).toBe(true);
+  });
+
+  test("downloads provider output without forwarding the provider credential", () => {
+    expect(buildVideoDownloadRequest("https://provider.example/video.mp4", 0)).toEqual({ headers: {}, url: "https://provider.example/video.mp4" });
+    expect(buildVideoDownloadRequest("https://provider.example/video.mp4", 123)).toEqual({ headers: { Range: "bytes=123-" }, url: "https://provider.example/video.mp4" });
+  });
+
+  test("requires an explicit tenant-scoped route query for live generation", () => {
+    expect(() => requireLandingFilmTenantId(undefined)).toThrow(/LANDING_FILM_TENANT_ID/);
+    expect(requireLandingFilmTenantId(" 00000000-0000-4000-8000-000000000001 ")).toBe("00000000-0000-4000-8000-000000000001");
+    expect(buildLandingFilmRouteQuery()).toContain("r.tenant_id = $2::uuid");
+    expect(buildLandingFilmRouteQuery()).not.toMatch(/LIMIT 1/);
   });
 
   test("defaults to dry run and requires explicit cost confirmation for generation", () => {

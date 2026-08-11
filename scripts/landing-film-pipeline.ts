@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { access, mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -16,7 +17,7 @@ export function buildLandingFilmObjectKeys(chapter: string, variant: string, vie
 }
 
 export function buildImmutableLandingFilmPutInput(bucket: string, key: string, body: Buffer, contentType: string) {
-  return { Body: body, Bucket: bucket, CacheControl: "public, max-age=31536000, immutable", ContentType: contentType, IfNoneMatch: "*", Key: key };
+  return { Body: body, Bucket: bucket, CacheControl: "public, max-age=31536000, immutable", ContentType: contentType, IfNoneMatch: "*", Key: key, Metadata: { sha256: createHash("sha256").update(body).digest("hex") } };
 }
 
 export function parseLandingFilmCommand(args: string[]): LandingFilmCommand {
@@ -108,23 +109,37 @@ export async function transcodeApprovedFilm(inputPath: string, outputDirectory: 
   return { posterPath, videoPath: loopPath };
 }
 
-async function assertMissingObject(client: S3Client, bucket: string, key: string) {
+export function classifyExistingImmutableObject(expectedHash: string, metadata: Record<string, string> | undefined) {
+  if (!metadata) return "missing" as const;
+  if (metadata.sha256 === expectedHash) return "already-published" as const;
+  throw new Error("Refusing to overwrite mismatched immutable landing-film object");
+}
+
+export function isImmutablePreconditionFailure(error: unknown) {
+  const status = typeof error === "object" && error && "$metadata" in error ? Number((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode) : 0;
+  return status === 412 || (error instanceof Error && /PreconditionFailed/i.test(error.name));
+}
+
+async function existingImmutableObject(client: S3Client, bucket: string, key: string, expectedHash: string) {
   try {
-    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    const response = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return classifyExistingImmutableObject(expectedHash, response.Metadata);
   } catch (error) {
     const status = typeof error === "object" && error && "$metadata" in error ? Number((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode) : 0;
-    if (status === 404 || (error instanceof Error && /NotFound|NoSuchKey/i.test(error.name))) return;
+    if (status === 404 || (error instanceof Error && /NotFound|NoSuchKey/i.test(error.name))) return "missing" as const;
     throw error;
   }
-  throw new Error(`Refusing to overwrite existing immutable landing-film object: ${key}`);
 }
 
 async function putImmutableObject(client: S3Client, bucket: string, key: string, body: Buffer, contentType: string) {
   try {
     await client.send(new PutObjectCommand(buildImmutableLandingFilmPutInput(bucket, key, body, contentType)));
   } catch (error) {
-    const status = typeof error === "object" && error && "$metadata" in error ? Number((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode) : 0;
-    if (status === 412 || (error instanceof Error && /PreconditionFailed/i.test(error.name))) throw new Error(`Refusing to overwrite existing immutable landing-film object: ${key}`);
+    if (isImmutablePreconditionFailure(error)) {
+      const expectedHash = createHash("sha256").update(body).digest("hex");
+      if (await existingImmutableObject(client, bucket, key, expectedHash) === "already-published") return;
+      throw new Error(`Refusing to overwrite mismatched immutable landing-film object: ${key}`);
+    }
     throw error;
   }
 }
@@ -133,9 +148,10 @@ export async function publishApprovedFilm(options: { bucket: string; client: S3C
   const { approval, client, bucket } = options;
   const keys = buildLandingFilmObjectKeys(approval.chapter, approval.variant, approval.viewport);
   const { videoPath, posterPath } = await transcodeApprovedFilm(options.masterPath, options.outputDirectory, approval);
-  await assertMissingObject(client, bucket, keys.video);
-  await putImmutableObject(client, bucket, keys.video, await readFile(videoPath), "video/mp4");
-  await assertMissingObject(client, bucket, keys.poster);
-  await putImmutableObject(client, bucket, keys.poster, await readFile(posterPath), "image/webp");
+  const video = await readFile(videoPath); const poster = await readFile(posterPath);
+  const videoHash = createHash("sha256").update(video).digest("hex");
+  const posterHash = createHash("sha256").update(poster).digest("hex");
+  if (await existingImmutableObject(client, bucket, keys.video, videoHash) === "missing") await putImmutableObject(client, bucket, keys.video, video, "video/mp4");
+  if (await existingImmutableObject(client, bucket, keys.poster, posterHash) === "missing") await putImmutableObject(client, bucket, keys.poster, poster, "image/webp");
   return keys;
 }
