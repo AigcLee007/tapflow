@@ -39,6 +39,8 @@ export type AiModelCatalogRouteCapabilities = Record<string, unknown> & {
     supportedVideoWorkflows?: string[];
     supportsAudio?: boolean;
     supportsHumanReview?: boolean;
+    supportsImageInput?: boolean;
+    supportedImageMimeTypes?: string[];
   };
 
 export type AiModelCatalogRoute = {

@@ -279,8 +279,11 @@ export type RouteView = {
 
 export type RuntimeRouteListItemView = {
   capabilities: {
+    maxImages?: number;
+    supportedImageMimeTypes?: string[];
     supportedGenerationModes: string[];
     supportedVideoWorkflows: string[];
+    supportsImageInput?: boolean;
   };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
@@ -463,11 +466,52 @@ function mergeRuntimeRouteCapabilities(input: {
     ...readSupportedVideoWorkflows(input.modelCapabilities),
     ...readSupportedVideoWorkflows(routeCapabilities),
   ]));
+  const textImageCapabilities = mergeSafeTextImageCapabilities(input.modelCapabilities, routeCapabilities);
 
   return {
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows,
+    ...textImageCapabilities,
   };
+}
+
+function readPositiveNumber(source: unknown, key: string): number | undefined {
+  const value = source && typeof source === "object" ? Number((source as Record<string, unknown>)[key]) : Number.NaN;
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function readPositiveInteger(source: unknown, key: string): number | undefined {
+  const value = readPositiveNumber(source, key);
+  return value !== undefined && Number.isInteger(value) ? value : undefined;
+}
+
+function readBoolean(source: unknown, key: string): boolean | undefined {
+  const value = source && typeof source === "object" ? (source as Record<string, unknown>)[key] : undefined;
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readSupportedImageMimeTypes(source: unknown): string[] {
+  const value = source && typeof source === "object" ? (source as Record<string, unknown>).supportedImageMimeTypes : undefined;
+  return Array.isArray(value)
+    ? Array.from(new Set(value.filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => /^image\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(item))))
+    : [];
+}
+
+function mergeSafeTextImageCapabilities(
+  modelCapabilities?: Record<string, unknown> | null,
+  routeCapabilities?: Record<string, unknown> | null,
+): Pick<RuntimeRouteListItemView["capabilities"], "maxImages" | "supportedImageMimeTypes" | "supportsImageInput"> {
+  if (readBoolean(modelCapabilities, "supportsImageInput") !== true || readBoolean(routeCapabilities, "supportsImageInput") !== true) return {};
+  const modelMax = readPositiveInteger(modelCapabilities, "maxImages");
+  const routeMax = readPositiveInteger(routeCapabilities, "maxImages");
+  const modelMimeTypes = readSupportedImageMimeTypes(modelCapabilities);
+  const routeMimeTypes = readSupportedImageMimeTypes(routeCapabilities);
+  if (!modelMax || !routeMax || !modelMimeTypes.length || !routeMimeTypes.length) return {};
+  const supportedImageMimeTypes = modelMimeTypes.filter((mimeType) => routeMimeTypes.includes(mimeType));
+  if (!supportedImageMimeTypes.length) return {};
+  return { maxImages: Math.min(3, modelMax, routeMax), supportedImageMimeTypes, supportsImageInput: true };
 }
 
 function mapProviderConnection(row: ProviderConnectionRecord): ProviderConnectionView {

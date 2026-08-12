@@ -23,6 +23,12 @@ const textFields = [
   },
 ];
 
+const imageInputCapabilities = {
+  maxImages: 3,
+  supportedImageMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"] as string[],
+  supportsImageInput: true,
+};
+
 const models = [
   {
     credits: 1,
@@ -135,7 +141,7 @@ export const aittcoTextRelayManifest: AiPluginManifest = {
   displayName: "Aittco Text Relay",
   modality: "text",
   models: models.map((model) => ({
-    capabilities: { supportsStreaming: false },
+    capabilities: { ...imageInputCapabilities, supportsStreaming: false },
     defaultRouteKey: routeKey(model.modelKey),
     displayName: model.displayName,
     modality: "text",
@@ -178,6 +184,7 @@ export const aittcoTextRelayManifest: AiPluginManifest = {
     priority: 100,
     requestConfig: {
       apiMode: model.protocol,
+      capabilities: imageInputCapabilities,
       model: model.upstreamModel,
       path: model.path,
       protocol: model.protocol,
@@ -196,5 +203,5 @@ export const aittcoTextRelayManifest: AiPluginManifest = {
     },
     routeKey: routeKey(model.modelKey),
   })),
-  version: "1.0.0",
+  version: "1.1.0",
 };

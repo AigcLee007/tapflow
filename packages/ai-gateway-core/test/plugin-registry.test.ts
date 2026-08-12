@@ -384,6 +384,11 @@ describe("AI plugin registry", () => {
 
   test("returns all Aittco relay text models with their upstream protocols and prices", () => {
     const manifest = builtinAiPluginRegistry.require("aittco.text-relay");
+    const imageInputCapabilities = {
+      maxImages: 3,
+      supportedImageMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+      supportsImageInput: true,
+    };
     const expected = [
       ["gemini-3.1-pro", "Gemini-3.1-pro", "gemini-3.1-pro-preview", "gemini", "/v1beta/models/{model}:generateContent", 1],
       ["gemini-3.5-flash", "Gemini-3.5-flash", "gemini-3.5-flash-preview", "gemini", "/v1beta/models/{model}:generateContent", 0.5],
@@ -407,9 +412,11 @@ describe("AI plugin registry", () => {
     expect(manifest.models).toHaveLength(expected.length);
     expect(manifest.routes).toHaveLength(expected.length);
     expect(manifest.pricing).toHaveLength(expected.length);
+    expect(manifest.version).toBe("1.1.0");
 
     expected.forEach(([modelKey, displayName, upstreamModel, protocol, path, credits]) => {
       expect(manifest.models).toContainEqual(expect.objectContaining({
+        capabilities: expect.objectContaining(imageInputCapabilities),
         defaultRouteKey: `text.${modelKey.replace(/\./g, "-")}`,
         displayName,
         modelFamily: modelKey,
@@ -423,6 +430,7 @@ describe("AI plugin registry", () => {
           model: upstreamModel,
           path,
           protocol,
+          capabilities: imageInputCapabilities,
         }),
       }));
       expect(manifest.pricing).toContainEqual(expect.objectContaining({

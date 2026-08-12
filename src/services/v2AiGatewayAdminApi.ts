@@ -41,7 +41,11 @@ export type AdminModel = {
   displayName: string;
   modality: AiModality;
   status: string;
-  capabilities?: Record<string, unknown>;
+  capabilities?: Record<string, unknown> & {
+    maxImages?: number;
+    supportedImageMimeTypes?: string[];
+    supportsImageInput?: boolean;
+  };
   contextWindow?: number | null;
   createdAt?: string;
   updatedAt?: string;
