@@ -6439,3 +6439,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - fixed the worker upstream-output merge so an empty prior runtime output no longer suppresses the connected text node's persisted static text. Video requests now receive that text as their prompt when the video's local editor is empty.
 - non-empty runtime output remains authoritative, while static node configuration fills only missing fields. Whitespace-only static text remains invalid and does not create a prompt.
 - validation passed: worker runtime suite (`31` passed, `17` skipped) and `npm run build`.
+
+## 2026-08-12 - Authenticated Home Workspace Overview
+
+- replaced the `/home` AI marketing hero with the approved workspace-overview direction while keeping the existing `WorkspaceShell` logo, navigation items, notifications, monitoring, billing balance, and account controls unchanged.
+- the homepage now uses real workspace project data for the latest project and recent projects, creates a real project through the existing v2 project/flow path, and links secondary actions to the existing prompt plaza, asset library, and workspace project manager.
+- added explicit loading, empty-project, project-load error, and server-persistence status surfaces; removed the non-functional voice, send, AI capability, and capability-preview controls.
+- validation passed: `HomePage` and unchanged `WorkspaceShell` focused suites (`12` tests) and `npm run build`; existing `WorkspaceShell` test-harness `act(...)`, CSS, mixed-import, Browserslist, and chunk-size warnings remain non-blocking.

@@ -1,11 +1,12 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { HomePage } from "./HomePage";
 import type { WorkspaceProject } from "./workspaceApi";
 
 const useWorkspaceProjectsMock = vi.fn();
+const createProjectMock = vi.fn();
 
 vi.mock("./useWorkspaceProjects", () => ({
   useWorkspaceProjects: () => useWorkspaceProjectsMock(),
@@ -32,8 +33,9 @@ const project: WorkspaceProject = {
 };
 
 function mockWorkspaceProjects() {
+  createProjectMock.mockResolvedValue({ project: { ...project, id: "project-new", name: "新项目" } });
   useWorkspaceProjectsMock.mockReturnValue({
-    createProject: vi.fn(async () => ({ project })),
+    createProject: createProjectMock,
     creating: false,
     error: null,
     filteredProjects: [project],
@@ -53,24 +55,42 @@ function mockWorkspaceProjects() {
 
 describe("HomePage", () => {
   beforeEach(() => {
+    window.history.replaceState(null, "", "/home");
     useWorkspaceProjectsMock.mockReset();
+    createProjectMock.mockReset();
     mockWorkspaceProjects();
   });
 
-  test("shows a brand-led premium hero with quick start and recent project continuation", () => {
+  test("shows a useful workspace overview instead of the AI marketing hero", () => {
     render(<HomePage />);
 
-    expect(
-      screen.getByRole("heading", { name: "把 AI 创作流程变成稳定可复用的产品能力" }),
-    ).toBeTruthy();
-    expect(screen.getByText("快速开始")).toBeTruthy();
-    expect(screen.getByText("能力预览")).toBeTruthy();
-    expect(screen.getByText("继续最近项目")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "AI 视频" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "生图工作台" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "智能抠图" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "无限画布" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "欢迎回来" })).toBeTruthy();
+    expect(screen.getByText("继续工作")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "新建项目" })).toBeTruthy();
+    expect(screen.getByText("最近项目")).toBeTruthy();
+    expect(screen.getByText("工作区状态")).toBeTruthy();
     expect(screen.getAllByText("Visual Strategy").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "所有项目" })).toBeTruthy();
+    expect(screen.queryByText("把 AI 创作流程变成稳定可复用的产品能力")).toBeNull();
+    expect(screen.queryByText("能力预览")).toBeNull();
+  });
+
+  test("creates an empty project and opens its canvas", async () => {
+    render(<HomePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "新建空白项目" }));
+
+    await waitFor(() => expect(createProjectMock).toHaveBeenCalledTimes(1));
+    expect(window.location.pathname).toBe("/projects/project-new");
+  });
+
+  test("routes template and upload actions to existing product pages", () => {
+    render(<HomePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "从提示词开始" }));
+    expect(window.location.pathname).toBe("/prompts");
+
+    window.history.replaceState(null, "", "/home");
+    fireEvent.click(screen.getByRole("button", { name: "上传素材" }));
+    expect(window.location.pathname).toBe("/assets");
   });
 });
