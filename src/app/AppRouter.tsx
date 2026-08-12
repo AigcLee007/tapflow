@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import { AuthGate } from "../auth/AuthGate";
 import { AuthExperiencePage } from "../auth/AuthExperiencePage";
+import { LegalDocumentPage } from "../legal/LegalDocumentPage";
 import { AssetLibraryPage } from "../assets/AssetLibraryPage";
 import { AccountPage } from "../account/AccountPage";
 import { InspectionDashboardPage } from "../account/InspectionDashboardPage";
@@ -40,6 +41,8 @@ import {
   LOGIN_ROUTE,
   REGISTER_ROUTE,
   FORGOT_PASSWORD_ROUTE,
+  LEGAL_PRIVACY_ROUTE,
+  LEGAL_TERMS_ROUTE,
   ROOT_ROUTE,
   WORKSPACE_ROUTE,
 } from "./routes";
@@ -171,6 +174,18 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
 
 export function AppRouter() {
   const { pathname } = useCurrentLocation();
+
+  if (pathname === LEGAL_TERMS_ROUTE) {
+    return <LegalDocumentPage type="terms" />;
+  }
+
+  if (pathname === LEGAL_PRIVACY_ROUTE) {
+    return <LegalDocumentPage type="privacy" />;
+  }
+
+  if (pathname.startsWith("/legal/")) {
+    return <Redirect to={LEGAL_TERMS_ROUTE} />;
+  }
 
   if (pathname === LOGIN_ROUTE || pathname === REGISTER_ROUTE || pathname === FORGOT_PASSWORD_ROUTE) {
     return (

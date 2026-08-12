@@ -1,6 +1,8 @@
 export const LOGIN_ROUTE = "/login";
 export const REGISTER_ROUTE = "/register";
 export const FORGOT_PASSWORD_ROUTE = "/forgot-password";
+export const LEGAL_TERMS_ROUTE = "/legal/terms";
+export const LEGAL_PRIVACY_ROUTE = "/legal/privacy";
 export const ROOT_ROUTE = "/";
 export const HOME_ROUTE = "/home";
 export const WORKSPACE_ROUTE = "/workspace";
@@ -19,6 +21,8 @@ export const PRODUCT_ROUTES = [
   LOGIN_ROUTE,
   REGISTER_ROUTE,
   FORGOT_PASSWORD_ROUTE,
+  LEGAL_TERMS_ROUTE,
+  LEGAL_PRIVACY_ROUTE,
   HOME_ROUTE,
   WORKSPACE_ROUTE,
   WORKBENCH_ROUTE,

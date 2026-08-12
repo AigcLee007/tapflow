@@ -1,6 +1,14 @@
 import { describe, expect, test } from "vitest";
 
-import { FORGOT_PASSWORD_ROUTE, LOGIN_ROUTE, PRODUCT_ROUTES, REGISTER_ROUTE, getAppRouteTransitionKey } from "./routes";
+import {
+  FORGOT_PASSWORD_ROUTE,
+  LEGAL_PRIVACY_ROUTE,
+  LEGAL_TERMS_ROUTE,
+  LOGIN_ROUTE,
+  PRODUCT_ROUTES,
+  REGISTER_ROUTE,
+  getAppRouteTransitionKey,
+} from "./routes";
 
 describe("getAppRouteTransitionKey", () => {
   test("keeps prompt plaza and prompt detail in one route family", () => {
@@ -13,5 +21,11 @@ describe("getAppRouteTransitionKey", () => {
 describe("public auth routes", () => {
   test("keeps login, registration, and password recovery as supported product routes", () => {
     expect(PRODUCT_ROUTES).toEqual(expect.arrayContaining([LOGIN_ROUTE, REGISTER_ROUTE, FORGOT_PASSWORD_ROUTE]));
+  });
+});
+
+describe("public legal routes", () => {
+  test("keeps the Aittco terms and privacy pages outside the authenticated product shell", () => {
+    expect(PRODUCT_ROUTES).toEqual(expect.arrayContaining([LEGAL_TERMS_ROUTE, LEGAL_PRIVACY_ROUTE]));
   });
 });
