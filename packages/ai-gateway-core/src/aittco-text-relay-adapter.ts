@@ -307,12 +307,13 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     temperature: number | undefined,
     images: Array<{ mimeType: string; url: string }>,
   ): Record<string, unknown> {
+    const finalUserMessageIndex = messages.reduce<number>((lastIndex, message, index) => message.role === "user" ? index : lastIndex, -1);
     if (protocol === "gemini") {
       return compactObject({
         contents: messages.map((message, index) => ({
           parts: [
             { text: message.content },
-            ...(index === messages.length - 1 ? images.map((image) => ({ fileData: { fileUri: image.url, mimeType: image.mimeType } })) : []),
+            ...(index === finalUserMessageIndex ? images.map((image) => ({ fileData: { fileUri: image.url, mimeType: image.mimeType } })) : []),
           ],
           role: message.role === "assistant" ? "model" : "user",
         })),
@@ -325,7 +326,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     }
     if (protocol === "responses") {
       return compactObject({
-        input: system ? [{ content: system, role: "system" }, ...messages.map((message, index) => ({ ...message, content: index === messages.length - 1 && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content }))] : messages.map((message, index) => ({ ...message, content: index === messages.length - 1 && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content })),
+        input: system ? [{ content: system, role: "system" }, ...messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content }))] : messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content })),
         max_output_tokens: maxTokens,
         model,
         temperature,
@@ -334,7 +335,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     if (protocol === "chat-completions") {
       return compactObject({
         max_tokens: maxTokens,
-        messages: (system ? [{ content: system, role: "system" as const }, ...messages] : messages).map((message, index, all) => ({ ...message, content: images.length && index === all.length - 1 ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image_url", image_url: { url: image.url } }))] : message.content })),
+        messages: (system ? [{ content: system, role: "system" as const }, ...messages] : messages).map((message, index, all) => ({ ...message, content: images.length && index === (system ? finalUserMessageIndex + 1 : finalUserMessageIndex) ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image_url", image_url: { url: image.url } }))] : message.content })),
         model,
         temperature,
       });
@@ -342,7 +343,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     return compactObject({
       max_tokens: maxTokens ?? 2048,
       messages: messages.map((message, index) => ({
-        content: images.length && index === messages.length - 1 ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image", source: { type: "url", url: image.url } }))] : message.content,
+        content: images.length && index === finalUserMessageIndex ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image", source: { type: "url", url: image.url } }))] : message.content,
         role: message.role === "assistant" ? "assistant" : "user",
       })),
       model,

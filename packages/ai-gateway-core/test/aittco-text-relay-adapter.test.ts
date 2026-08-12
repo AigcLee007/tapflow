@@ -238,6 +238,29 @@ describe("AittcoTextRelayAdapter", () => {
     });
   });
 
+  test("attaches images to the final user message when an assistant message follows", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({ choices: [{ message: { content: "Chat reply" } }], usage: {} }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    await adapter.generateText(context({ requestConfig: { model: "gpt-5.6-sol", protocol: "chat-completions" } }), {
+      inputAssets: imageInputs,
+      messages: [
+        { content: "describe", role: "user" },
+        { content: "Earlier answer", role: "assistant" },
+      ],
+    });
+
+    const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ messages: [
+      { role: "user", content: [
+        { type: "text", text: "describe" },
+        { type: "image_url", image_url: { url: "https://signed.test/first.png" } },
+        { type: "image_url", image_url: { url: "https://signed.test/second.webp" } },
+      ] },
+      { role: "assistant", content: "Earlier answer" },
+    ] });
+  });
+
   test("parses Chat Completions content parts", async () => {
     const fetchImplementation = vi.fn(async () => jsonResponse({
       choices: [{ message: { content: [{ text: "Part one", type: "text" }, { text: " part two", type: "text" }] } }],
