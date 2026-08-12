@@ -6464,6 +6464,12 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - non-empty runtime output remains authoritative, while static node configuration fills only missing fields. Whitespace-only static text remains invalid and does not create a prompt.
 - validation passed: worker runtime suite (`31` passed, `17` skipped) and `npm run build`.
 
+## 2026-08-12 - Video Upstream Text API Preflight Recovery
+
+- corrected the API route preflight that previously validated only a video node's local editor prompt before the worker ran. An empty local editor plus a connected static text node was therefore rejected with `VIDEO_PROMPT_REQUIRED` even though the worker could build a valid final prompt.
+- API preflight now derives the ordered direct upstream static text from the compiled graph and combines it with the local prompt using the same order as the worker. It validates that final prompt without persisting copied text into the video node; the worker and AI Gateway retain their final validations.
+- added API regression coverage for the screenshot path: connected static text plus image-to-video input with an empty local editor. Focused API and worker suites passed; frontend production build passed.
+
 ## 2026-08-12 - Authenticated Home Workspace Overview
 
 - replaced the `/home` AI marketing hero with the approved workspace-overview direction while keeping the existing `WorkspaceShell` logo, navigation items, notifications, monitoring, billing balance, and account controls unchanged.
