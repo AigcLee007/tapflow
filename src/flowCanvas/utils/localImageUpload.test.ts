@@ -105,6 +105,58 @@ describe('createImmediateLocalImageNodeData', () => {
   });
 });
 
+describe('uploadLocalImageAndBuildAssetNodeData', () => {
+  beforeEach(() => {
+    uploadAssetFileMock.mockReset();
+    getAssetVariantUrlMock.mockReset();
+    getAssetDownloadUrlMock.mockReset();
+    getImageNaturalSizeMock.mockReset();
+    uploadReferenceImageFileMock.mockReset();
+  });
+
+  it('stores a canvas local image as a project asset instead of a temporary reference', async () => {
+    uploadAssetFileMock.mockResolvedValue({
+      height: 768,
+      id: 'asset-cat',
+      mimeType: 'image/png',
+      originalFilename: 'cat.png',
+      source: 'upload',
+      title: 'cat',
+      width: 1024,
+    });
+    getAssetVariantUrlMock.mockResolvedValue({ url: 'https://cdn.test/assets/asset-cat/preview.webp' });
+
+    const { uploadLocalImageAndBuildAssetNodeData } = await import('./localImageUpload');
+    const file = new File(['cat'], 'cat.png', { type: 'image/png' });
+
+    const result = await uploadLocalImageAndBuildAssetNodeData({
+      file,
+      natural: { h: 768, w: 1024 },
+      projectId: 'project-1',
+      source: 'node-upload',
+      title: 'Cat',
+    });
+
+    expect(uploadAssetFileMock).toHaveBeenCalledWith({
+      file,
+      kind: 'image',
+      projectId: 'project-1',
+    });
+    expect(uploadReferenceImageFileMock).not.toHaveBeenCalled();
+    expect(result.nodeData).toMatchObject({
+      assetId: 'asset-cat',
+      assetIds: ['asset-cat'],
+      naturalHeight: 768,
+      naturalWidth: 1024,
+      originalImageUrl: 'https://cdn.test/assets/asset-cat/preview.webp',
+      source: 'node-upload',
+      thumbnailUrl: 'https://cdn.test/assets/asset-cat/preview.webp',
+      title: 'Cat',
+    });
+    expect(result.nodeData.referenceUploadId).toBeUndefined();
+  });
+});
+
 describe('uploadLocalImageAndBuildReferenceNodeData', () => {
   beforeEach(() => {
     uploadAssetFileMock.mockReset();
