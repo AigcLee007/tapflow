@@ -41,6 +41,8 @@
     "test:smoke-video-node-visual": "vitest --run scripts/smoke-video-node-visual.test.ts",
     "landing-films:dry-run": "tsx scripts/generate-landing-films.ts",
     "landing-films:generate": "tsx scripts/generate-landing-films.ts --generate --confirm-generation-cost",
+    "node-waiting-videos:dry-run": "tsx scripts/generate-node-waiting-videos.ts",
+    "node-waiting-videos:generate": "tsx scripts/generate-node-waiting-videos.ts --generate --confirm-generation-cost",
     "landing-films:publish": "tsx scripts/generate-landing-films.ts --publish",
     "test:landing-films": "vitest --run scripts/landing-film-pipeline.test.ts",
     "smoke:cinematic-auth-home": "tsx scripts/smoke-cinematic-auth-home.ts",
