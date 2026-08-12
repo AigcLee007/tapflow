@@ -7,6 +7,11 @@ import {
   setStoredTokens,
 } from "./v2HttpClient";
 
+export type LegalConsentInput = {
+  privacyVersion: string;
+  termsVersion: string;
+};
+
 export type V2User = {
   displayName: string | null;
   email: string;
@@ -82,6 +87,7 @@ export function clearStoredTrustedDeviceToken(): void {
 }
 
 export async function register(input: {
+  consent: LegalConsentInput;
   displayName?: string;
   email: string;
   password: string;
@@ -104,6 +110,7 @@ export async function register(input: {
 }
 
 export async function login(input: {
+  consent: LegalConsentInput;
   email: string;
   password: string;
   tenantId?: string;

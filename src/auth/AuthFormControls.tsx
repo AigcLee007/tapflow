@@ -1,4 +1,5 @@
-import React, { ReactNode, useId } from "react";
+import React, { ReactNode, useId, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 export function AuthField({
   autoComplete,
@@ -24,7 +25,9 @@ export function AuthField({
   value: string;
 }) {
   const id = useId();
-  return <div className="mb-4"><label className="mb-1.5 block text-sm font-medium text-neutral-700" htmlFor={id}>{label}</label><input autoComplete={autoComplete} className="h-12 w-full rounded-lg border border-neutral-300 bg-white px-3 text-[16px] text-neutral-950 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10" id={id} inputMode={inputMode} maxLength={maxLength} minLength={minLength} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} type={type} value={value} /></div>;
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = type === "password";
+  return <div className="mb-4"><label className="mb-1.5 block text-sm font-medium text-neutral-700" htmlFor={id}>{label}</label><div className="relative"><input autoComplete={autoComplete} className="h-12 w-full rounded-lg border border-neutral-300 bg-white px-3 text-[16px] text-neutral-950 outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10" id={id} inputMode={inputMode} maxLength={maxLength} minLength={minLength} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} type={isPassword && passwordVisible ? "text" : type} value={value} />{isPassword ? <button aria-label={passwordVisible ? "隐藏密码" : "显示密码"} className="absolute inset-y-0 right-0 grid w-12 place-items-center text-neutral-500 hover:text-neutral-900" onClick={() => setPasswordVisible((visible) => !visible)} type="button">{passwordVisible ? <EyeOff size={18} /> : <Eye size={18} />}</button> : null}</div></div>;
 }
 
 export function AuthErrorMessage({ message }: { message: string | null }) {

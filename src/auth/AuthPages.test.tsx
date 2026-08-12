@@ -9,6 +9,10 @@ import { RegisterPanel } from "./RegisterPage";
 import { AuthContext, type AuthState } from "./useAuth";
 import { AuthExperiencePage } from "./AuthExperiencePage";
 
+const currentConsent = { privacyVersion: "2026-08-12", termsVersion: "2026-08-12" };
+const { getLegalManifest } = vi.hoisted(() => ({ getLegalManifest: vi.fn(async () => ({ privacy: { effectiveAt: "2026-08-12", requiresConsent: true, version: "2026-08-12" }, terms: { effectiveAt: "2026-08-12", requiresConsent: true, version: "2026-08-12" } })) }));
+vi.mock("../legal/legalApi", async (importOriginal) => ({ ...(await importOriginal<typeof import("../legal/legalApi")>()), getLegalManifest }));
+
 vi.mock("./landing/FilmStage", () => ({
   FilmStage: ({ onEnterWorkspace, onOpenAuth }: { onEnterWorkspace: () => void; onOpenAuth: () => void }) => (
     <main data-testid="film-stage">
@@ -37,6 +41,10 @@ function authState(overrides: Partial<AuthState> = {}): AuthState {
   return { authenticated: false, error: null, loading: false, login: vi.fn(async () => session), logout: vi.fn(async () => undefined), permissions: [], refreshMe: vi.fn(async () => undefined), register: vi.fn(async () => session), resendEmailVerification: vi.fn(async () => challenge), roles: [], sessionId: null, tenant: null, user: null, verifyEmail: vi.fn(async () => undefined), ...overrides };
 }
 function renderAuth(ui: React.ReactElement, state = authState()) { return render(<AuthContext.Provider value={state}>{ui}</AuthContext.Provider>); }
+async function acceptLegalConsent() {
+  await waitFor(() => expect(screen.getAllByRole("button", { name: /立即登录|创建账号/ }).some((button) => !(button as HTMLButtonElement).disabled)).toBe(true));
+  fireEvent.click(screen.getByRole("checkbox", { name: /我已阅读并同意/ }));
+}
 function AuthExperienceRouteHarness() {
   const [, rerender] = React.useState(0);
   React.useEffect(() => {
@@ -48,7 +56,7 @@ function AuthExperienceRouteHarness() {
 }
 
 describe("embeddable auth panels", () => {
-  beforeEach(() => { window.history.replaceState(null, "", "/login"); vi.clearAllMocks(); });
+  beforeEach(() => { window.history.replaceState(null, "", "/login"); vi.clearAllMocks(); getLegalManifest.mockResolvedValue({ privacy: { effectiveAt: "2026-08-12", requiresConsent: true, version: "2026-08-12" }, terms: { effectiveAt: "2026-08-12", requiresConsent: true, version: "2026-08-12" } }); });
   afterEach(() => vi.useRealTimers());
 
   test("submits only v2 login fields and exposes the forgot mode", async () => {
@@ -57,8 +65,9 @@ describe("embeddable auth panels", () => {
     renderAuth(<LoginPanel onModeChange={onModeChange} onPendingChange={vi.fn()} />, authState({ login }));
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
-    await waitFor(() => expect(login).toHaveBeenCalledWith({ email: "creator@example.com", password: "secret" }));
+    await acceptLegalConsent();
+    fireEvent.click(screen.getByRole("button", { name: "立即登录" }));
+    await waitFor(() => expect(login).toHaveBeenCalledWith({ consent: currentConsent, email: "creator@example.com", password: "secret" }));
     fireEvent.click(screen.getByRole("button", { name: "忘记密码？" }));
     expect(onModeChange).toHaveBeenCalledWith("forgot-password");
   });
@@ -67,8 +76,29 @@ describe("embeddable auth panels", () => {
     renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
     expect(screen.getByLabelText("邮箱")).toBeTruthy();
     expect(screen.getByLabelText("密码")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "继续" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "立即登录" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "创建账号" })).toBeTruthy();
+  });
+
+  test("blocks unchecked consent and exposes secure policy links", async () => {
+    const login = vi.fn(async () => session);
+    renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />, authState({ login }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "立即登录" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "立即登录" }));
+    expect(login).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("请先阅读并同意"))).toBe(true);
+    expect(screen.getByRole("link", { name: "《Aittco 用户协议》" }).getAttribute("href")).toBe("/legal/terms");
+    expect(screen.getByRole("link", { name: "《Aittco 隐私政策》" }).getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  test("toggles password visibility", () => {
+    renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
+    const password = screen.getByLabelText("密码") as HTMLInputElement;
+    expect(password.type).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "显示密码" }));
+    expect(password.type).toBe("text");
   });
 
   test("register omits tenant input and tenantName from its v2 request", async () => {
@@ -77,8 +107,9 @@ describe("embeddable auth panels", () => {
     expect(screen.queryByLabelText(/tenant|workspace name/i)).toBeNull();
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "StrongPass123!" } });
+    await acceptLegalConsent();
     fireEvent.click(screen.getByRole("button", { name: "创建账号" }));
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ displayName: undefined, email: "creator@example.com", password: "StrongPass123!" }));
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ consent: currentConsent, displayName: undefined, email: "creator@example.com", password: "StrongPass123!" }));
   });
 
   test("verifies six digits and refocuses a cleared invalid code", async () => {
@@ -86,7 +117,8 @@ describe("embeddable auth panels", () => {
     renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />, authState({ login: vi.fn(async () => challenge), verifyEmail }));
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await acceptLegalConsent();
+    fireEvent.click(screen.getByRole("button", { name: "立即登录" }));
     const code = await screen.findByLabelText("6 位验证码");
     fireEvent.change(code, { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "验证" }));
@@ -99,7 +131,8 @@ describe("embeddable auth panels", () => {
     const { unmount } = renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />, authState({ login: vi.fn(async () => challenge), verifyEmail }));
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await acceptLegalConsent();
+    fireEvent.click(screen.getByRole("button", { name: "立即登录" }));
     const code = await screen.findByLabelText("6 位验证码");
     fireEvent.change(code, { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "验证" }));
@@ -115,6 +148,7 @@ describe("embeddable auth panels", () => {
     renderAuth(<RegisterPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />, authState({ register: vi.fn(async () => challenge), resendEmailVerification }));
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "StrongPass123!" } });
+    await acceptLegalConsent();
     fireEvent.click(screen.getByRole("button", { name: "创建账号" }));
     fireEvent.click(await screen.findByRole("button", { name: "重新发送验证码" }));
     await waitFor(() => expect(resendEmailVerification).toHaveBeenCalledWith({ challengeToken: "challenge-token" }));
@@ -133,7 +167,7 @@ describe("embeddable auth panels", () => {
     fireEvent.click(screen.getByRole("button", { name: "重置密码" }));
     await waitFor(() => expect(window.location.pathname + window.location.search).toBe("/login?passwordReset=success"));
     renderAuth(<LoginPanel onModeChange={vi.fn()} onPendingChange={vi.fn()} />);
-    expect(screen.getByText("密码已重置，请使用新密码登录。")).toBeTruthy();
+    expect(await screen.findByText("密码已重置，请使用新密码登录。")).toBeTruthy();
   });
 
   test("uses the password reset cooldown before enabling resend", async () => {
@@ -218,6 +252,7 @@ describe("AuthExperiencePage", () => {
     renderAuth(<AuthExperienceRouteHarness />, authState({ register }));
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "creator@example.com" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "StrongPass123!" } });
+    await acceptLegalConsent();
     fireEvent.click(screen.getByRole("button", { name: "创建账号" }));
     await waitFor(() => expect(register).toHaveBeenCalledOnce());
 

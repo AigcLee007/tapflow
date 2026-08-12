@@ -20,6 +20,16 @@ export type LegalDocument = {
   version: string;
 };
 
+export type LegalManifest = Record<LegalDocumentType, {
+  effectiveAt: string;
+  requiresConsent: boolean;
+  version: string;
+}>;
+
+export function getLegalManifest(): Promise<LegalManifest> {
+  return apiGet<LegalManifest>("/legal/manifest", { auth: false, retryOnUnauthorized: false });
+}
+
 export function getLegalDocument(type: LegalDocumentType): Promise<LegalDocument> {
   return apiGet<LegalDocument>(`/legal/documents/${type}`, { auth: false, retryOnUnauthorized: false });
 }
