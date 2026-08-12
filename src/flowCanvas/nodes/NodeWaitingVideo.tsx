@@ -96,6 +96,7 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
           muted
           onCanPlay={handleCanPlay}
           onError={() => {
+            playAttemptRef.current += 1;
             setVideoFailed(true);
             setVideoReady(false);
           }}

@@ -158,4 +158,17 @@ describe("NodeWaitingVideo", () => {
     expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
     expect(screen.queryByTestId("node-waiting-video")).toBeNull();
   });
+
+  it("ignores a pending play completion after a media error", async () => {
+    setReducedMotion(false);
+    let resolvePlay: (() => void) | undefined;
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValue(new Promise<void>((resolve) => { resolvePlay = resolve; }));
+    render(<NodeWaitingVideo kind="image" />);
+    const video = screen.getByTestId("node-waiting-video");
+    fireEvent.canPlay(video);
+    fireEvent.error(video);
+    await act(async () => resolvePlay?.());
+    expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
+    expect(screen.queryByTestId("node-waiting-video")).toBeNull();
+  });
 });
