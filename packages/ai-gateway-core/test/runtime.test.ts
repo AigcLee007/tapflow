@@ -272,6 +272,7 @@ describe("openai-compatible text adapter", () => {
     });
     expect(JSON.stringify(result.providerRequest)).not.toContain("signed.test");
     expect(result.providerRequest).toMatchObject({ body: { imageInputCount: 2, imageMimeTypes: ["image/png", "image/webp"] } });
+    expect(Object.keys((result.providerRequest as { body: Record<string, unknown> }).body)).toEqual(["imageInputCount", "imageMimeTypes"]);
     await server.close();
   });
 
@@ -285,7 +286,7 @@ describe("openai-compatible text adapter", () => {
       response.end(JSON.stringify({ output: [{ content: [{ type: "output_text", text: "visual result" }] }] }));
     });
     const adapter = new OpenAiCompatibleTextAdapter();
-    await adapter.generateText(
+    const result = await adapter.generateText(
       { apiKey: "sk-test-secret", baseUrl: server.url, modelKey: "gpt-test", providerKey: "openai-compatible", requestConfig: { apiMode: "responses" }, routeId: "r", routeKey: "r", timeoutMs: 5000 },
       {
         messages: [{ content: "Describe the connected images", role: "user" }],
@@ -300,6 +301,7 @@ describe("openai-compatible text adapter", () => {
       { type: "input_image", image_url: "https://signed.test/first.png" },
       { type: "input_image", image_url: "https://signed.test/second.webp" },
     ] }] });
+    expect(Object.keys((result.providerRequest as { body: Record<string, unknown> }).body)).toEqual(["imageInputCount", "imageMimeTypes"]);
     await server.close();
   });
 

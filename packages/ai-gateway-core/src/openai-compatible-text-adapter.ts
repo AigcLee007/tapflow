@@ -738,7 +738,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         getNumber(requestConfig.temperature),
     };
     const providerRequest = {
-      body: images.length ? { ...payload, messages: undefined, imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } : payload,
+      body: images.length ? { imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } : payload,
       headers: {
         Authorization: `Bearer ${context.apiKey}`,
         "Content-Type": "application/json",
@@ -837,7 +837,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         getNumber(requestConfig.temperature),
     };
     const providerRequest = {
-      body: images.length ? { ...payload, input: undefined, imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } : payload,
+      body: images.length ? { imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } : payload,
       headers: {
         Authorization: `Bearer ${context.apiKey}`,
         "Content-Type": "application/json",
