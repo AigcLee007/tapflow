@@ -114,7 +114,7 @@ export function validateTextImageInput({
   for (let index = 0; index < assets.length; index += 1) {
     const asset = assets[index];
     const path = `inputAssets.${index}`;
-    if (asset.kind?.toLowerCase() !== "image") {
+    if (typeof asset.kind !== "string" || asset.kind.toLowerCase() !== "image") {
       return issue(TEXT_IMAGE_INPUT_ERROR_CODES.TYPE_UNSUPPORTED, path, "Only image assets are supported.");
     }
     if (typeof asset.assetId !== "string" || asset.assetId.trim().length === 0) {

@@ -58,8 +58,41 @@ describe("text image input contract", () => {
     expect(issue).toMatchObject({ code: "TEXT_IMAGE_INPUT_LIMIT_EXCEEDED" });
   });
 
+  test("checks support, count, kind, asset ID, and MIME type in priority order", () => {
+    const invalidAssets = [
+      { assetId: "  ", kind: "video", mimeType: "application/pdf" },
+      { assetId: "image-2", kind: "image", mimeType: "image/jpeg" },
+      { assetId: "image-3", kind: "image", mimeType: "image/jpeg" },
+      { assetId: "image-4", kind: "image", mimeType: "image/jpeg" },
+    ];
+
+    expect(validateTextImageInput({
+      capabilities: { maxImages: 0, supportedImageMimeTypes: [], supportsImageInput: false },
+      inputAssets: invalidAssets,
+    })).toMatchObject({ code: "TEXT_MODEL_IMAGE_INPUT_UNSUPPORTED" });
+    expect(validateTextImageInput({
+      capabilities: { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+      inputAssets: invalidAssets,
+    })).toMatchObject({ code: "TEXT_IMAGE_INPUT_LIMIT_EXCEEDED" });
+
+    const withinLimit = invalidAssets.slice(0, 3);
+    expect(validateTextImageInput({
+      capabilities: { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+      inputAssets: withinLimit,
+    })).toMatchObject({ code: "TEXT_IMAGE_TYPE_UNSUPPORTED", path: "inputAssets.0" });
+    expect(validateTextImageInput({
+      capabilities: { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+      inputAssets: [{ ...withinLimit[0]!, kind: "image" }],
+    })).toMatchObject({ code: "TEXT_IMAGE_ASSET_NOT_FOUND", path: "inputAssets.0" });
+    expect(validateTextImageInput({
+      capabilities: { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+      inputAssets: [{ ...withinLimit[0]!, assetId: "image-1", kind: "image" }],
+    })).toMatchObject({ code: "TEXT_IMAGE_TYPE_UNSUPPORTED", path: "inputAssets.0" });
+  });
+
   test.each([
     [{ assetId: "image-1", kind: "video", mimeType: "image/png" }, "TEXT_IMAGE_TYPE_UNSUPPORTED"],
+    [{ assetId: "image-1", kind: 42 as unknown as string, mimeType: "image/png" }, "TEXT_IMAGE_TYPE_UNSUPPORTED"],
     [{ assetId: "  ", kind: "image", mimeType: "image/png" }, "TEXT_IMAGE_ASSET_NOT_FOUND"],
     [{ assetId: "image-1", kind: "image", mimeType: "image/jpeg" }, "TEXT_IMAGE_TYPE_UNSUPPORTED"],
   ] as const)("validates image kind, asset ID, and MIME type", (asset, code) => {
