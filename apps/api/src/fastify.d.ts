@@ -21,6 +21,7 @@ import type { FlowCommentsService } from "./modules/flow-comments/flow-comments.
 import type { FlowHistoryService } from "./modules/flow-history/flow-history.service.js";
 import type { FlowTemplatesService } from "./modules/flow-templates/flow-templates.service.js";
 import type { ObservabilityService } from "./modules/observability/observability.service.js";
+import type { LegalService } from "./modules/legal/legal.service.js";
 import type { ProjectsService } from "./modules/projects/projects.service.js";
 import type { PromptsService } from "./modules/prompts/prompts.service.js";
 import type { QueueHealthService } from "./modules/queues/queues.service.js";
@@ -46,6 +47,7 @@ declare module "fastify" {
     flowCommentsService: FlowCommentsService;
     flowHistoryService: FlowHistoryService;
     flowTemplatesService: FlowTemplatesService;
+    legalService: LegalService;
     observabilityService: ObservabilityService;
     projectsService: ProjectsService;
     promptsService: PromptsService;

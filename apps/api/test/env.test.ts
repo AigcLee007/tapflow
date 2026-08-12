@@ -12,6 +12,7 @@ function withRequiredProductionEnv(extra: Record<string, string> = {}) {
     RESEND_FROM_EMAIL: "art@art.aittco.com",
     RESEND_FROM_NAME: "Art-Aittco",
     CORS_ALLOWED_ORIGINS: "https://art.aittco.com",
+    LEGAL_CONTACT_URL: "https://example.com/contact",
     CREDENTIAL_MASTER_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     DATABASE_URL: "postgres://example",
     JWT_ACCESS_SECRET: "access-secret",
@@ -85,7 +86,14 @@ describe("getApiEnv", () => {
     expect(env.resendFromName).toBe("Art-Aittco");
   });
 
+  test("reads and trims the production legal contact URL", () => {
+    withRequiredProductionEnv({ LEGAL_CONTACT_URL: "  mailto:legal@example.com  " });
+
+    expect(getApiEnv().legalContactUrl).toBe("mailto:legal@example.com");
+  });
+
   test.each([
+    "LEGAL_CONTACT_URL",
     "RESEND_API_KEY",
     "RESEND_FROM_EMAIL",
     "RESEND_FROM_NAME",

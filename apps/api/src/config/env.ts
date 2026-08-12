@@ -29,6 +29,7 @@ export type ApiEnv = {
   credentialMasterKey: string;
   jwtAccessSecret: string;
   jwtRefreshSecret: string;
+  legalContactUrl: string;
   nodeEnv: string;
   promptCatalogMediaDir: string;
   queuePrefix: string;
@@ -133,6 +134,7 @@ export function getApiEnv(): ApiEnv {
   const jwtRefreshSecret =
     process.env.JWT_REFRESH_SECRET?.trim() ||
     (isProduction ? "" : DEV_REFRESH_SECRET);
+  const legalContactUrl = process.env.LEGAL_CONTACT_URL?.trim() || "";
   const corsAllowedOrigins = parseCsvEnv(
     process.env.CORS_ALLOWED_ORIGINS,
     isProduction ? "" : DEV_CORS_ALLOWED_ORIGINS,
@@ -277,6 +279,10 @@ export function getApiEnv(): ApiEnv {
     throw new Error("RESEND_API_KEY is required to start the v2 API in production");
   }
 
+  if (isProduction && !legalContactUrl) {
+    throw new Error("LEGAL_CONTACT_URL is required to start the v2 API in production");
+  }
+
   if (isProduction && !resendFromEmail) {
     throw new Error("RESEND_FROM_EMAIL is required to start the v2 API in production");
   }
@@ -371,6 +377,7 @@ export function getApiEnv(): ApiEnv {
     credentialMasterKey,
     jwtAccessSecret,
     jwtRefreshSecret,
+    legalContactUrl,
     nodeEnv,
     promptCatalogMediaDir,
     queuePrefix,

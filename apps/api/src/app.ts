@@ -64,6 +64,8 @@ import { registerFlowHistoryRoutes } from "./modules/flow-history/flow-history.r
 import { FlowHistoryService } from "./modules/flow-history/flow-history.service.js";
 import { registerFlowTemplateRoutes } from "./modules/flow-templates/flow-templates.routes.js";
 import { FlowTemplatesService } from "./modules/flow-templates/flow-templates.service.js";
+import { registerLegalRoutes } from "./modules/legal/legal.routes.js";
+import { LegalService } from "./modules/legal/legal.service.js";
 import { registerObservabilityRoutes } from "./modules/observability/observability.routes.js";
 import { ObservabilityService } from "./modules/observability/observability.service.js";
 import { createApiLoggerOptions, logApiRequestComplete } from "./observability/logger.js";
@@ -330,6 +332,7 @@ export function buildApp(options?: {
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });
+  const legalService = new LegalService({ legalContactUrl: env.legalContactUrl });
 
   const app = Fastify({
     logger: options?.logger === false ? false : (createApiLoggerOptions() as never),
@@ -361,6 +364,7 @@ export function buildApp(options?: {
   app.decorate("flowCommentsService", flowCommentsService);
   app.decorate("flowHistoryService", flowHistoryService);
   app.decorate("flowTemplatesService", flowTemplatesService);
+  app.decorate("legalService", legalService);
   app.decorate("queueHealthService", queueHealthService);
   app.decorate("storageProvider", storageProvider);
   app.decorate("workbenchService", workbenchService);
@@ -465,6 +469,7 @@ export function buildApp(options?: {
   registerAiPluginAdminRoutes(app);
   registerAiRouteTestRoutes(app);
   registerAuthRoutes(app);
+  registerLegalRoutes(app);
   registerAssetRoutes(app);
   registerBillingRoutes(app);
   registerPaymentRoutes(app);
