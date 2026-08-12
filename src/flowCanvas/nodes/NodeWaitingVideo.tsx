@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { SyntheticEvent, useEffect, useRef, useState } from "react";
 
 export type NodeWaitingVideoKind = "text" | "image" | "video";
 
@@ -85,6 +85,15 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
     }
   };
 
+  const handleError = (event: SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    const expectedSource = new URL(`/node-waiting/${kind}-waiting.mp4`, window.location.href).href;
+    if (video !== videoRef.current || (video.currentSrc && video.currentSrc !== expectedSource)) return;
+    playAttemptRef.current += 1;
+    setVideoFailed(true);
+    setVideoReady(false);
+  };
+
   return (
     <div className={className} data-testid="node-waiting-video-container">
       {showVideo ? (
@@ -92,14 +101,11 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
           aria-hidden="true"
           data-testid="node-waiting-video"
           hidden={!videoReady}
+          key={kind}
           loop
           muted
           onCanPlay={handleCanPlay}
-          onError={() => {
-            playAttemptRef.current += 1;
-            setVideoFailed(true);
-            setVideoReady(false);
-          }}
+          onError={handleError}
           playsInline
           preload="metadata"
           ref={videoRef}

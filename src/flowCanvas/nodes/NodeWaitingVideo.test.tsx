@@ -112,6 +112,23 @@ describe("NodeWaitingVideo", () => {
     expect((video as HTMLVideoElement).hidden).toBe(true);
   });
 
+  it("ignores an error from the previous source after kind changes", async () => {
+    setReducedMotion(false);
+    const { rerender } = render(<NodeWaitingVideo kind="text" />);
+    const video = screen.getByTestId("node-waiting-video") as HTMLVideoElement;
+    const previousSource = video.src;
+
+    rerender(<NodeWaitingVideo kind="image" />);
+    Object.defineProperty(video, "currentSrc", { configurable: true, value: previousSource });
+    fireEvent.error(video);
+
+    const imageVideo = screen.getByTestId("node-waiting-video") as HTMLVideoElement;
+    expect(imageVideo).not.toBe(video);
+    await act(async () => { fireEvent.canPlay(imageVideo); });
+    expect(imageVideo.hidden).toBe(false);
+    expect(screen.queryByTestId("node-waiting-fallback")).toBeNull();
+  });
+
   it("does not mount video when reduced motion is preferred", () => {
     setReducedMotion(true);
     render(<NodeWaitingVideo kind="video" />);
