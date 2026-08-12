@@ -3,6 +3,14 @@
 Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
 
+## 2026-08-12 - Text Node Multimodal Image Input Design
+
+- confirmed the current v2 Text Node bug: canvas connections and thumbnails recognize upstream images, but the authoritative Worker/Gateway text path serializes only string messages, so visual content never reaches the selected model.
+- approved a provider-neutral `TextGenerationRequest` image-asset contract for explicitly visual-capable GPT, Gemini, Claude, and OpenAI-compatible text routes. The design preserves creator `inputOrder`, supports at most three upstream images, and never silently truncates inputs.
+- defined API preflight before billing reserve/enqueue plus authoritative Worker validation, tenant-scoped asset hydration, protocol-specific image mapping, fail-closed structured errors, safe catalog capabilities, UI incompatibility states, and redaction requirements.
+- limited this phase to upstream Image Node inputs. Video/audio understanding, frame extraction, and direct Text Node asset-picker inputs remain outside scope.
+- recorded the approved design in `docs/superpowers/specs/2026-08-12-text-node-multimodal-image-input-design.md`; runtime implementation and deployment have not started.
+
 ## 2026-08-12 - Workbench Personal-Wallet Ledger Foreign-Key Repair
 
 - reproduced the reported `/workbench` image-generation `INTERNAL_ERROR` against the production database inside a rolled-back transaction; no generation, queue job, wallet charge, or provider request was created.
