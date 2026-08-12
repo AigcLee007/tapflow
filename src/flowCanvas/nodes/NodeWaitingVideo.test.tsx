@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NodeWaitingVideo } from "./NodeWaitingVideo";
 
@@ -16,8 +16,12 @@ function setReducedMotion(matches: boolean) {
 
 afterEach(() => vi.restoreAllMocks());
 
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+});
+
 describe("NodeWaitingVideo", () => {
-  it.each(["text", "image", "video"] as const)("uses the %s waiting video after it can play", (kind) => {
+  it.each(["text", "image", "video"] as const)("uses the %s waiting video after it can play", async (kind) => {
     setReducedMotion(false);
     render(<NodeWaitingVideo kind={kind} />);
 
@@ -31,7 +35,7 @@ describe("NodeWaitingVideo", () => {
     expect((video as HTMLVideoElement).hidden).toBe(true);
     expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
 
-    fireEvent.canPlay(video);
+    await act(async () => { fireEvent.canPlay(video); });
     expect((video as HTMLVideoElement).hidden).toBe(false);
     expect(screen.queryByTestId("node-waiting-fallback")).toBeNull();
   });
@@ -43,6 +47,24 @@ describe("NodeWaitingVideo", () => {
     const video = screen.getByTestId("node-waiting-video");
     fireEvent.error(video);
 
+    expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
+    expect(screen.queryByTestId("node-waiting-video")).toBeNull();
+  });
+
+  it("falls back when matchMedia is unavailable", () => {
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: undefined });
+    render(<NodeWaitingVideo kind="text" />);
+    expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
+    expect(screen.queryByTestId("node-waiting-video")).toBeNull();
+  });
+
+  it("falls back when autoplay is rejected and marks video decorative", async () => {
+    setReducedMotion(false);
+    render(<NodeWaitingVideo kind="video" />);
+    const video = screen.getByTestId("node-waiting-video") as HTMLVideoElement;
+    expect(video.getAttribute("aria-hidden")).toBe("true");
+    vi.spyOn(video, "play").mockRejectedValue(new Error("blocked"));
+    await act(async () => { fireEvent.canPlay(video); await Promise.resolve(); });
     expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
     expect(screen.queryByTestId("node-waiting-video")).toBeNull();
   });

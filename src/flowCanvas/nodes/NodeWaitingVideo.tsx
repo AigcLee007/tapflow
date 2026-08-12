@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type NodeWaitingVideoKind = "text" | "image" | "video";
 
@@ -18,8 +18,14 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
   const [reducedMotion, setReducedMotion] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      setReducedMotion(true);
+      return;
+    }
+
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePreference = (event: MediaQueryListEvent | MediaQueryList) => {
       setReducedMotion(event.matches);
@@ -38,22 +44,34 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
     <div aria-label={fallbackLabel[kind]} data-testid="node-waiting-fallback" role="status" />
   );
 
+  const handleCanPlay = async () => {
+    try {
+      await videoRef.current?.play();
+      setVideoReady(true);
+    } catch {
+      setVideoFailed(true);
+      setVideoReady(false);
+    }
+  };
+
   return (
     <div className={className} data-testid="node-waiting-video-container">
       {showVideo ? (
         <video
+          aria-hidden="true"
           autoPlay
           data-testid="node-waiting-video"
           hidden={!videoReady}
           loop
           muted
-          onCanPlay={() => setVideoReady(true)}
+          onCanPlay={handleCanPlay}
           onError={() => {
             setVideoFailed(true);
             setVideoReady(false);
           }}
           playsInline
           preload="metadata"
+          ref={videoRef}
           src={`/node-waiting/${kind}-waiting.mp4`}
         />
       ) : null}
