@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NodeWaitingVideo } from "./NodeWaitingVideo";
 
+const originalMatchMedia = Object.getOwnPropertyDescriptor(window, "matchMedia");
+
 function setReducedMotion(matches: boolean) {
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -14,10 +16,16 @@ function setReducedMotion(matches: boolean) {
   });
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (originalMatchMedia) Object.defineProperty(window, "matchMedia", originalMatchMedia);
+  else delete (window as Partial<Window>).matchMedia;
+});
 
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("probably");
 });
 
 describe("NodeWaitingVideo", () => {
@@ -69,6 +77,25 @@ describe("NodeWaitingVideo", () => {
     expect(screen.queryByTestId("node-waiting-video")).toBeNull();
   });
 
+  it("falls back when MP4 playback is unsupported", () => {
+    setReducedMotion(false);
+    vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("");
+    render(<NodeWaitingVideo kind="video" />);
+    fireEvent.canPlay(screen.getByTestId("node-waiting-video"));
+    expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
+    expect(screen.queryByTestId("node-waiting-video")).toBeNull();
+  });
+
+  it("resets failure state when kind changes", () => {
+    setReducedMotion(false);
+    const { rerender } = render(<NodeWaitingVideo kind="text" />);
+    fireEvent.error(screen.getByTestId("node-waiting-video"));
+    rerender(<NodeWaitingVideo kind="image" />);
+    const video = screen.getByTestId("node-waiting-video");
+    expect(video.getAttribute("src")).toBe("/node-waiting/image-waiting.mp4");
+    expect((video as HTMLVideoElement).hidden).toBe(true);
+  });
+
   it("does not mount video when reduced motion is preferred", () => {
     setReducedMotion(true);
     render(<NodeWaitingVideo kind="video" />);
@@ -77,7 +104,7 @@ describe("NodeWaitingVideo", () => {
     expect(screen.queryByTestId("node-waiting-video")).toBeNull();
   });
 
-  it("unmounts video when the reduced motion preference changes", () => {
+  it("pauses and unmounts video when the reduced motion preference changes", () => {
     let listener: ((event: MediaQueryListEvent) => void) | undefined;
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
@@ -88,10 +115,30 @@ describe("NodeWaitingVideo", () => {
       }),
     });
     render(<NodeWaitingVideo kind="text" />);
-    expect(screen.getByTestId("node-waiting-video")).toBeTruthy();
+    const video = screen.getByTestId("node-waiting-video") as HTMLVideoElement;
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => undefined);
 
     act(() => listener?.({ matches: true } as MediaQueryListEvent));
 
+    expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
+    expect(screen.queryByTestId("node-waiting-video")).toBeNull();
+    expect(pause).toHaveBeenCalled();
+  });
+
+  it("ignores a pending play completion after reduced motion becomes preferred", async () => {
+    let listener: ((event: MediaQueryListEvent) => void) | undefined;
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: vi.fn().mockReturnValue({
+      addEventListener: (_type: string, callback: (event: MediaQueryListEvent) => void) => { listener = callback; },
+      matches: false,
+      removeEventListener: vi.fn(),
+    }) });
+    let resolvePlay: (() => void) | undefined;
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockReturnValue(new Promise<void>((resolve) => { resolvePlay = resolve; }));
+    render(<NodeWaitingVideo kind="text" />);
+    const video = screen.getByTestId("node-waiting-video");
+    fireEvent.canPlay(video);
+    act(() => listener?.({ matches: true } as MediaQueryListEvent));
+    await act(async () => resolvePlay?.());
     expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
     expect(screen.queryByTestId("node-waiting-video")).toBeNull();
   });
