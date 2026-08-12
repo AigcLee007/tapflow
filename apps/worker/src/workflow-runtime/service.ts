@@ -9,7 +9,13 @@ import {
   type AuditLogInput,
   withTenantTransaction,
 } from "@aigc-flow/db";
-import { AiGatewayError } from "@aigc-flow/ai-gateway-core";
+import {
+  AiGatewayError,
+  resolveTextGenerationCapabilities,
+  TEXT_IMAGE_INPUT_ERROR_CODES,
+  validateTextImageInput,
+  type TextGenerationCapabilities,
+} from "@aigc-flow/ai-gateway-core";
 import type {
   AiGatewayMediaResult,
   AiGatewayTextResult,
@@ -155,6 +161,11 @@ type AssetStorageLookup = {
 
 type VideoEditorRenderRouteCapability = {
   renderEngine: "ffmpeg" | null;
+  routeKey: string;
+};
+
+type TextGenerationRouteCapability = {
+  capabilities: TextGenerationCapabilities;
   routeKey: string;
 };
 
@@ -344,6 +355,7 @@ function isProviderResultUnknownError(error: unknown): boolean {
 function buildTextMessages(
   upstreamOutputs: Array<Record<string, unknown> | null>,
   config: Record<string, unknown>,
+  inputAssets?: AssetReferenceInput[],
 ): TextGenerationRequest {
   const messages: Array<{ content: string; role: "assistant" | "system" | "user" }> = [];
   if (typeof config.systemPrompt === "string" && config.systemPrompt.trim()) {
@@ -364,7 +376,7 @@ function buildTextMessages(
         return directText.trim();
       }
 
-      return JSON.stringify(value);
+      return "";
     })
     .filter(Boolean)
     .join("\n");
@@ -378,6 +390,7 @@ function buildTextMessages(
   });
 
   return {
+    ...(inputAssets && inputAssets.length > 0 ? { inputAssets } : {}),
     maxTokens: typeof config.maxTokens === "number" ? config.maxTokens : null,
     messages,
     routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
@@ -2539,7 +2552,37 @@ export class WorkflowNodeExecutionService {
     }
 
     if (node.type === "text.generate") {
-      const request = buildTextMessages(upstreamOutputs, node.config ?? {});
+      const routeKey = typeof node.config?.routeKey === "string" ? node.config.routeKey : "";
+      const routeCapability = await withTenantTransaction(
+        { tenantId: workflowRun.tenant_id, userId: context.userId },
+        async (client) => this.loadTextGenerationRouteCapability(client, workflowRun.tenant_id, routeKey),
+        this.pool,
+      );
+      const inputAssets = extractAssetInputs(upstreamOutputs);
+      const issue = validateTextImageInput({
+        capabilities: routeCapability?.capabilities ?? {
+          maxImages: 0,
+          supportedImageMimeTypes: [],
+          supportsImageInput: false,
+        },
+        inputAssets,
+      });
+      if (issue) {
+        throw new AiGatewayError({ code: issue.code, message: issue.message, statusCode: 422 });
+      }
+      await this.hydrateTextInputAssetUrls(workflowRun.tenant_id, inputAssets);
+      const hydratedIssue = validateTextImageInput({
+        capabilities: routeCapability?.capabilities ?? {
+          maxImages: 0,
+          supportedImageMimeTypes: [],
+          supportsImageInput: false,
+        },
+        inputAssets,
+      });
+      if (hydratedIssue) {
+        throw new AiGatewayError({ code: hydratedIssue.code, message: hydratedIssue.message, statusCode: 422 });
+      }
+      const request = buildTextMessages(upstreamOutputs, node.config ?? {}, inputAssets);
       const result = await this.textGenerationRuntime.generateText(
         {
           tenantId: context.tenantId,
@@ -3288,6 +3331,72 @@ export class WorkflowNodeExecutionService {
     }
   }
 
+  private async hydrateTextInputAssetUrls(
+    tenantId: string,
+    inputAssets: AssetReferenceInput[],
+  ): Promise<void> {
+    try {
+      const assetIds = Array.from(new Set(inputAssets.map((asset) => asset.assetId)));
+      const lookups = await withTenantTransaction(
+        { tenantId, userId: null },
+        async (client) => this.loadAssetStorageLookups(client, tenantId, assetIds),
+        this.pool,
+      );
+      for (const asset of inputAssets) {
+        const lookup = lookups.get(asset.assetId);
+        if (!lookup) {
+          throw new AiGatewayError({
+            code: TEXT_IMAGE_INPUT_ERROR_CODES.ASSET_NOT_FOUND,
+            message: "The referenced image asset was not found.",
+            statusCode: 422,
+          });
+        }
+        if (lookup.kind !== "image") {
+          throw new AiGatewayError({
+            code: TEXT_IMAGE_INPUT_ERROR_CODES.TYPE_UNSUPPORTED,
+            message: "Only image assets are supported.",
+            statusCode: 422,
+          });
+        }
+        const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
+          bucket: lookup.bucket,
+          expiresInSeconds: 15 * 60,
+          key: lookup.objectKey,
+          responseContentType: lookup.mimeType,
+        });
+        asset.kind = lookup.kind;
+        asset.mimeType = lookup.mimeType;
+        asset.width = lookup.width ?? null;
+        asset.height = lookup.height ?? null;
+        asset.durationMs = lookup.durationMs ?? null;
+        asset.metadata = { url: signed.url };
+      }
+    } catch (error) {
+      if (error instanceof AiGatewayError && error.code.startsWith("TEXT_IMAGE_")) {
+        throw error;
+      }
+      if (error instanceof AiGatewayError && error.code === "REFERENCE_ASSET_NOT_FOUND") {
+        throw new AiGatewayError({
+          code: TEXT_IMAGE_INPUT_ERROR_CODES.ASSET_NOT_FOUND,
+          message: "The referenced image asset was not found.",
+          statusCode: 422,
+        });
+      }
+      if (error instanceof AiGatewayError && error.code === "REFERENCE_ASSET_KIND_MISMATCH") {
+        throw new AiGatewayError({
+          code: TEXT_IMAGE_INPUT_ERROR_CODES.TYPE_UNSUPPORTED,
+          message: "Only image assets are supported.",
+          statusCode: 422,
+        });
+      }
+      throw new AiGatewayError({
+        code: TEXT_IMAGE_INPUT_ERROR_CODES.URL_HYDRATION_FAILED,
+        message: "The image input URL could not be hydrated.",
+        statusCode: 502,
+      });
+    }
+  }
+
   private async hydrateTemporaryReferenceUploads(
     tenantId: string,
     inputAssets: AssetReferenceInput[],
@@ -3476,6 +3585,52 @@ export class WorkflowNodeExecutionService {
 
     return {
       renderEngine: readVideoEditorRenderEngine(row.request_config),
+      routeKey: row.route_key,
+    };
+  }
+
+  private async loadTextGenerationRouteCapability(
+    client: PoolClient,
+    tenantId: string,
+    routeKey: string,
+  ): Promise<TextGenerationRouteCapability | null> {
+    if (!routeKey.trim()) {
+      return null;
+    }
+    const result = await client.query<{
+      model_capabilities: Record<string, unknown>;
+      request_config: Record<string, unknown>;
+      route_key: string;
+    }>(
+      `
+        SELECT
+          route.route_key,
+          COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
+          COALESCE(route.request_config, '{}'::jsonb) AS request_config
+        FROM ai_routes AS route
+        JOIN ai_providers AS provider ON provider.id = route.provider_id
+        JOIN ai_models AS model ON model.id = route.model_id
+        WHERE route.status = 'active'
+          AND route.modality = 'text'
+          AND route.route_key = $1
+          AND (route.tenant_id = $2::uuid OR route.tenant_id IS NULL)
+          AND provider.status = 'active'
+          AND model.status = 'active'
+        ORDER BY
+          CASE WHEN route.tenant_id = $2::uuid THEN 0 ELSE 1 END ASC,
+          route.updated_at DESC,
+          route.id ASC
+        LIMIT 1
+      `,
+      [routeKey, tenantId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      capabilities: resolveTextGenerationCapabilities(
+        row.model_capabilities,
+        isPlainObject(row.request_config.capabilities) ? row.request_config.capabilities : {},
+      ),
       routeKey: row.route_key,
     };
   }
