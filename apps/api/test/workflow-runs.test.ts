@@ -7,7 +7,10 @@ import { QUEUE_NAMES } from "@aigc-flow/redis";
 import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/modules/auth/password.js";
-import { WorkflowRunsService } from "../src/modules/workflow-runs/workflow-runs.service.js";
+import {
+  getTextImageInputCandidates,
+  WorkflowRunsService,
+} from "../src/modules/workflow-runs/workflow-runs.service.js";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
 import { currentLegalConsent } from "./legal-consent.fixture.js";
@@ -689,6 +692,34 @@ function parseSseEvents(body: string) {
       };
     });
 }
+
+describe("text image preflight candidates", () => {
+  test("uses inputOrder before compiled dependency order", () => {
+    const workflow = {
+      edges: [],
+      entryNodeIds: ["first", "second"],
+      nodes: [
+        { config: { assetId: "asset-first" }, dependencies: [], dependents: ["text"], id: "first", type: "image.asset" },
+        { config: { assetId: "asset-second" }, dependencies: [], dependents: ["text"], id: "second", type: "image.asset" },
+        {
+          config: { inputOrder: ["upstream:second", "upstream:first"] },
+          dependencies: ["first", "second"],
+          dependents: [],
+          id: "text",
+          type: "text.generate",
+        },
+      ],
+      outputNodeIds: ["text"],
+      schemaVersion: "v2" as const,
+    };
+
+    expect(getTextImageInputCandidates(
+      workflow.nodes[2]!,
+      workflow,
+      { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+    ).map((asset) => asset.assetId)).toEqual(["second", "first"]);
+  });
+});
 
 async function countBillingAndWorkflowState(
   pool: ReturnType<typeof createPgPool>,

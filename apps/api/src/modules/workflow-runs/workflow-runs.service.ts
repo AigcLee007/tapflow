@@ -478,7 +478,7 @@ function getOrderedDependencyIds(node: Pick<CompiledWorkflow["nodes"][number], "
   return Array.from(new Set([...requestedOrder, ...node.dependencies]));
 }
 
-function getTextImageInputCandidates(
+export function getTextImageInputCandidates(
   node: CompiledWorkflow["nodes"][number],
   workflow: CompiledWorkflow,
   capabilities: TextGenerationCapabilities,
