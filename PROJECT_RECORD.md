@@ -1,7 +1,17 @@
 ﻿# Project Record
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
+
+## 2026-08-12 - Workbench Personal-Wallet Ledger Foreign-Key Repair
+
+- reproduced the reported `/workbench` image-generation `INTERNAL_ERROR` against the production database inside a rolled-back transaction; no generation, queue job, wallet charge, or provider request was created.
+- confirmed the root cause was the personal-wallet cutover writing `billing_wallet_ledger` IDs into `workbench_generations` columns whose foreign keys still referenced legacy `billing_ledger`.
+- added `packages/db/migrations/000067_workbench_personal_wallet_ledger_fks.sql`, which repoints `reserve_ledger_id`, `settle_ledger_id`, and `refund_ledger_id` to `billing_wallet_ledger(id)` with `ON DELETE SET NULL NOT VALID`. New writes are enforced while historical legacy rows remain readable without rewriting accounting history.
+- added `packages/db/test/workbench-wallet-ledger-fks.test.ts` to lock all three constraint names, target table, delete behavior, and historical `NOT VALID` compatibility.
+- validation passed: focused migration test; full database workspace tests (`52` passed, `38` environment-dependent skips); workbench API tests (`7` passed); workbench worker tests (`12` passed); database build; API build; root frontend build. The root build retained existing CSS, chunk-size, module-splitting, and Browserslist warnings only.
+- root `npm test` could not start repository tests because Vitest scanned the existing `.worktrees` tree and Windows returned `EMFILE` while opening `.worktrees/unified-input-groups-mentions/apps/api/test/prompts.service.test.ts`; it reported zero tests and one collection error, so it is not counted as passing.
+- production deployment and smoke verification remain pending explicit operational execution. Use the Docker Compose v2 runbook, stop the worker before migration, run `node packages/db/dist/cli.js`, then restart Redis/API/worker/frontend; afterward perform a rolled-back insert probe and one authenticated workbench generation.
 
 ## 2026-08-11 - H3video-2k Resolution Capability Alignment
 
