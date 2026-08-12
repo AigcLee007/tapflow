@@ -3,6 +3,12 @@
 Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
 
+## 2026-08-12 - Text Node Multimodal Image Input Implementation Plan
+
+- completed the approved implementation plan in `docs/superpowers/plans/2026-08-12-text-node-multimodal-image-input.md`.
+- the plan uses a TDD sequence for the shared text image-input contract, OpenAI/Aittco protocol mappings, plugin capability publication and migration, ordered Worker asset hydration, pre-reserve API validation, canvas capability states, full regression, browser smoke, and Docker Compose v2 staging verification.
+- product code, migrations, deployment, and staging validation remain pending plan execution.
+
 ## 2026-08-12 - Text Node Multimodal Image Input Design
 
 - confirmed the current v2 Text Node bug: canvas connections and thumbnails recognize upstream images, but the authoritative Worker/Gateway text path serializes only string messages, so visual content never reaches the selected model.
