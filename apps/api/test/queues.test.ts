@@ -1,4 +1,5 @@
-import { afterAll, describe, expect, test } from "vitest";
+iimport { currentLegalConsent } from "./legal-consent.fixture.js";
+mport { afterAll, describe, expect, test } from "vitest";
 
 import { createPgPool } from "@aigc-flow/db";
 
@@ -145,6 +146,7 @@ describeWithDatabase("queue health api", () => {
           payload: {
             email: "owner-queue@example.com",
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantName: "Queue Tenant",
           },
           url: "/api/v2/auth/register",

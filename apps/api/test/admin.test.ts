@@ -7,6 +7,7 @@ import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
+import { currentLegalConsent } from "./legal-consent.fixture.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
@@ -99,6 +100,7 @@ async function registerUser(
       displayName: input.displayName,
       email: input.email,
       password: input.password ?? "StrongPass123!",
+      consent: currentLegalConsent,
       tenantName: input.tenantName,
     },
     url: "/api/v2/auth/register",
@@ -242,7 +244,7 @@ async function createTestAiRoute(
       provider.rows[0]?.id,
       model.rows[0]?.id,
       input.routeKey ?? `image.test.${randomUUID()}`,
-      input.routeLabel ?? "线路一",
+      input.routeLabel ?? "缁捐儻鐭炬稉鈧?,
     ],
   );
 
@@ -294,6 +296,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -347,6 +350,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: targetUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -495,6 +499,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -604,6 +609,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -718,6 +724,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -785,6 +792,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -880,6 +888,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -956,6 +965,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -1092,7 +1102,7 @@ describeWithDatabase("admin api", () => {
           tenantName: "Ops Tenant",
         });
         const route = await createTestAiRoute(adminPool, {
-          routeLabel: "线路一",
+          routeLabel: "缁捐儻鐭炬稉鈧?,
           tenantId: adminUser.currentTenant.id,
         });
         await adminPool.query(
@@ -1118,6 +1128,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -1139,7 +1150,7 @@ describeWithDatabase("admin api", () => {
         });
         expect(stats.json().routes[0]).toMatchObject({
           averageLatencyMs: 1500,
-          routeLabel: "线路一",
+          routeLabel: "缁捐儻鐭炬稉鈧?,
           successfulCalls: 1,
           totalCalls: 2,
         });
@@ -1179,6 +1190,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: targetUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -1200,6 +1212,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: "resettable-user@example.com",
             password: reset.json().passwordShownOnce,
+            consent: currentLegalConsent,
             tenantId: targetUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -1253,6 +1266,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: adminUser.currentTenant.id,
           },
           url: "/api/v2/auth/login",
@@ -1342,6 +1356,7 @@ describeWithDatabase("admin api", () => {
           payload: {
             email: adminEmail,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
             tenantId: flowOwner.currentTenant.id,
           },
           url: "/api/v2/auth/login",
