@@ -6446,3 +6446,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - the homepage now uses real workspace project data for the latest project and recent projects, creates a real project through the existing v2 project/flow path, and links secondary actions to the existing prompt plaza, asset library, and workspace project manager.
 - added explicit loading, empty-project, project-load error, and server-persistence status surfaces; removed the non-functional voice, send, AI capability, and capability-preview controls.
 - validation passed: `HomePage` and unchanged `WorkspaceShell` focused suites (`12` tests) and `npm run build`; existing `WorkspaceShell` test-harness `act(...)`, CSS, mixed-import, Browserslist, and chunk-size warnings remain non-blocking.
+
+## 2026-08-12 - Durable Canvas Image Uploads
+
+- new local image uploads initiated from a project canvas now create durable `/api/v2/assets` records backed by the configured S3-compatible object storage. Canvas graph data stores the resulting `assetId` and `assetIds`, with signed asset previews treated only as recoverable UI data.
+- standalone `/workbench` reference-image uploads remain temporary seven-day `workbench_reference_uploads.bytes` (`bytea`) records. The temporary reference-upload helper and workbench APIs were intentionally not changed.
+- existing saved canvas drafts containing `referenceUploadId` were deliberately not migrated or rewritten.
+- validation passed: `npx vitest --run src/flowCanvas/utils/localImageUpload.test.ts src/flowCanvas/nodes/FlowNodes.image-inputs.test.tsx` (`2` files, `13` tests) and `npm run build`. Build emitted existing Browserslist, mixed-import, and chunk-size warnings only.
