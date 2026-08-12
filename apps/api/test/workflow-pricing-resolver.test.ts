@@ -820,4 +820,68 @@ describe("workflow pricing resolver", () => {
       },
     })).not.toThrow();
   });
+
+  it("allows an empty video editor prompt when a connected static text node supplies it", () => {
+    const videoNode = {
+      config: {
+        generationPrompt: "",
+        params: {
+          videoGeneration: {
+            aspectRatio: "16:9",
+            count: 1,
+            durationSeconds: 4,
+            generateAudio: true,
+            mode: "image_to_video",
+            referenceInputs: [{
+              mediaKind: "image",
+              order: 0,
+              referenceKey: "upstream:image",
+              role: "main_image",
+              source: { id: "image", kind: "upstream" },
+            }],
+            resolution: "720P",
+            schemaVersion: 2,
+          },
+        },
+        routeKey: "video.pixelhub.gemini-omni-flash",
+      },
+      dependencies: ["copy", "image"],
+      dependents: [],
+      id: "video",
+      type: "video.generate",
+    };
+
+    expect(() => assertNodeRouteSupportsRuntimeRequest({
+      compiledGraph: {
+        edges: [],
+        entryNodeIds: ["copy", "image"],
+        nodes: [
+          {
+            config: { text: "A quiet room in morning light, with gentle curtain movement." },
+            dependencies: [],
+            dependents: ["video"],
+            id: "copy",
+            type: "text.generate",
+          },
+          {
+            config: { assetId: "asset-image" },
+            dependencies: [],
+            dependents: ["video"],
+            id: "image",
+            type: "image.asset",
+          },
+          videoNode,
+        ],
+        outputNodeIds: ["video"],
+        schemaVersion: "v2",
+      },
+      node: videoNode,
+      routeContext: {
+        capabilities: pixelHubCapabilitiesFor("gemini-omni-flash"),
+        modelKey: "gemini-omni-flash",
+        providerKey: "pixelhub",
+        routeKey: "video.pixelhub.gemini-omni-flash",
+      },
+    })).not.toThrow();
+  });
 });

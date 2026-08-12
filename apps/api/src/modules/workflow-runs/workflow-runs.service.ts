@@ -21,6 +21,7 @@ import {
   checksumGraph,
   compileGraph,
   type CompiledWorkflow,
+  type CompiledWorkflowNode,
   type FlowGraph,
   validateGraph,
   WorkflowGraphValidationError,
@@ -502,8 +503,43 @@ function readImageGenerationMode(node: Pick<CompiledWorkflow["nodes"][number], "
   return rawMode && KNOWN_IMAGE_GENERATION_MODES.has(rawMode) ? rawMode : "standard";
 }
 
+function extractStaticTextFromConfig(config: Record<string, unknown>): string {
+  for (const candidate of [config.text, config.generationPrompt, config.prompt, config.content, config.value]) {
+    const text = readTrimmedString(candidate);
+    if (text) return text;
+  }
+  return "";
+}
+
+function getOrderedDependencyIds(node: Pick<CompiledWorkflowNode, "config"> & { dependencies?: string[] }): string[] {
+  const dependencies = Array.isArray(node.dependencies) ? node.dependencies : [];
+  const requestedOrder = Array.isArray(node.config?.inputOrder)
+    ? node.config.inputOrder
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.startsWith("upstream:") ? value.slice("upstream:".length) : "")
+      .filter((dependencyId) => dependencies.includes(dependencyId))
+    : [];
+  return Array.from(new Set([...requestedOrder, ...dependencies]));
+}
+
+function resolveVideoPreflightPrompt(
+  node: Pick<CompiledWorkflowNode, "config"> & { dependencies?: string[] },
+  compiledGraph?: Pick<CompiledWorkflow, "nodes">,
+): string {
+  const upstreamText = getOrderedDependencyIds(node)
+    .map((dependencyId) => compiledGraph?.nodes.find((candidate) => candidate.id === dependencyId))
+    .map((dependencyNode) => dependencyNode ? extractStaticTextFromConfig(dependencyNode.config) : "")
+    .filter(Boolean)
+    .join("\n");
+  const localPrompt = readTrimmedString(node.config.generationPrompt)
+    ?? readTrimmedString(node.config.prompt)
+    ?? "";
+  return [upstreamText, localPrompt].filter(Boolean).join("\n");
+}
+
 function readStructuredVideoGenerationRequest(
   node: Pick<CompiledWorkflow["nodes"][number], "config" | "type">,
+  prompt: string,
 ): VideoGenerationRequest | null {
   if (node.type !== "video.generate") return null;
   const config = isRecord(node.config) ? node.config : {};
@@ -570,13 +606,14 @@ function readStructuredVideoGenerationRequest(
       mode: videoGeneration.mode,
       resolution: videoGeneration.resolution,
     } as VideoGenerationParams,
-    prompt: readTrimmedString(config.generationPrompt) ?? readTrimmedString(config.prompt) ?? "",
+    prompt,
     routeKey: resolveConfiguredRouteKey(node),
   };
 }
 
 export function assertNodeRouteSupportsRuntimeRequest(input: {
-  node: Pick<CompiledWorkflow["nodes"][number], "config" | "id" | "type">;
+  compiledGraph?: Pick<CompiledWorkflow, "nodes">;
+  node: Pick<CompiledWorkflow["nodes"][number], "config" | "id" | "type"> & { dependencies?: string[] };
   routeContext: RouteRuntimeContext | null;
 }): void {
   const generationMode = readImageGenerationMode(input.node);
@@ -592,7 +629,10 @@ export function assertNodeRouteSupportsRuntimeRequest(input: {
   }
 
   if (!hasVideoEditorExportMetadata(input.node)) {
-    const request = readStructuredVideoGenerationRequest(input.node);
+    const request = readStructuredVideoGenerationRequest(
+      input.node,
+      resolveVideoPreflightPrompt(input.node, input.compiledGraph),
+    );
     if (!request) return;
     const capabilities = readVideoCapabilities(input.routeContext?.capabilities);
     if (!capabilities || !input.routeContext?.capabilities.supportedVideoWorkflows.includes("video_generation")) {
@@ -926,6 +966,7 @@ export class WorkflowRunsService {
         for (const node of nodesToRun) {
           const effectiveRoute = resolveEffectiveRouteKey(node);
           assertNodeRouteSupportsRuntimeRequest({
+            compiledGraph: runtimeFlow.compiled_graph_json,
             node,
             routeContext: routeContexts.get(effectiveRoute) ?? null,
           });
