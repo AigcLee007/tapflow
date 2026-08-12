@@ -33,6 +33,11 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+const imageInputs = [
+  { assetId: "first", kind: "image", mimeType: "image/png", metadata: { signedUrl: "https://signed.test/first.png" } },
+  { assetId: "second", kind: "image", mimeType: "image/webp", metadata: { publicUrl: "https://signed.test/second.webp" } },
+];
+
 describe("AittcoTextRelayAdapter", () => {
   test("sends Gemini GenerateContent requests and parses usage", async () => {
     const fetchImplementation = vi.fn(async () => jsonResponse({
@@ -91,6 +96,32 @@ describe("AittcoTextRelayAdapter", () => {
     expect(JSON.stringify(result.providerRequest)).not.toContain("previous answer");
   });
 
+  test("maps image inputs into Gemini fileData parts and redacts diagnostics", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({
+      candidates: [{ content: { parts: [{ text: "Gemini reply" }] } }],
+      usageMetadata: {},
+    }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    const result = await adapter.generateText(context({ requestConfig: { model: "gemini-3.1-pro-preview", protocol: "gemini" } }), {
+      inputAssets: imageInputs,
+      messages: [{ content: "describe", role: "user" }],
+    });
+
+    const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      contents: [{ parts: [
+        { text: "describe" },
+        { fileData: { fileUri: "https://signed.test/first.png", mimeType: "image/png" } },
+        { fileData: { fileUri: "https://signed.test/second.webp", mimeType: "image/webp" } },
+      ], role: "user" }],
+    });
+    expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
+      imageInputCount: 2,
+      imageMimeTypes: ["image/png", "image/webp"],
+    });
+  });
+
   test("sends Responses requests using the configured upstream model", async () => {
     const fetchImplementation = vi.fn(async () => jsonResponse({
       output: [{ content: [{ text: "Responses reply", type: "output_text" }], type: "message" }],
@@ -129,6 +160,27 @@ describe("AittcoTextRelayAdapter", () => {
     expect(result.usage).toEqual({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
   });
 
+  test("maps image inputs into Responses input_image items and redacts diagnostics", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({ output_text: "Responses reply", usage: {} }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    const result = await adapter.generateText(context({ requestConfig: { model: "gpt-5.6-sol", protocol: "responses" } }), {
+      inputAssets: imageInputs,
+      messages: [{ content: "describe", role: "user" }],
+    });
+
+    const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ input: [{ role: "user", content: [
+      { type: "input_text", text: "describe" },
+      { type: "input_image", image_url: "https://signed.test/first.png" },
+      { type: "input_image", image_url: "https://signed.test/second.webp" },
+    ] }] });
+    expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
+      imageInputCount: 2,
+      imageMimeTypes: ["image/png", "image/webp"],
+    });
+  });
+
   test("sends Chat Completions requests and parses string message content", async () => {
     const fetchImplementation = vi.fn(async () => jsonResponse({
       choices: [{ message: { content: "Chat Completions reply" } }],
@@ -163,6 +215,27 @@ describe("AittcoTextRelayAdapter", () => {
     });
     expect(result.outputText).toBe("Chat Completions reply");
     expect(result.usage).toEqual({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
+  });
+
+  test("maps image inputs into Chat Completions image_url parts and redacts diagnostics", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({ choices: [{ message: { content: "Chat reply" } }], usage: {} }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    const result = await adapter.generateText(context({ requestConfig: { model: "gpt-5.6-sol", protocol: "chat-completions" } }), {
+      inputAssets: imageInputs,
+      messages: [{ content: "describe", role: "user" }],
+    });
+
+    const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ messages: [{ role: "user", content: [
+      { type: "text", text: "describe" },
+      { type: "image_url", image_url: { url: "https://signed.test/first.png" } },
+      { type: "image_url", image_url: { url: "https://signed.test/second.webp" } },
+    ] }] });
+    expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
+      imageInputCount: 2,
+      imageMimeTypes: ["image/png", "image/webp"],
+    });
   });
 
   test("parses Chat Completions content parts", async () => {
@@ -217,6 +290,27 @@ describe("AittcoTextRelayAdapter", () => {
     });
     expect(result.outputText).toBe("Claude reply");
     expect(result.usage).toEqual({ inputTokens: 4, outputTokens: 5, totalTokens: 9 });
+  });
+
+  test("maps image inputs into Claude image source blocks and redacts diagnostics", async () => {
+    const fetchImplementation = vi.fn(async () => jsonResponse({ content: [{ text: "Claude reply", type: "text" }], usage: {} }));
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation: fetchImplementation as typeof fetch });
+
+    const result = await adapter.generateText(context({ requestConfig: { model: "claude-opus-5", protocol: "claude" } }), {
+      inputAssets: imageInputs,
+      messages: [{ content: "describe", role: "user" }],
+    });
+
+    const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ messages: [{ role: "user", content: [
+      { type: "text", text: "describe" },
+      { type: "image", source: { type: "url", url: "https://signed.test/first.png" } },
+      { type: "image", source: { type: "url", url: "https://signed.test/second.webp" } },
+    ] }] });
+    expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
+      imageInputCount: 2,
+      imageMimeTypes: ["image/png", "image/webp"],
+    });
   });
 
   test("maps provider errors without leaking credentials or prompt content", async () => {

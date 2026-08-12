@@ -1,6 +1,7 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
+  AssetReferenceInput,
   AiGatewayUsage,
   ProviderCallContext,
   ProviderTextGenerationResult,
@@ -27,6 +28,19 @@ function asString(value: unknown): string | null {
 
 function compactObject<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
+}
+
+function readImageInputs(inputAssets: AssetReferenceInput[] | null | undefined): Array<{ mimeType: string; url: string }> {
+  if (!Array.isArray(inputAssets)) return [];
+  return inputAssets.filter((asset) => asset.kind === "image").map((asset) => {
+    const metadata = asRecord(asset.metadata);
+    const url = [metadata.url, metadata.signedUrl, metadata.publicUrl].find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim();
+    const mimeType = typeof asset.mimeType === "string" && asset.mimeType.trim() ? asset.mimeType.trim().toLowerCase() : "application/octet-stream";
+    if (!url) {
+      throw new AiGatewayError({ code: "TEXT_IMAGE_URL_HYDRATION_FAILED", message: "The image input URL could not be hydrated", statusCode: 502 });
+    }
+    return { mimeType, url };
+  });
 }
 
 function normalizePath(value: unknown, fallback: string): string {
@@ -190,10 +204,12 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     const { messages, system } = splitSystemMessages(request.messages);
     const maxTokens = resolveMaxTokens(request, requestConfig);
     const temperature = resolveTemperature(request, requestConfig);
+    const images = readImageInputs(request.inputAssets);
     const path = this.resolvePath(protocol, requestConfig, model);
     const url = buildUrl(context.baseUrl, path);
-    const payload = this.buildPayload(protocol, model, messages, system, maxTokens, temperature);
+    const payload = this.buildPayload(protocol, model, messages, system, maxTokens, temperature, images);
     const providerRequest = {
+      ...(images.length ? { body: { imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } } : {}),
       messageCount: request.messages.length,
       model,
       protocol,
@@ -289,11 +305,15 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     system: string | null,
     maxTokens: number | undefined,
     temperature: number | undefined,
+    images: Array<{ mimeType: string; url: string }>,
   ): Record<string, unknown> {
     if (protocol === "gemini") {
       return compactObject({
-        contents: messages.map((message) => ({
-          parts: [{ text: message.content }],
+        contents: messages.map((message, index) => ({
+          parts: [
+            { text: message.content },
+            ...(index === messages.length - 1 ? images.map((image) => ({ fileData: { fileUri: image.url, mimeType: image.mimeType } })) : []),
+          ],
           role: message.role === "assistant" ? "model" : "user",
         })),
         generationConfig: compactObject({
@@ -305,7 +325,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     }
     if (protocol === "responses") {
       return compactObject({
-        input: system ? [{ content: system, role: "system" }, ...messages] : messages,
+        input: system ? [{ content: system, role: "system" }, ...messages.map((message, index) => ({ ...message, content: index === messages.length - 1 && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content }))] : messages.map((message, index) => ({ ...message, content: index === messages.length - 1 && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content })),
         max_output_tokens: maxTokens,
         model,
         temperature,
@@ -314,15 +334,15 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     if (protocol === "chat-completions") {
       return compactObject({
         max_tokens: maxTokens,
-        messages: system ? [{ content: system, role: "system" }, ...messages] : messages,
+        messages: (system ? [{ content: system, role: "system" as const }, ...messages] : messages).map((message, index, all) => ({ ...message, content: images.length && index === all.length - 1 ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image_url", image_url: { url: image.url } }))] : message.content })),
         model,
         temperature,
       });
     }
     return compactObject({
       max_tokens: maxTokens ?? 2048,
-      messages: messages.map((message) => ({
-        content: message.content,
+      messages: messages.map((message, index) => ({
+        content: images.length && index === messages.length - 1 ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image", source: { type: "url", url: image.url } }))] : message.content,
         role: message.role === "assistant" ? "assistant" : "user",
       })),
       model,
