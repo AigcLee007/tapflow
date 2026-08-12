@@ -5,6 +5,8 @@ import {
   buildNodeWaitingCommand,
   redactNodeWaitingError,
   buildNodeWaitingGenerationRequest,
+  buildNodeWaitingFfmpegArgs,
+  assertNodeWaitingVideoProbe,
   generateNodeWaitingVideos,
   getNodeWaitingOutputPaths,
 } from "./generate-node-waiting-videos";
@@ -59,5 +61,19 @@ describe("node waiting video generation", () => {
     await expect(generateNodeWaitingVideos(["--generate", "--confirm-generation-cost"], {})).rejects.toThrow(
       "DATABASE_URL and CREDENTIAL_MASTER_KEY are required for live generation",
     );
+  });
+
+  it("constructs a silent H.264 faststart transcode capped at 720 pixels", () => {
+    expect(buildNodeWaitingFfmpegArgs("source.mp4", "final.mp4")).toEqual([
+      "-y", "-i", "source.mp4", "-map", "0:v:0", "-an", "-vf", "scale=720:720:force_original_aspect_ratio=decrease",
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "final.mp4",
+    ]);
+  });
+
+  it("accepts only silent H.264 videos within waiting-asset limits", () => {
+    expect(() => assertNodeWaitingVideoProbe({ format: { duration: "4.0", size: "1200000" }, streams: [{ codec_type: "video", codec_name: "h264", width: 720, height: 405 }] })).not.toThrow();
+    expect(() => assertNodeWaitingVideoProbe({ format: { duration: "4.0", size: "1200000" }, streams: [{ codec_type: "video", codec_name: "hevc", width: 720, height: 405 }] })).toThrow("H.264");
+    expect(() => assertNodeWaitingVideoProbe({ format: { duration: "4.0", size: "1200000" }, streams: [{ codec_type: "video", codec_name: "h264", width: 720, height: 405 }, { codec_type: "audio" }] })).toThrow("audio");
+    expect(() => assertNodeWaitingVideoProbe({ format: { duration: "4.0", size: "1700000" }, streams: [{ codec_type: "video", codec_name: "h264", width: 720, height: 405 }] })).toThrow("size");
   });
 });

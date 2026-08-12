@@ -1,4 +1,6 @@
-import { copyFile, mkdir, rename, stat } from "node:fs/promises";
+import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createWriteStream as createStream } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +39,32 @@ export function buildNodeWaitingGenerationRequest(job: NodeWaitingJob): VideoGen
 export function getNodeWaitingOutputPaths(kind: NodeWaitingKind) {
   const filename = `${kind}-waiting.mp4`;
   return { temporary: `.codex-tmp/node-waiting-videos/${filename}`, public: `public/node-waiting/${filename}` };
+}
+
+const execFileAsync = promisify(execFile);
+const MAX_NODE_WAITING_BYTES = 1_500_000;
+type FfprobeResult = { format?: { duration?: string; size?: string }; streams?: Array<{ codec_name?: string; codec_type?: string; height?: number; width?: number }> };
+
+export function buildNodeWaitingFfmpegArgs(source: string, target: string) {
+  return ["-y", "-i", source, "-map", "0:v:0", "-an", "-vf", "scale=720:720:force_original_aspect_ratio=decrease", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", target];
+}
+
+export function assertNodeWaitingVideoProbe(probe: FfprobeResult) {
+  const video = probe.streams?.find((stream) => stream.codec_type === "video");
+  if (!video) throw new Error("Waiting animation must contain a video stream");
+  if (video.codec_name !== "h264") throw new Error("Waiting animation video codec must be H.264");
+  if (probe.streams?.some((stream) => stream.codec_type === "audio")) throw new Error("Waiting animation must not contain an audio stream");
+  if (!video.width || !video.height || Math.max(video.width, video.height) > 720) throw new Error("Waiting animation dimensions must not exceed 720 pixels");
+  const duration = Number(probe.format?.duration);
+  if (!Number.isFinite(duration) || duration <= 0 || duration > 5) throw new Error("Waiting animation duration must be at most 5 seconds");
+  const size = Number(probe.format?.size);
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_NODE_WAITING_BYTES) throw new Error("Waiting animation size exceeds the 1.5 MB limit");
+}
+
+async function transcodeAndVerifyNodeWaitingVideo(source: string, target: string) {
+  await execFileAsync("ffmpeg", buildNodeWaitingFfmpegArgs(source, target));
+  const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration,size:stream=codec_name,codec_type,width,height", "-of", "json", target]);
+  assertNodeWaitingVideoProbe(JSON.parse(stdout) as FfprobeResult);
 }
 
 export function redactNodeWaitingError(error: unknown) {
@@ -96,7 +124,13 @@ export async function generateNodeWaitingVideos(args = process.argv.slice(2), en
       }
       const url = output.outputs?.find((asset) => asset.mimeType.startsWith("video/"))?.url;
       if (output.status !== "succeeded" || !url) throw new Error(`Generation failed for ${job.kind}${taskId ? ` (provider task ${taskId})` : ""}`);
-      await download(url, temporary);
+      const source = `${temporary}.source.mp4`;
+      await download(url, source);
+      try {
+        await transcodeAndVerifyNodeWaitingVideo(source, temporary);
+      } finally {
+        await rm(source, { force: true });
+      }
       await mkdir(dirname(resolve(paths.public)), { recursive: true });
       await copyFile(temporary, resolve(paths.public));
       process.stdout.write(JSON.stringify({ kind: job.kind, status: "published", path: paths.public }) + "\n");
