@@ -44,6 +44,7 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
         <video
           autoPlay
           data-testid="node-waiting-video"
+          hidden={!videoReady}
           loop
           muted
           onCanPlay={() => setVideoReady(true)}

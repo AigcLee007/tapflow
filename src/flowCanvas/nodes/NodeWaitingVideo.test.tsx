@@ -28,9 +28,11 @@ describe("NodeWaitingVideo", () => {
     expect(video.getAttribute("playsinline")).not.toBeNull();
     expect(video.getAttribute("preload")).toBe("metadata");
     expect(video.hasAttribute("controls")).toBe(false);
+    expect((video as HTMLVideoElement).hidden).toBe(true);
     expect(screen.getByTestId("node-waiting-fallback")).toBeTruthy();
 
     fireEvent.canPlay(video);
+    expect((video as HTMLVideoElement).hidden).toBe(false);
     expect(screen.queryByTestId("node-waiting-fallback")).toBeNull();
   });
 
