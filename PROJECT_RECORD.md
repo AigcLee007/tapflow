@@ -6453,3 +6453,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - standalone `/workbench` reference-image uploads remain temporary seven-day `workbench_reference_uploads.bytes` (`bytea`) records. The temporary reference-upload helper and workbench APIs were intentionally not changed.
 - existing saved canvas drafts containing `referenceUploadId` were deliberately not migrated or rewritten.
 - validation passed: `npx vitest --run src/flowCanvas/utils/localImageUpload.test.ts src/flowCanvas/nodes/FlowNodes.image-inputs.test.tsx` (`2` files, `13` tests) and `npm run build`. Build emitted existing Browserslist, mixed-import, and chunk-size warnings only.
+
+## 2026-08-12 - Aittco Auth Drawer And Legal Consent
+
+- replaced the centered login dialog with a cinematic right-side desktop drawer and a mobile bottom sheet; the silent landing film remains visible, slows while authentication is open, and the chapter rail no longer competes with the panel.
+- login and registration now require the current Aittco User Agreement and Privacy Policy versions. The API records immutable, idempotent user-level consent rows for registration and password-verified login flows, including device-verification challenges.
+- added public `/legal/terms` and `/legal/privacy` pages sourced from the API, plus an opt-in remembered-email preference that stores only a normalized email address and never a password, verification code, or token.
+- added migration `000066_user_legal_consents.sql`, API legal endpoints, focused frontend/API/database coverage, and cinematic browser acceptance checks for the drawer, consent links, and remembered-email boundary.
+- production publication remains gated on operator/legal review of both Aittco legal drafts and a real approved `LEGAL_CONTACT_URL` in `/opt/aittco/env/tapflow.staging.env`; run migration `000066` with the worker stopped before rolling out API/frontend images.

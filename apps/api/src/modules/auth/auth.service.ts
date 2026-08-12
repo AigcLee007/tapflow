@@ -16,6 +16,7 @@ import type {
   ResendPasswordResetInput,
   VerifyEmailInput,
 } from "./auth.schemas.js";
+import { recordLegalConsent, validateCurrentConsent } from "./legal-consent.repository.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import {
   type ResolvedPermissions,
@@ -316,6 +317,7 @@ export class AuthService {
   }
 
   private async createEmailChallenge(input: {
+    consent?: LoginInput["consent"];
     email: string;
     purpose: "email_verification" | "login_device_verification";
     reason: "email_unverified" | "new_device" | "trust_expired" | "anomalous_login";
@@ -329,6 +331,13 @@ export class AuthService {
       this.pool,
       { tenantId: input.tenantId, userId: input.userId },
       async (client) => {
+        if (input.consent) {
+          await recordLegalConsent(client, {
+            source: "auth_login",
+            userId: input.userId,
+            versions: input.consent,
+          });
+        }
         await client.query(
           `
             INSERT INTO auth_email_challenges (
@@ -444,6 +453,7 @@ export class AuthService {
   }
 
   async register(input: RegisterInput, metadata: SessionMetadata) {
+    validateCurrentConsent(input.consent);
     const userId = randomUUID();
     const tenantId = randomUUID();
     const challengeId = randomUUID();
@@ -507,6 +517,12 @@ export class AuthService {
             `,
             [tenantId, userId],
           );
+
+          await recordLegalConsent(client, {
+            source: "auth_register",
+            userId,
+            versions: input.consent,
+          });
 
           await client.query(
             `
@@ -1035,6 +1051,8 @@ export class AuthService {
       throw new AuthApiError(401, "INVALID_CREDENTIALS", "邮箱或密码不正确");
     }
 
+    validateCurrentConsent(input.consent);
+
     const memberships = await this.listActiveTenantsForUser(user.id);
     if (memberships.length === 0) {
       throw new AuthApiError(403, "TENANT_ACCESS_REQUIRED", "当前账号还没有可用的工作区权限");
@@ -1059,6 +1077,7 @@ export class AuthService {
 
     if (!user.email_verified_at) {
       return this.createEmailChallenge({
+        consent: input.consent,
         email: user.email,
         purpose: "email_verification",
         reason: "email_unverified",
@@ -1122,6 +1141,7 @@ export class AuthService {
 
     if (challengeReason) {
       return this.createEmailChallenge({
+        consent: input.consent,
         email: user.email,
         purpose: "login_device_verification",
         reason: challengeReason,
@@ -1133,6 +1153,11 @@ export class AuthService {
     const sessionRecords = await withTenantTransaction(
       { tenantId: currentTenant.id, userId: user.id },
       async (client) => {
+        await recordLegalConsent(client, {
+          source: "auth_login",
+          userId: user.id,
+          versions: input.consent,
+        });
         await client.query(
           `
             UPDATE users

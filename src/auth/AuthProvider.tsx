@@ -9,6 +9,7 @@ import {
 } from "../services/v2HttpClient";
 import * as v2AuthClient from "../services/v2AuthClient";
 import type { AuthSession } from "../services/v2AuthClient";
+import type { LegalConsentInput } from "../services/v2AuthClient";
 import { clearAssetUrlCache, setAssetUrlCacheScope } from "../assets/assetUrlCache";
 import { AuthContext, sessionToAuthState } from "./useAuth";
 
@@ -105,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...sessionToAuthState(session),
       refreshMe: loadCurrentSession,
       register: async (input: {
+        consent: LegalConsentInput;
         displayName?: string;
         email: string;
         password: string;
@@ -129,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       },
       login: async (input: {
+        consent: LegalConsentInput;
         email: string;
         password: string;
         tenantId?: string;

@@ -26,6 +26,7 @@ const targetUrl = page.url();
 const viewport = ${JSON.stringify({ width: viewport.width, height: viewport.height })};
 const context = await browser.newContext({ viewport, reducedMotion: ${JSON.stringify(reducedMotion ? "reduce" : "no-preference")} });
 const smokePage = await context.newPage();
+await smokePage.route('**/api/v2/legal/manifest', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ privacy: { effectiveAt: '2026-08-12', requiresConsent: true, version: '2026-08-12' }, terms: { effectiveAt: '2026-08-12', requiresConsent: true, version: '2026-08-12' } }) }));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const assertLandmarkVisibility = async (requireCta) => {
   const issue = await smokePage.evaluate((requireCta) => {
@@ -89,17 +90,40 @@ try {
     chapterStates.push({ index, screenshot });
   }
   await smokePage.getByRole('button', { name: '登录' }).click();
-  const dialog = smokePage.getByRole('dialog');
-  await dialog.waitFor({ state: 'visible' });
-  for (let index = 0; index < 18; index += 1) { await smokePage.keyboard.press('Tab'); assert(await dialog.evaluate((node) => node.contains(document.activeElement)), 'Dialog focus escaped during Tab trap'); }
+  const drawer = smokePage.getByRole('dialog');
+  await drawer.waitFor({ state: 'visible' });
+  assert(await drawer.getAttribute('data-placement') === 'right', 'Desktop auth drawer was not right-aligned');
+  assert(await smokePage.locator('.cinematic-auth-home').getAttribute('data-drawer-open') === 'true', 'Film stage did not enter drawer-open state');
+  assert(await smokePage.locator('.cinematic-auth-home__rail').evaluate((node) => getComputedStyle(node).pointerEvents) === 'none', 'Chapter rail remained interactive behind drawer');
+  for (let index = 0; index < 18; index += 1) { await smokePage.keyboard.press('Tab'); assert(await drawer.evaluate((node) => node.contains(document.activeElement)), 'Drawer focus escaped during Tab trap'); }
+  await drawer.getByRole('button', { name: '立即登录' }).waitFor({ state: 'visible' });
+  for (let index = 0; index < 40; index += 1) {
+    if (await drawer.getByRole('button', { name: '立即登录' }).isEnabled()) break;
+    await smokePage.waitForTimeout(250);
+  }
+  assert(await drawer.getByRole('button', { name: '立即登录' }).isEnabled(), 'Legal manifest did not finish loading');
+  await drawer.getByRole('button', { name: '立即登录' }).click();
+  const consent = drawer.getByRole('checkbox', { name: /我已阅读并同意/ });
+  assert(!(await consent.isChecked()), 'Consent unexpectedly became selected before opt-in');
+  await consent.check();
+  const terms = drawer.getByRole('link', { name: '《Aittco 用户协议》' });
+  const privacy = drawer.getByRole('link', { name: '《Aittco 隐私政策》' });
+  assert(await terms.getAttribute('href') === '/legal/terms' && await terms.getAttribute('target') === '_blank', 'Terms link is not a safe new-tab legal route');
+  assert(await privacy.getAttribute('href') === '/legal/privacy' && await privacy.getAttribute('target') === '_blank', 'Privacy link is not a safe new-tab legal route');
   await smokePage.keyboard.press('Escape');
-  await assert(await dialog.count() === 0, 'Escape did not close login dialog');
+  await assert(await drawer.count() === 0, 'Escape did not close login drawer');
+  await smokePage.evaluate(() => localStorage.setItem('tapflow-auth-remembered-email-v1', 'remembered@example.com'));
+  await smokePage.reload({ waitUntil: 'networkidle' });
+  await smokePage.getByRole('button', { name: '登录' }).click();
+  await smokePage.getByRole('dialog').waitFor({ state: 'visible' });
+  assert(await smokePage.getByRole('textbox', { name: '邮箱' }).inputValue() === 'remembered@example.com', 'Remembered email did not survive reload');
+  assert(await smokePage.getByRole('textbox', { name: '密码' }).inputValue() === '', 'Password must never be remembered');
   await smokePage.goto(targetUrl.replace(/\\/login(?:\\?.*)?$/, '/register'), { waitUntil: 'networkidle' });
-  await smokePage.getByRole('dialog', { name: 'Create account' }).waitFor({ state: 'visible' });
-  assert(await smokePage.getByLabel('Display name').count() === 1, 'Register route did not show register panel');
+  await smokePage.getByRole('dialog', { name: '创建账号' }).waitFor({ state: 'visible' });
+  assert(await smokePage.getByLabel('昵称').count() === 1, 'Register route did not show register panel');
   await smokePage.goto(targetUrl.replace(/\\/login(?:\\?.*)?$/, '/forgot-password'), { waitUntil: 'networkidle' });
-  await smokePage.getByRole('dialog', { name: 'Reset password' }).waitFor({ state: 'visible' });
-  assert(await smokePage.getByLabel('Email').count() === 1, 'Forgot route did not show reset panel');
+  await smokePage.getByRole('dialog', { name: '重置密码' }).waitFor({ state: 'visible' });
+  assert(await smokePage.getByLabel('邮箱').count() === 1, 'Forgot route did not show reset panel');
   return JSON.stringify({ chapterStates, status: 'ok', viewport });
 } finally { await context.close(); }
 })`;

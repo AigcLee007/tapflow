@@ -6,6 +6,7 @@ import { createPgPool } from "@aigc-flow/db";
 import type { StorageProvider } from "@aigc-flow/storage";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
+import { currentLegalConsent } from "./legal-consent.fixture.js";
 
 import { buildApp } from "../src/app.js";
 import type { ApiEnv } from "../src/config/env.js";
@@ -61,7 +62,7 @@ function buildTestApp(pool: ReturnType<typeof createPgPool>) {
 async function registerUser(api: ReturnType<typeof buildTestApp>, email: string, tenantName: string) {
   const response = await api.inject({
     method: "POST",
-    payload: { email, password: "StrongPass123!", tenantName },
+    payload: { email, password: "StrongPass123!", consent: currentLegalConsent, tenantName },
     url: "/api/v2/auth/register",
   });
   expect(response.statusCode).toBe(201);

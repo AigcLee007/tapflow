@@ -1,15 +1,22 @@
 import { z } from "zod";
 
+export const legalConsentSchema = z.object({
+  privacyVersion: z.string().trim().min(1).max(64),
+  termsVersion: z.string().trim().min(1).max(64),
+});
+
 export const registerSchema = z.object({
   displayName: z.string().trim().min(1).max(120).optional(),
   email: z.string().trim().email(),
   password: z.string().min(8).max(256),
   tenantName: z.string().trim().min(1).max(120).optional(),
+  consent: legalConsentSchema,
 });
 
 export const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1).max(256),
+  consent: legalConsentSchema,
   tenantId: z.string().uuid().optional(),
   trustedDeviceToken: z.string().min(32).max(512).optional(),
 });
@@ -54,3 +61,4 @@ export type ResendEmailInput = z.infer<typeof resendEmailSchema>;
 export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
 export type ResendPasswordResetInput = z.infer<typeof resendPasswordResetSchema>;
 export type ConfirmPasswordResetInput = z.infer<typeof confirmPasswordResetSchema>;
+export type LegalConsentInput = z.infer<typeof legalConsentSchema>;

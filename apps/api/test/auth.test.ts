@@ -26,6 +26,10 @@ import {
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+const currentConsent = {
+  privacyVersion: "2026-08-12",
+  termsVersion: "2026-08-12",
+};
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
@@ -122,7 +126,7 @@ async function registerAndVerify(
 ) {
   const registration = await testApp.api.inject({
     method: "POST",
-    payload,
+    payload: { ...payload, consent: currentConsent },
     url: "/api/v2/auth/register",
   });
   expect(registration.statusCode).toBe(202);
@@ -161,6 +165,7 @@ describeWithDatabase("auth v2", () => {
             email: "alice@example.com",
             password: "StrongPass123!",
             tenantName: "Alice Tenant",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/register",
         });
@@ -203,12 +208,205 @@ describeWithDatabase("auth v2", () => {
         );
         expect(membership.rows[0]?.role_key).toBe("tenant_owner");
 
+        const legalConsents = await adminPool.query<{
+          consent_source: string;
+          document_type: string;
+          document_version: string;
+        }>(
+          `
+            SELECT document_type, document_version, consent_source
+            FROM user_legal_consents
+            WHERE user_id = $1::uuid
+            ORDER BY document_type
+          `,
+          [userRecord.rows[0]?.user_id],
+        );
+        expect(legalConsents.rows).toEqual([
+          {
+            consent_source: "auth_register",
+            document_type: "privacy",
+            document_version: currentConsent.privacyVersion,
+          },
+          {
+            consent_source: "auth_register",
+            document_type: "terms",
+            document_version: currentConsent.termsVersion,
+          },
+        ]);
+
         const sessionCount = await adminPool.query<{ total: number }>(
           "SELECT COUNT(*)::int AS total FROM auth_sessions",
         );
         expect(sessionCount.rows[0]?.total).toBe(0);
 
         await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("auth consent requires current versions and login persistence is credential-gated and idempotent", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const testApp = buildTestApp(appPool);
+
+        const missingConsent = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "missing-consent@example.com",
+            password: "StrongPass123!",
+            tenantName: "Missing Consent Tenant",
+          },
+          url: "/api/v2/auth/register",
+        });
+        expect(missingConsent.statusCode).toBe(400);
+        expect(missingConsent.json().error.code).toBe("VALIDATION_ERROR");
+
+        const staleConsent = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "stale-consent@example.com",
+            password: "StrongPass123!",
+            tenantName: "Stale Consent Tenant",
+            consent: { privacyVersion: "stale", termsVersion: "stale" },
+          },
+          url: "/api/v2/auth/register",
+        });
+        expect(staleConsent.statusCode).toBe(409);
+        expect(staleConsent.json().error.code).toBe("LEGAL_CONSENT_VERSION_MISMATCH");
+
+        const verified = await registerAndVerify(testApp, {
+          email: "consent-login@example.com",
+          password: "StrongPass123!",
+          tenantName: "Consent Login Tenant",
+        });
+        const user = await adminPool.query<{ id: string }>(
+          "SELECT id::text AS id FROM users WHERE email = $1",
+          ["consent-login@example.com"],
+        );
+        const userId = user.rows[0]?.id;
+        expect(userId).toBeTruthy();
+
+        const initialCount = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM user_legal_consents WHERE user_id = $1::uuid",
+          [userId],
+        );
+        expect(initialCount.rows[0]?.total).toBe(2);
+
+        const wrongPassword = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "consent-login@example.com",
+            password: "wrong-password",
+            consent: currentConsent,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(wrongPassword.statusCode).toBe(401);
+        const afterWrongPassword = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM user_legal_consents WHERE user_id = $1::uuid",
+          [userId],
+        );
+        expect(afterWrongPassword.rows[0]?.total).toBe(2);
+
+        const staleLogin = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "consent-login@example.com",
+            password: "StrongPass123!",
+            consent: { privacyVersion: "stale", termsVersion: "stale" },
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(staleLogin.statusCode).toBe(409);
+        expect(staleLogin.json().error.code).toBe("LEGAL_CONSENT_VERSION_MISMATCH");
+
+        await adminPool.query("DELETE FROM user_legal_consents WHERE user_id = $1::uuid", [userId]);
+        const newDevice = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "consent-login@example.com",
+            password: "StrongPass123!",
+            consent: currentConsent,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(newDevice.statusCode).toBe(202);
+        expect(newDevice.json().reason).toBe("new_device");
+
+        const afterChallenge = await adminPool.query<{
+          consent_source: string;
+          total: number;
+        }>(
+          `
+            SELECT consent_source, COUNT(*)::int AS total
+            FROM user_legal_consents
+            WHERE user_id = $1::uuid
+            GROUP BY consent_source
+          `,
+          [userId],
+        );
+        expect(afterChallenge.rows).toEqual([{ consent_source: "auth_login", total: 2 }]);
+
+        const repeatedChallenge = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "consent-login@example.com",
+            password: "StrongPass123!",
+            consent: currentConsent,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(repeatedChallenge.statusCode).toBe(202);
+        const afterRepeat = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM user_legal_consents WHERE user_id = $1::uuid",
+          [userId],
+        );
+        expect(afterRepeat.rows[0]?.total).toBe(2);
+
+        await adminPool.query("DELETE FROM user_legal_consents WHERE user_id = $1::uuid", [userId]);
+        const trustedLogin = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "consent-login@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken: verified.json().trustedDeviceToken,
+            consent: currentConsent,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(trustedLogin.statusCode).toBe(200);
+        const afterTrustedLogin = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM user_legal_consents WHERE user_id = $1::uuid",
+          [userId],
+        );
+        expect(afterTrustedLogin.rows[0]?.total).toBe(2);
+
+        const repeatedTrustedLogin = await testApp.api.inject({
+          method: "POST",
+          payload: {
+            email: "consent-login@example.com",
+            password: "StrongPass123!",
+            trustedDeviceToken: verified.json().trustedDeviceToken,
+            consent: currentConsent,
+          },
+          url: "/api/v2/auth/login",
+        });
+        expect(repeatedTrustedLogin.statusCode).toBe(200);
+        const afterRepeatedTrustedLogin = await adminPool.query<{ total: number }>(
+          "SELECT COUNT(*)::int AS total FROM user_legal_consents WHERE user_id = $1::uuid",
+          [userId],
+        );
+        expect(afterRepeatedTrustedLogin.rows[0]?.total).toBe(2);
+
+        await testApp.api.close();
       } finally {
         await appPool.end();
         await adminPool.end();
@@ -231,6 +429,7 @@ describeWithDatabase("auth v2", () => {
             email: "verify@example.com",
             password: "StrongPass123!",
             tenantName: "Verify Tenant",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/register",
         });
@@ -295,6 +494,7 @@ describeWithDatabase("auth v2", () => {
             email: "attempts@example.com",
             password: "StrongPass123!",
             tenantName: "Attempts Tenant",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/register",
         });
@@ -350,6 +550,7 @@ describeWithDatabase("auth v2", () => {
             email: "resend@example.com",
             password: "StrongPass123!",
             tenantName: "Resend Tenant",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/register",
         });
@@ -417,6 +618,7 @@ describeWithDatabase("auth v2", () => {
             email: "delivery-failure@example.com",
             password: "StrongPass123!",
             tenantName: "Delivery Failure Tenant",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/register",
         });
@@ -463,6 +665,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "new-device@example.com",
             password: "StrongPass123!",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -479,6 +682,7 @@ describeWithDatabase("auth v2", () => {
             email: "new-device@example.com",
             password: "StrongPass123!",
             trustedDeviceToken,
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -494,6 +698,7 @@ describeWithDatabase("auth v2", () => {
             email: "new-device@example.com",
             password: "StrongPass123!",
             trustedDeviceToken,
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -508,6 +713,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "new-device@example.com",
             password: "StrongPass123!",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -556,6 +762,7 @@ describeWithDatabase("auth v2", () => {
             email: "anomaly@example.com",
             password: "StrongPass123!",
             trustedDeviceToken,
+            consent: currentConsent,
           },
           { ipAddress: "203.0.113.200", userAgent: changedUa },
         );
@@ -566,6 +773,7 @@ describeWithDatabase("auth v2", () => {
             email: "anomaly@example.com",
             password: "StrongPass123!",
             trustedDeviceToken,
+            consent: currentConsent,
           },
           { ipAddress: "203.0.114.7", userAgent: baselineUa },
         );
@@ -576,6 +784,7 @@ describeWithDatabase("auth v2", () => {
             email: "anomaly@example.com",
             password: "StrongPass123!",
             trustedDeviceToken,
+            consent: currentConsent,
           },
           { ipAddress: "203.0.114.7", userAgent: changedUa },
         );
@@ -616,6 +825,7 @@ describeWithDatabase("auth v2", () => {
             email: "login@example.com",
             password: "StrongPass123!",
             trustedDeviceToken: verification.json().trustedDeviceToken,
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -632,6 +842,7 @@ describeWithDatabase("auth v2", () => {
           payload: {
             email: "login@example.com",
             password: "wrong-password",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -917,6 +1128,7 @@ describeWithDatabase("auth v2", () => {
             email: otherUserEmail,
             password: "OtherPass123!",
             tenantName: "Other Tenant",
+            consent: currentConsent,
           },
           url: "/api/v2/auth/register",
         });
@@ -933,6 +1145,7 @@ describeWithDatabase("auth v2", () => {
             email: "viewer@example.com",
             password: viewerPassword,
             trustedDeviceToken: viewerDeviceToken,
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -956,6 +1169,7 @@ describeWithDatabase("auth v2", () => {
             password: viewerPassword,
             tenantId: actualOtherTenantId,
             trustedDeviceToken: viewerDeviceToken,
+            consent: currentConsent,
           },
           url: "/api/v2/auth/login",
         });

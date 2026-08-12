@@ -55,7 +55,7 @@ export function FilmStage({ dialogOpen = false, onEnterWorkspace, onOpenAuth }: 
   };
 
   return (
-    <main className="cinematic-auth-home" data-transition-ms={getFilmPlaybackPolicy(stage.signals).transitionMs}>
+    <main className="cinematic-auth-home" data-drawer-open={dialogOpen ? "true" : "false"} data-transition-ms={getFilmPlaybackPolicy(stage.signals).transitionMs}>
       <nav className="cinematic-auth-home__nav" aria-label="首页导航">
         <button aria-label="返回首页" className="cinematic-auth-home__brand" type="button" onClick={() => scrollToChapter(0)}><BrandMark size="compact" showCaption /></button>
         <button className="cinematic-auth-home__login" type="button" onClick={onOpenAuth}><LogIn aria-hidden="true" size={16} />登录</button>

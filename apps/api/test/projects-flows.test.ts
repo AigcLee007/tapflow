@@ -9,6 +9,7 @@ import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/modules/auth/password.js";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
+import { currentLegalConsent } from "./legal-consent.fixture.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
@@ -139,6 +140,7 @@ async function registerOwner(
     payload: {
       email,
       password: "StrongPass123!",
+      consent: currentLegalConsent,
       tenantName,
     },
     url: "/api/v2/auth/register",
@@ -213,6 +215,7 @@ describeWithDatabase("projects and flows v2", () => {
           payload: {
             email: "viewer-projects@example.com",
             password: viewerPassword,
+            consent: currentLegalConsent,
           },
           url: "/api/v2/auth/login",
         });

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { FORGOT_PASSWORD_ROUTE, LOGIN_ROUTE, REGISTER_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
-import { AuthDialog } from "./AuthDialog";
+import { AuthDrawer } from "./AuthDrawer";
 import { navigateAuthMode, type AuthMode } from "./authNavigation";
 import { ForgotPasswordPanel } from "./ForgotPasswordPage";
 import { LoginPanel } from "./LoginPage";
@@ -68,9 +68,9 @@ export function AuthExperiencePage() {
   return (
     <>
       <FilmStage dialogOpen={dialogOpen} onEnterWorkspace={handleEnterWorkspace} onOpenAuth={() => setOpenedFromStage(true)} />
-      <AuthDialog focusKey={mode} onClose={handleClose} open={dialogOpen} pending={pending} title={getDialogTitle(mode)}>
+      <AuthDrawer focusKey={mode} onClose={handleClose} open={dialogOpen} pending={pending} title={getDialogTitle(mode)}>
         {getDialogContent(mode, handleModeChange, setPending)}
-      </AuthDialog>
+      </AuthDrawer>
     </>
   );
 }

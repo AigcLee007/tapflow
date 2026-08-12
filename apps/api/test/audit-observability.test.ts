@@ -13,6 +13,7 @@ import {
   hasDatabaseEnv,
   withDatabase,
 } from "../../../packages/db/test/helpers.js";
+import { currentLegalConsent } from "./legal-consent.fixture.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
@@ -149,6 +150,7 @@ async function registerUser(
     payload: {
       email,
       password: "StrongPass123!",
+      consent: currentLegalConsent,
       tenantName,
     },
     url: "/api/v2/auth/register",
@@ -409,6 +411,7 @@ describeWithDatabase("audit and observability", () => {
           payload: {
             email: "audit-viewer@example.com",
             password: viewerPassword,
+            consent: currentLegalConsent,
           },
           url: "/api/v2/auth/login",
         });
@@ -530,6 +533,7 @@ describeWithDatabase("audit and observability", () => {
           payload: {
             email: owner.user.email,
             password: "StrongPass123!",
+            consent: currentLegalConsent,
           },
           url: "/api/v2/auth/login",
         });

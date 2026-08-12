@@ -6,6 +6,7 @@ import type {
   V2Tenant,
   V2User,
   VerificationRequired,
+  LegalConsentInput,
 } from "../services/v2AuthClient";
 
 export type AuthState = {
@@ -15,12 +16,14 @@ export type AuthState = {
   permissions: string[];
   refreshMe: () => Promise<void>;
   register: (input: {
+    consent: LegalConsentInput;
     displayName?: string;
     email: string;
     password: string;
     tenantName?: string;
   }) => Promise<AuthAttemptResult>;
   login: (input: {
+    consent: LegalConsentInput;
     email: string;
     password: string;
     tenantId?: string;
