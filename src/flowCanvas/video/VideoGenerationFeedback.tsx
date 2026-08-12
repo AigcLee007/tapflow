@@ -1,5 +1,6 @@
 import { AlertTriangle, LoaderCircle, RotateCcw } from "lucide-react";
 
+import { NodeWaitingVideo } from "../nodes/NodeWaitingVideo";
 import type { FlowGenerationStatus, FlowNodeStatus } from "../types";
 
 type VideoGenerationFeedbackProps = {
@@ -47,9 +48,13 @@ export function VideoGenerationFeedback({ errorMessage, generationStatus, onRetr
     </div>;
   }
 
-  return <div aria-live="polite" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 overflow-hidden bg-black/70 text-white" role="status">
-    <div aria-hidden="true" className="absolute inset-4 border border-white/5 bg-white/[0.025]" />
-    <span className="relative inline-flex text-sky-200 motion-safe:animate-spin" data-testid="video-generation-indicator"><LoaderCircle aria-hidden="true" size={28} /></span>
-    <span className="relative text-xs font-bold">{state.label}</span>
-  </div>;
+  return <NodeWaitingVideo
+    className="absolute inset-0 z-20 overflow-hidden [&>video]:absolute [&>video]:inset-0 [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
+    fallback={<div aria-live="polite" className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-hidden bg-black/70 text-white" role="status">
+      <div aria-hidden="true" className="absolute inset-4 border border-white/5 bg-white/[0.025]" />
+      <span className="relative inline-flex text-sky-200 motion-safe:animate-spin" data-testid="video-generation-indicator"><LoaderCircle aria-hidden="true" size={28} /></span>
+      <span className="relative text-xs font-bold">{state.label}</span>
+    </div>}
+    kind="video"
+  />;
 }

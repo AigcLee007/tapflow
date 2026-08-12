@@ -82,6 +82,7 @@ import {
 } from '../video/videoResultPreview';
 import { VideoReadyState } from '../video/VideoReadyState';
 import { VideoGenerationFeedback } from '../video/VideoGenerationFeedback';
+import { NodeWaitingVideo } from './NodeWaitingVideo';
 import { getVideoNodeSizeForNaturalDimensions, getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
 import {
   getImageModelById,
@@ -173,6 +174,7 @@ import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../util
 import { resolveImageViewerFileSizeBytes } from '../utils/imageViewerFileSize';
 import {
   buildImageViewerComparisonSource,
+  buildImageViewerComparisonSourceFromInputs,
   calculateContainedImageRect,
   formatImageViewerDateTime,
   getComparisonSplitPercentFromClientX,
@@ -3453,17 +3455,21 @@ export const TextNodeComponent = memo(function TextNode({
             }}
           />
           {isGenerating && (
-            <div style={textGeneratingOverlay}>
-              <div style={textGeneratingPill}>
-                <span className="flow-text-loading-dot" />
-                <span>正在生成文本</span>
-              </div>
-              <div style={textSkeletonStack}>
-                <span className="flow-text-skeleton" style={{ width: '92%' }} />
-                <span className="flow-text-skeleton" style={{ width: '78%' }} />
-                <span className="flow-text-skeleton" style={{ width: '86%' }} />
-              </div>
-            </div>
+            <NodeWaitingVideo
+              className="absolute inset-0 z-[4] overflow-hidden [&>video]:absolute [&>video]:inset-0 [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
+              fallback={<div style={textGeneratingOverlay}>
+                <div style={textGeneratingPill}>
+                  <span className="flow-text-loading-dot" />
+                  <span>正在生成文本</span>
+                </div>
+                <div style={textSkeletonStack}>
+                  <span className="flow-text-skeleton" style={{ width: '92%' }} />
+                  <span className="flow-text-skeleton" style={{ width: '78%' }} />
+                  <span className="flow-text-skeleton" style={{ width: '86%' }} />
+                </div>
+              </div>}
+              kind="text"
+            />
           )}
         </div>
         {isGenerating && <div style={progressBar(d.progress || 0)} />}
@@ -4213,18 +4219,22 @@ const ImageNodeCard = memo(function ImageNodeCard({
       )}
 
       {isGenerating && (
-        <div style={imageGeneratingOverlay}>
-          <div className="flow-generating-preview" style={imageGeneratingPreview}>
-            <div className="flow-generating-orb" style={imageGeneratingOrb} />
-            <div style={imageGeneratingTexture} />
-            <div style={imageGeneratingSheen} />
-            <div style={imageGeneratingVignette} />
-            <div style={imageGeneratingLabel}>
-              <span style={imageGeneratingLabelDot} />
-              {generationStatusLabel}
+        <NodeWaitingVideo
+          className="absolute inset-0 z-[8] overflow-hidden [&>video]:absolute [&>video]:inset-0 [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
+          fallback={<div style={imageGeneratingOverlay}>
+            <div className="flow-generating-preview" style={imageGeneratingPreview}>
+              <div className="flow-generating-orb" style={imageGeneratingOrb} />
+              <div style={imageGeneratingTexture} />
+              <div style={imageGeneratingSheen} />
+              <div style={imageGeneratingVignette} />
+              <div style={imageGeneratingLabel}>
+                <span style={imageGeneratingLabelDot} />
+                {generationStatusLabel}
+              </div>
             </div>
-          </div>
-        </div>
+          </div>}
+          kind="image"
+        />
       )}
       {isGenerating && <div style={progressBar(generationProgress)} />}
     </div>
@@ -5344,7 +5354,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       .map((item) => item.imageUrl)
       .filter((url) => !String(url || '').trim().toLowerCase().startsWith('blob:'));
     updateNodeData(id, {
-      generationReferenceComparison: buildImageViewerComparisonSource(referenceChips),
+      generationReferenceComparison: buildImageViewerComparisonSourceFromInputs({
+        inputs: resolvedImageInputItems,
+        references: referenceChips,
+      }),
       lastGenerationInputSignature: currentImageInputSignature,
       referenceImages,
       routeKey: selectedRuntimeRoute.routeKey,

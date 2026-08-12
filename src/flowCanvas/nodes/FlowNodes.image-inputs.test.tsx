@@ -14,6 +14,9 @@ const assetApiMocks = vi.hoisted(() => ({
   deleteAsset: vi.fn(),
   uploadAssetFile: vi.fn(),
 }));
+const workflowRunnerMocks = vi.hoisted(() => ({
+  runBackendWorkflow: vi.fn(),
+}));
 
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
@@ -22,7 +25,10 @@ vi.mock("../../assets/assetApi", () => ({
   deleteAsset: (...args: unknown[]) => assetApiMocks.deleteAsset(...args),
   uploadAssetFile: (...args: unknown[]) => assetApiMocks.uploadAssetFile(...args),
 }));
-vi.mock("../runtime/v2WorkflowRunner", () => ({ markBackendRunLaunchFailed: vi.fn(), runBackendWorkflow: vi.fn() }));
+vi.mock("../runtime/v2WorkflowRunner", () => ({
+  markBackendRunLaunchFailed: vi.fn(),
+  runBackendWorkflow: (...args: unknown[]) => workflowRunnerMocks.runBackendWorkflow(...args),
+}));
 vi.mock("../text/useTextGenerationCatalog", () => ({ useTextGenerationCatalog: () => ({ error: null, loading: false, models: [], retry: vi.fn() }) }));
 vi.mock("../video/useVideoGenerationCatalog", () => ({ useVideoGenerationCatalog: () => ({ error: null, loading: false, models: [], retry: vi.fn() }) }));
 vi.mock("../../auth/useAuth", () => ({ useAuth: () => ({ user: null }) }));
@@ -77,6 +83,8 @@ describe("ImageNodeComponent unified inputs", () => {
     assetApiMocks.deleteAsset.mockReset();
     assetApiMocks.uploadAssetFile.mockReset();
     assetApiMocks.getAsset.mockRejectedValue(new Error("offline"));
+    workflowRunnerMocks.runBackendWorkflow.mockReset();
+    workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
   });
 
   it("renders text and two image inputs while keeping prompt mentions image-only", async () => {
@@ -97,6 +105,21 @@ describe("ImageNodeComponent unified inputs", () => {
     expect(tray.querySelector('[aria-label^="输入 1：Ready image"]')).toBeTruthy();
     expect(tray.querySelector('[aria-label^="输入 2：Previewless image"]')).toBeTruthy();
     expect(screen.queryByText(/@Image 1/)).toBeNull();
+  });
+
+  it("uses the image waiting video while preserving its generation fallback", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }),
+    });
+    const target = useFlowCanvasStore.getState().addNode("image", { x: 480, y: 0 }, {
+      createdAt: 1, generationPrompt: "local prompt", generationStatus: "generating", height: 220, kind: "image", status: "idle", title: "Generating image", updatedAt: 1, width: 320,
+    } as any, { selected: true });
+
+    render(<StoreBackedImageNode nodeId={target.id} />);
+
+    expect(screen.getByTestId("node-waiting-video").getAttribute("src")).toBe("/node-waiting/image-waiting.mp4");
+    expect(document.querySelector(".flow-generating-preview")).toBeTruthy();
   });
 
   it("removes only the selected text edge and focuses an upstream source on click", async () => {
@@ -158,6 +181,80 @@ describe("ImageNodeComponent unified inputs", () => {
       inputOrder: [`upstream:${text.id}`, `upstream:${secondImage.id}`, `upstream:${firstImage.id}`],
       referenceOrder: [`upstream:${secondImage.id}`, `upstream:${firstImage.id}`],
     }));
+  });
+
+  it("snapshots the first ordered image input when generation starts", async () => {
+    const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "Connected text", title: "Text source" } as any);
+    const firstImage = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-first", thumbnailUrl: "https://cdn.test/first.png", title: "First image" } as any);
+    const secondImage = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 360 }, { assetId: "asset-second", thumbnailUrl: "https://cdn.test/second.png", title: "Second image" } as any);
+    const target = addImageTarget();
+    connect(text.id, target.id);
+    connect(firstImage.id, target.id);
+    connect(secondImage.id, target.id);
+    useFlowCanvasStore.getState().updateNodeData(target.id, {
+      inputOrder: [`upstream:${text.id}`, `upstream:${secondImage.id}`, `upstream:${firstImage.id}`],
+      referenceOrder: [`upstream:${secondImage.id}`, `upstream:${firstImage.id}`],
+    });
+
+    render(<StoreBackedImageNode nodeId={target.id} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "开始生成" }));
+
+    await waitFor(() => expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
+      runMode: "target_node",
+      targetNodeId: target.id,
+    }));
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data.generationReferenceComparison).toMatchObject({
+      assetId: "asset-second",
+      key: `upstream:${secondImage.id}`,
+      nodeId: secondImage.id,
+      source: "upstream",
+    });
+  });
+
+  it("shows original comparison only for generated images with a snapshot reference", async () => {
+    const generated = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 0 }, {
+      generationStatus: "done",
+      lastGenerationSnapshot: {
+        modelId: "gpt-image-2",
+        prompt: "Restyle the source image",
+        referenceComparison: {
+          assetId: "asset-original",
+          key: "asset:asset-original",
+          source: "asset",
+        },
+      },
+      status: "success",
+      thumbnailUrl: "https://cdn.test/result.png",
+      title: "Generated image",
+    } as any, { selected: true });
+    assetApiMocks.getAssetVariantUrl.mockImplementation(async (assetId: string) => ({
+      url: `https://cdn.test/${assetId}.png`,
+    }));
+    const { container } = render(<StoreBackedImageNode nodeId={generated.id} />);
+
+    fireEvent.doubleClick(container.querySelector(".flow-image-node") as HTMLElement);
+
+    expect(await screen.findByRole("button", { name: "原图对比" })).toBeTruthy();
+    expect(assetApiMocks.getAssetVariantUrl).toHaveBeenCalledWith("asset-original", "preview");
+  });
+
+  it("does not show original comparison for text-to-image results", async () => {
+    const generated = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 0 }, {
+      generationStatus: "done",
+      lastGenerationSnapshot: {
+        modelId: "gpt-image-2",
+        prompt: "A cat in a sunlit room",
+      },
+      status: "success",
+      thumbnailUrl: "https://cdn.test/text-to-image.png",
+      title: "Text-to-image result",
+    } as any, { selected: true });
+    const { container } = render(<StoreBackedImageNode nodeId={generated.id} />);
+
+    fireEvent.doubleClick(container.querySelector(".flow-image-node") as HTMLElement);
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "原图对比" })).toBeNull());
   });
 
   it("removes a direct reference from the image node without deleting its asset record", async () => {
