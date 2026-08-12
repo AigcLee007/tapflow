@@ -6471,3 +6471,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added public `/legal/terms` and `/legal/privacy` pages sourced from the API, plus an opt-in remembered-email preference that stores only a normalized email address and never a password, verification code, or token.
 - added migration `000066_user_legal_consents.sql`, API legal endpoints, focused frontend/API/database coverage, and cinematic browser acceptance checks for the drawer, consent links, and remembered-email boundary.
 - production publication remains gated on operator/legal review of both Aittco legal drafts and a real approved `LEGAL_CONTACT_URL` in `/opt/aittco/env/tapflow.staging.env`; run migration `000066` with the worker stopped before rolling out API/frontend images.
+
+## 2026-08-12 - Flow Node Waiting Videos
+
+- generated three Gemini Omni Flash 4-second waiting animations for text, image, and video Flow nodes, then normalized each to a repository-static silent H.264 MP4 at `public/node-waiting/`.
+- each shipped asset was verified as 720x406, 4 seconds, without an audio stream, and below the 1.5 MB delivery limit; the source downloads and local encoding tools remain untracked under `.codex-tmp`.
+- added a guarded `NodeWaitingVideo` boundary that honors reduced-motion before mounting media, preserves the existing CSS loading UIs as fallback, handles codec/playback failures, and safely cancels stale playback state.
+- text, image, and video generation overlays now use their matching static animation. The reproducible generator requires explicit `--generate --confirm-generation-cost`, uses the Gemini Omni Flash route, and normalizes/validates output before publishing.
+- focused component, overlay, and generator coverage passed (`35` tests). Full frontend build validation is pending this task's final command.

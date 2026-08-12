@@ -99,6 +99,21 @@ describe("ImageNodeComponent unified inputs", () => {
     expect(screen.queryByText(/@Image 1/)).toBeNull();
   });
 
+  it("uses the image waiting video while preserving its generation fallback", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }),
+    });
+    const target = useFlowCanvasStore.getState().addNode("image", { x: 480, y: 0 }, {
+      createdAt: 1, generationPrompt: "local prompt", generationStatus: "generating", height: 220, kind: "image", status: "idle", title: "Generating image", updatedAt: 1, width: 320,
+    } as any, { selected: true });
+
+    render(<StoreBackedImageNode nodeId={target.id} />);
+
+    expect(screen.getByTestId("node-waiting-video").getAttribute("src")).toBe("/node-waiting/image-waiting.mp4");
+    expect(document.querySelector(".flow-generating-preview")).toBeTruthy();
+  });
+
   it("removes only the selected text edge and focuses an upstream source on click", async () => {
     const text = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, { generationPrompt: "Connected text", title: "Text source" } as any);
     const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 180 }, { assetId: "asset-ready", thumbnailUrl: "https://cdn.test/ready.png", title: "Image source" } as any);
