@@ -164,7 +164,7 @@ import {
   isLocalImageFile,
   measureLocalImageNodeData,
   revokeUnusedLocalPreviewUrls,
-  uploadLocalImageAndBuildReferenceNodeData,
+  uploadLocalImageAndBuildAssetNodeData,
 } from '../utils/localImageUpload';
 import { persistDerivedImageAsset, type DerivedImageSourceType } from '../utils/persistDerivedImageAsset';
 import { getCachedReferenceImageObjectUrl } from '../utils/referenceImageLocalCache';
@@ -6230,10 +6230,11 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
 
     void (async () => {
       try {
-        const uploaded = await uploadLocalImageAndBuildReferenceNodeData({
+        const uploaded = await uploadLocalImageAndBuildAssetNodeData({
           file,
           localPreviewUrl: activePreviewUrl,
           natural: measuredNatural,
+          projectId: backendProjectId ?? null,
           source: 'node-upload',
           title,
         });
@@ -8326,6 +8327,7 @@ export const UploadNodeComponent = memo(function UploadNode({
   const d = data;
   const replaceNode = useFlowCanvasStore((s) => s.replaceNode);
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
+  const backendProjectId = useFlowCanvasStore((s) => s.backendProjectId);
   const [hovered, setHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { connectionNodeId } = useConnection();
@@ -8381,10 +8383,11 @@ export const UploadNodeComponent = memo(function UploadNode({
 
     void (async () => {
       try {
-        const uploaded = await uploadLocalImageAndBuildReferenceNodeData({
+        const uploaded = await uploadLocalImageAndBuildAssetNodeData({
           file,
           localPreviewUrl: activePreviewUrl,
           natural: measuredNatural,
+          projectId: backendProjectId ?? null,
           source: 'node-upload',
           title,
         });
@@ -8405,7 +8408,7 @@ export const UploadNodeComponent = memo(function UploadNode({
         useFlowCanvasStore.getState().updateNodeData(id, buildLocalUploadFailureNodeData(error));
       }
     })();
-  }, [d.title, id, replaceNode]);
+  }, [backendProjectId, d.title, id, replaceNode]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

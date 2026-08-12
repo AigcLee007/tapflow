@@ -77,7 +77,7 @@ import {
   createLocalPreviewObjectUrl,
   measureLocalImageNodeData,
   revokeUnusedLocalPreviewUrls,
-  uploadLocalImageAndBuildReferenceNodeData,
+  uploadLocalImageAndBuildAssetNodeData,
 } from '../utils/localImageUpload';
 import { getImageNaturalSize } from '../utils/imageUtils';
 import { buildPromptReferenceNodeData } from '../utils/promptNodeReference';
@@ -702,10 +702,11 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
           })();
 
           try {
-            const uploaded = await uploadLocalImageAndBuildReferenceNodeData({
+            const uploaded = await uploadLocalImageAndBuildAssetNodeData({
               file: source.file!,
               localPreviewUrl: activePreviewUrl,
               natural: measuredNatural,
+              projectId: backendProjectId ?? null,
               source: 'canvas-upload',
               title: source.title || '图片',
             });

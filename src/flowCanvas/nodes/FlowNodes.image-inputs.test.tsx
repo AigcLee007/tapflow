@@ -182,4 +182,39 @@ describe("ImageNodeComponent unified inputs", () => {
     await waitFor(() => expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data.referenceAssetItemIds).toEqual([]));
     expect(assetApiMocks.deleteAsset).not.toHaveBeenCalled();
   });
+
+  it("persists a locally selected image as a project asset", async () => {
+    useFlowCanvasStore.setState({ backendProjectId: "project-image-upload" });
+    const target = addImageTarget();
+    assetApiMocks.uploadAssetFile.mockResolvedValue({
+      height: 768,
+      id: "asset-uploaded-image",
+      mimeType: "image/png",
+      originalFilename: "local-image.png",
+      source: "upload",
+      title: "local-image",
+      width: 1024,
+    });
+    assetApiMocks.getAssetVariantUrl.mockResolvedValue({
+      url: "https://cdn.test/assets/asset-uploaded-image/preview.webp",
+    });
+
+    const { container } = render(<StoreBackedImageNode nodeId={target.id} />);
+    const file = new File(["image"], "local-image.png", { type: "image/png" });
+    const fileInput = container.querySelector('input[type="file"]:not([multiple])') as HTMLInputElement;
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(assetApiMocks.uploadAssetFile).toHaveBeenCalledWith({
+      file,
+      kind: "image",
+      projectId: "project-image-upload",
+    }));
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).toMatchObject({
+      assetId: "asset-uploaded-image",
+      assetIds: ["asset-uploaded-image"],
+      source: "node-upload",
+    });
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data.referenceUploadId).toBeUndefined();
+  });
 });
