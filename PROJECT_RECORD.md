@@ -6446,3 +6446,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - the homepage now uses real workspace project data for the latest project and recent projects, creates a real project through the existing v2 project/flow path, and links secondary actions to the existing prompt plaza, asset library, and workspace project manager.
 - added explicit loading, empty-project, project-load error, and server-persistence status surfaces; removed the non-functional voice, send, AI capability, and capability-preview controls.
 - validation passed: `HomePage` and unchanged `WorkspaceShell` focused suites (`12` tests) and `npm run build`; existing `WorkspaceShell` test-harness `act(...)`, CSS, mixed-import, Browserslist, and chunk-size warnings remain non-blocking.
+
+## 2026-08-12 - Aittco Auth Drawer And Legal Consent
+
+- replaced the centered login dialog with a cinematic right-side desktop drawer and a mobile bottom sheet; the silent landing film remains visible, slows while authentication is open, and the chapter rail no longer competes with the panel.
+- login and registration now require the current Aittco User Agreement and Privacy Policy versions. The API records immutable, idempotent user-level consent rows for registration and password-verified login flows, including device-verification challenges.
+- added public `/legal/terms` and `/legal/privacy` pages sourced from the API, plus an opt-in remembered-email preference that stores only a normalized email address and never a password, verification code, or token.
+- added migration `000066_user_legal_consents.sql`, API legal endpoints, focused frontend/API/database coverage, and cinematic browser acceptance checks for the drawer, consent links, and remembered-email boundary.
+- production publication remains gated on operator/legal review of both Aittco legal drafts and a real approved `LEGAL_CONTACT_URL` in `/opt/aittco/env/tapflow.staging.env`; run migration `000066` with the worker stopped before rolling out API/frontend images.

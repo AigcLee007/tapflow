@@ -14,6 +14,8 @@ Do not commit real secrets into repository files.
 - `PUBLIC_APP_URL =https://art.aittco.com`
 - `API_BASE_URL =https://api-art.aittco.com`
 - `CORS_ALLOWED_ORIGINS =https://art.aittco.com`
+- `LEGAL_CONTACT_URL = https://example.com/contact`
+  - Production publication of the Aittco legal pages requires an operator-approved contact channel. This may be an HTTPS contact page or a `mailto:` address; do not deploy the example value.
 - `TRUST_PROXY =true`
 - `SECURITY_HEADERS_ENABLED =true`
 - `COOKIE_DOMAIN =.aittco.com`

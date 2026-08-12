@@ -19,9 +19,11 @@ describe("cinematic auth home deployment and smoke contract", () => {
     expect(dockerfile).toContain("ARG VITE_LANDING_MEDIA_BASE_URL=/brand-media/tapflow/landing-film-v1");
     expect(dockerfile).toContain("ENV VITE_LANDING_MEDIA_BASE_URL=$VITE_LANDING_MEDIA_BASE_URL");
     expect(compose).toContain("VITE_LANDING_MEDIA_BASE_URL: ${VITE_LANDING_MEDIA_BASE_URL}");
+    expect(compose).toContain("LEGAL_CONTACT_URL: ${LEGAL_CONTACT_URL}");
     expect(stagingTemplate).toContain("VITE_LANDING_MEDIA_BASE_URL = https://cdn.example.com/brand-media/tapflow/landing-film-v1");
     expect(stagingTemplate).toContain("LANDING_MEDIA_PUBLIC_BASE_URL = https://cdn.example.com/brand-media/tapflow/landing-film-v1");
     expect(stagingTemplate).toContain("must equal VITE_LANDING_MEDIA_BASE_URL");
+    expect(stagingTemplate).toContain("LEGAL_CONTACT_URL = https://example.com/contact");
     expect(stagingTemplate).not.toMatch(/VITE_LANDING_MEDIA_BASE_URL\s*=\s*(?:sk-|[A-Za-z0-9_]{24,})/);
   });
 
@@ -53,6 +55,9 @@ describe("cinematic auth home deployment and smoke contract", () => {
     expect(code).toContain("currentTime");
     expect(code).toContain("preload");
     expect(code).toContain("Escape");
+    expect(code).toContain("data-placement");
+    expect(code).toContain("Aittco 用户协议");
+    expect(code).toContain("tapflow-auth-remembered-email-v1");
     expect(code).toContain("/register");
     expect(code).toContain("/forgot-password");
     expect(read("scripts/smoke-cinematic-auth-home.ts")).toContain("near-uniform or blank");
