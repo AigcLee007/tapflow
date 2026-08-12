@@ -32,4 +32,17 @@ CREATE POLICY user_legal_consents_insert_own
   WITH CHECK (user_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 
 REVOKE ALL ON user_legal_consents FROM PUBLIC;
-GRANT SELECT, INSERT ON user_legal_consents TO CURRENT_USER;
+
+DO $$
+DECLARE
+  runtime_role name := COALESCE(
+    NULLIF(current_setting('app.api_database_role', true), ''),
+    session_user
+  );
+BEGIN
+  EXECUTE format(
+    'GRANT SELECT, INSERT ON user_legal_consents TO %I',
+    runtime_role
+  );
+END;
+$$;
