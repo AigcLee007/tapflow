@@ -25,10 +25,13 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
   const playAttemptRef = useRef(0);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    playAttemptRef.current += 1;
-    videoRef.current?.pause();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      playAttemptRef.current += 1;
+      videoRef.current?.pause();
+    };
   }, []);
 
   useEffect(() => {
@@ -58,7 +61,10 @@ export function NodeWaitingVideo({ kind, className, fallback }: NodeWaitingVideo
 
   const showVideo = !reducedMotion && !videoFailed;
   const fallbackContent = fallback ?? (
-    <div aria-label={fallbackLabel[kind]} data-testid="node-waiting-fallback" role="status" />
+    <div aria-label={fallbackLabel[kind]} className="node-waiting-video-fallback" data-testid="node-waiting-fallback" role="status">
+      <span aria-hidden="true" className="node-waiting-video-fallback__dot" />
+      Generating...
+    </div>
   );
 
   const handleCanPlay = async () => {

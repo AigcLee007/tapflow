@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NodeWaitingVideo } from "./NodeWaitingVideo";
@@ -45,6 +46,21 @@ describe("NodeWaitingVideo", () => {
 
     await act(async () => { fireEvent.canPlay(video); });
     expect((video as HTMLVideoElement).hidden).toBe(false);
+    expect(screen.queryByTestId("node-waiting-fallback")).toBeNull();
+  });
+
+  it("renders a visible default fallback while video is loading", () => {
+    setReducedMotion(false);
+    render(<NodeWaitingVideo kind="text" />);
+    expect(screen.getByTestId("node-waiting-fallback").textContent).toBe("Generating...");
+  });
+
+  it("can show video after StrictMode restarts effects", async () => {
+    setReducedMotion(false);
+    render(<StrictMode><NodeWaitingVideo kind="text" /></StrictMode>);
+    const video = screen.getByTestId("node-waiting-video") as HTMLVideoElement;
+    await act(async () => { fireEvent.canPlay(video); });
+    expect(video.hidden).toBe(false);
     expect(screen.queryByTestId("node-waiting-fallback")).toBeNull();
   });
 
