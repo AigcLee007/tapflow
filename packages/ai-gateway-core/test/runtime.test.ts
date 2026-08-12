@@ -243,6 +243,74 @@ describe("openai-compatible text adapter", () => {
     await server.close();
   });
 
+  test("maps ordered hydrated image inputs to Chat Completions blocks and redacts diagnostics", async () => {
+    let requestBody: Record<string, unknown> | null = null;
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      requestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ choices: [{ message: { content: "visual result" } }] }));
+    });
+    const adapter = new OpenAiCompatibleTextAdapter();
+    const result = await adapter.generateText(
+      { apiKey: "sk-test-secret", baseUrl: server.url, modelKey: "gpt-test", providerKey: "openai-compatible", requestConfig: {}, routeId: "r", routeKey: "r", timeoutMs: 5000 },
+      {
+        messages: [{ content: "Describe the connected images", role: "user" }],
+        inputAssets: [
+          { assetId: "first", kind: "image", mimeType: "image/png", metadata: { url: "https://signed.test/first.png" } },
+          { assetId: "second", kind: "image", mimeType: "image/webp", metadata: { signedUrl: "https://signed.test/second.webp" } },
+        ],
+      },
+    );
+    expect(requestBody).toMatchObject({
+      messages: [{ role: "user", content: [
+        { type: "text", text: "Describe the connected images" },
+        { type: "image_url", image_url: { url: "https://signed.test/first.png" } },
+        { type: "image_url", image_url: { url: "https://signed.test/second.webp" } },
+      ] }],
+    });
+    expect(JSON.stringify(result.providerRequest)).not.toContain("signed.test");
+    expect(result.providerRequest).toMatchObject({ body: { imageInputCount: 2, imageMimeTypes: ["image/png", "image/webp"] } });
+    await server.close();
+  });
+
+  test("maps ordered hydrated image inputs to Responses API blocks", async () => {
+    let requestBody: Record<string, unknown> | null = null;
+    const server = await withHttpServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      requestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ output: [{ content: [{ type: "output_text", text: "visual result" }] }] }));
+    });
+    const adapter = new OpenAiCompatibleTextAdapter();
+    await adapter.generateText(
+      { apiKey: "sk-test-secret", baseUrl: server.url, modelKey: "gpt-test", providerKey: "openai-compatible", requestConfig: { apiMode: "responses" }, routeId: "r", routeKey: "r", timeoutMs: 5000 },
+      {
+        messages: [{ content: "Describe the connected images", role: "user" }],
+        inputAssets: [
+          { assetId: "first", kind: "image", mimeType: "image/png", metadata: { publicUrl: "https://signed.test/first.png" } },
+          { assetId: "second", kind: "image", mimeType: "image/webp", metadata: { url: "https://signed.test/second.webp" } },
+        ],
+      },
+    );
+    expect(requestBody).toMatchObject({ input: [{ role: "user", content: [
+      { type: "input_text", text: "Describe the connected images" },
+      { type: "input_image", image_url: "https://signed.test/first.png" },
+      { type: "input_image", image_url: "https://signed.test/second.webp" },
+    ] }] });
+    await server.close();
+  });
+
+  test("fails with stable hydration error when an image URL is missing", async () => {
+    const adapter = new OpenAiCompatibleTextAdapter({ fetchImplementation: vi.fn() });
+    await expect(adapter.generateText(
+      { apiKey: "sk-test-secret", baseUrl: "http://localhost:1234", modelKey: "gpt-test", providerKey: "openai-compatible", requestConfig: {}, routeId: "r", routeKey: "r", timeoutMs: 5000 },
+      { messages: [{ content: "describe", role: "user" }], inputAssets: [{ assetId: "missing", kind: "image", mimeType: "image/png", metadata: {} }] },
+    )).rejects.toMatchObject({ code: "TEXT_IMAGE_URL_HYDRATION_FAILED" });
+  });
+
   test("maps 401 to PROVIDER_AUTH_FAILED", async () => {
     const server = await withHttpServer((_request, response) => {
       response.statusCode = 401;

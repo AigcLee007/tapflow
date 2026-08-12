@@ -28,6 +28,48 @@ function getString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+type HydratedImageInput = { mimeType: string; url: string };
+
+function resolveHydratedImageInputs(request: TextGenerationRequest): HydratedImageInput[] {
+  const assets = Array.isArray(request.inputAssets) ? request.inputAssets : [];
+  return assets.map((asset) => {
+    const metadata = asRecord(asset.metadata);
+    const url = getString(metadata.url) ?? getString(metadata.signedUrl) ?? getString(metadata.publicUrl);
+    if (!url) {
+      throw new AiGatewayError({
+        code: "TEXT_IMAGE_URL_HYDRATION_FAILED",
+        message: `Image asset ${asset.assetId} has no hydrated URL`,
+        statusCode: 422,
+      });
+    }
+    return { mimeType: getString(asset.mimeType) ?? "application/octet-stream", url };
+  });
+}
+
+function withChatImageInputs(messages: TextGenerationRequest["messages"], images: HydratedImageInput[]) {
+  if (!images.length) return messages;
+  const userIndex = [...messages].map((message) => message.role).lastIndexOf("user");
+  if (userIndex < 0) return messages;
+  return messages.map((message, index) => index === userIndex
+    ? { ...message, content: [
+        { type: "text", text: message.content },
+        ...images.map((image) => ({ type: "image_url", image_url: { url: image.url } })),
+      ] }
+    : message);
+}
+
+function withResponsesImageInputs(messages: TextGenerationRequest["messages"], images: HydratedImageInput[]) {
+  if (!images.length) return messages;
+  const userIndex = [...messages].map((message) => message.role).lastIndexOf("user");
+  if (userIndex < 0) return messages;
+  return messages.map((message, index) => index === userIndex
+    ? { ...message, content: [
+        { type: "input_text", text: message.content },
+        ...images.map((image) => ({ type: "input_image", image_url: image.url })),
+      ] }
+    : message);
+}
+
 function pickDiagnosticFields(value: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const key of ["code", "errno", "hostname", "message", "name", "port", "syscall"]) {
@@ -682,19 +724,21 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
       context.baseUrl,
       normalizePath(requestConfig.chatPath ?? requestConfig.path ?? requestConfig.generatePath, "/chat/completions"),
     );
+    const images = resolveHydratedImageInputs(request);
+    const messages = withChatImageInputs(request.messages, images);
     const payload = {
       max_tokens:
         request.maxTokens ??
         getNumber(requestConfig.maxTokens) ??
         getNumber(requestConfig.max_tokens),
-      messages: request.messages,
+      messages,
       model: request.model?.trim() || context.modelKey,
       temperature:
         request.temperature ??
         getNumber(requestConfig.temperature),
     };
     const providerRequest = {
-      body: payload,
+      body: images.length ? { ...payload, messages: undefined, imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } : payload,
       headers: {
         Authorization: `Bearer ${context.apiKey}`,
         "Content-Type": "application/json",
@@ -778,8 +822,9 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
     request: TextGenerationRequest,
     requestConfig: Record<string, unknown>,
   ): Promise<ProviderTextGenerationResult> {
+    const images = resolveHydratedImageInputs(request);
     const payload = {
-      input: request.messages,
+      input: withResponsesImageInputs(request.messages, images),
       max_output_tokens:
         request.maxTokens ??
         getNumber(requestConfig.maxOutputTokens) ??
@@ -792,7 +837,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         getNumber(requestConfig.temperature),
     };
     const providerRequest = {
-      body: payload,
+      body: images.length ? { ...payload, input: undefined, imageInputCount: images.length, imageMimeTypes: images.map((image) => image.mimeType) } : payload,
       headers: {
         Authorization: `Bearer ${context.apiKey}`,
         "Content-Type": "application/json",
