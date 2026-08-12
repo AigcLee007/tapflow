@@ -415,6 +415,58 @@ async function createDraftOnlyFlowWithImageNodes(
   return flow.json();
 }
 
+async function createDraftOnlyTextFlowWithImageInputs(
+  api: ReturnType<typeof buildTestApp>["api"],
+  accessToken: string,
+  input: { imageCount: number; routeKey: string },
+) {
+  const project = await api.inject({
+    headers: { authorization: `Bearer ${accessToken}` },
+    method: "POST",
+    payload: { name: "Workflow Text Image Input Project" },
+    url: "/api/v2/projects",
+  });
+  expect(project.statusCode).toBe(201);
+
+  const flow = await api.inject({
+    headers: { authorization: `Bearer ${accessToken}` },
+    method: "POST",
+    payload: { title: "Workflow Text Image Input Flow" },
+    url: `/api/v2/projects/${project.json().id}/flows`,
+  });
+  expect(flow.statusCode).toBe(201);
+
+  const imageIds = Array.from({ length: input.imageCount }, (_, index) => `image-${index + 1}`);
+  const saveDraft = await api.inject({
+    headers: { authorization: `Bearer ${accessToken}` },
+    method: "PUT",
+    payload: {
+      graph: {
+        edges: imageIds.map((source) => ({ source, target: "text" })),
+        nodes: [
+          ...imageIds.map((id) => ({
+            data: { assetId: `asset-${id}`, mimeType: "image/png" },
+            id,
+            type: "image",
+          })),
+          {
+            data: {
+              inputOrder: imageIds.slice().reverse().map((id) => `upstream:${id}`),
+              routeKey: input.routeKey,
+            },
+            id: "text",
+            type: "text.generate",
+          },
+        ],
+      },
+    },
+    url: `/api/v2/flows/${flow.json().id}/draft`,
+  });
+  expect(saveDraft.statusCode).toBe(200);
+
+  return flow.json();
+}
+
 async function createDraftOnlyFlowWithImageEditTarget(
   api: ReturnType<typeof buildTestApp>["api"],
   accessToken: string,
@@ -498,7 +550,8 @@ async function createDraftOnlyFlowWithImageEditTarget(
 async function seedRouteAndPricing(
   pool: ReturnType<typeof createPgPool>,
   input: {
-    modality?: "image" | "video";
+    capabilities?: Record<string, unknown>;
+    modality?: "image" | "text" | "video";
     modelKey: string;
     providerKey: string;
     routeKey: string;
@@ -530,12 +583,12 @@ async function seedRouteAndPricing(
       const model = await client.query<{ id: string }>(
         `
           INSERT INTO ai_models (provider_id, model_key, display_name, modality, capabilities, status, updated_at)
-          VALUES ($1::uuid, $2, $3, $4, '{}'::jsonb, 'active', now())
+          VALUES ($1::uuid, $2, $3, $4, $5::jsonb, 'active', now())
           ON CONFLICT (provider_id, model_key) DO UPDATE
-          SET display_name = EXCLUDED.display_name, modality = EXCLUDED.modality, status = 'active', updated_at = now()
+          SET display_name = EXCLUDED.display_name, modality = EXCLUDED.modality, capabilities = EXCLUDED.capabilities, status = 'active', updated_at = now()
           RETURNING id::text AS id
         `,
-        [providerId, input.modelKey, `${input.modelKey} model`, input.modality ?? "image"],
+        [providerId, input.modelKey, `${input.modelKey} model`, input.modality ?? "image", JSON.stringify(input.capabilities ?? {})],
       );
       const modelId = model.rows[0]?.id;
       if (!modelId) {
@@ -545,13 +598,13 @@ async function seedRouteAndPricing(
       await client.query(
         `
           INSERT INTO ai_routes (tenant_id, provider_id, model_id, route_key, modality, status, request_config, pricing, rate_limit, updated_at)
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'active', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'active', $6::jsonb, '{}'::jsonb, '{}'::jsonb, now())
           ON CONFLICT (tenant_id, route_key)
           WHERE tenant_id IS NOT NULL
           DO UPDATE
-          SET provider_id = EXCLUDED.provider_id, model_id = EXCLUDED.model_id, modality = EXCLUDED.modality, status = 'active', updated_at = now()
+          SET provider_id = EXCLUDED.provider_id, model_id = EXCLUDED.model_id, modality = EXCLUDED.modality, request_config = EXCLUDED.request_config, status = 'active', updated_at = now()
         `,
-        [input.tenantId, providerId, modelId, input.routeKey, input.modality ?? "image"],
+        [input.tenantId, providerId, modelId, input.routeKey, input.modality ?? "image", JSON.stringify(input.capabilities ? { capabilities: input.capabilities } : {})],
       );
 
       if (input.withExactPricing) {
@@ -637,7 +690,120 @@ function parseSseEvents(body: string) {
     });
 }
 
+async function countBillingAndWorkflowState(
+  pool: ReturnType<typeof createPgPool>,
+  tenantId: string,
+  userId: string,
+) {
+  return withTenantTransaction({ tenantId, userId }, async (client) => {
+    const [ledger, usageEvents, workflowRuns] = await Promise.all([
+      client.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM billing_wallet_ledger WHERE tenant_id = $1::uuid", [tenantId]),
+      client.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM usage_events WHERE tenant_id = $1::uuid", [tenantId]),
+      client.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM workflow_runs WHERE tenant_id = $1::uuid", [tenantId]),
+    ]);
+    return {
+      ledgerEntries: Number(ledger.rows[0]?.count ?? "0"),
+      usageEvents: Number(usageEvents.rows[0]?.count ?? "0"),
+      workflowRuns: Number(workflowRuns.rows[0]?.count ?? "0"),
+    };
+  }, pool);
+}
+
 describeWithDatabase("workflow runs api", () => {
+  test("rejects four upstream images for a text target before billing or queueing", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const owner = await registerOwner(api, "workflow-text-images-limit@example.com", "Workflow Text Images Limit");
+        const ownerUserId = await lookupUserIdByEmail(appPool, "workflow-text-images-limit@example.com");
+        await seedRouteAndPricing(appPool, {
+          capabilities: { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+          modality: "text",
+          modelKey: "mock-text-visual-limit",
+          providerKey: "mock-text-visual-limit",
+          routeKey: "text.visual.limit",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+        });
+        const flow = await createDraftOnlyTextFlowWithImageInputs(api, owner.accessToken, {
+          imageCount: 4,
+          routeKey: "text.visual.limit",
+        });
+
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: { input: { runMode: "target_node", targetNodeId: "text" } },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+
+        expect(response.statusCode).toBe(422);
+        expect(response.json()).toMatchObject({ error: { code: "TEXT_IMAGE_INPUT_LIMIT_EXCEEDED" } });
+        expect(await countBillingAndWorkflowState(appPool, owner.currentTenant.id, ownerUserId)).toEqual({
+          ledgerEntries: 0,
+          usageEvents: 0,
+          workflowRuns: 0,
+        });
+        expect(fakeQueue.jobs).toHaveLength(0);
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("rejects image input on a nonvisual text route before billing or queueing", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const owner = await registerOwner(api, "workflow-text-images-unsupported@example.com", "Workflow Text Images Unsupported");
+        const ownerUserId = await lookupUserIdByEmail(appPool, "workflow-text-images-unsupported@example.com");
+        await seedRouteAndPricing(appPool, {
+          modality: "text",
+          modelKey: "mock-text-nonvisual",
+          providerKey: "mock-text-nonvisual",
+          routeKey: "text.nonvisual",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+        });
+        const flow = await createDraftOnlyTextFlowWithImageInputs(api, owner.accessToken, {
+          imageCount: 1,
+          routeKey: "text.nonvisual",
+        });
+
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: { input: { runMode: "target_node", targetNodeId: "text" } },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+
+        expect(response.statusCode).toBe(422);
+        expect(response.json()).toMatchObject({ error: { code: "TEXT_MODEL_IMAGE_INPUT_UNSUPPORTED" } });
+        expect(await countBillingAndWorkflowState(appPool, owner.currentTenant.id, ownerUserId)).toEqual({
+          ledgerEntries: 0,
+          usageEvents: 0,
+          workflowRuns: 0,
+        });
+        expect(fakeQueue.jobs).toHaveLength(0);
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
   test("reserve prefers exact provider/model/route pricing and stores fallback metadata", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
