@@ -3,6 +3,13 @@
 Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
 
+## 2026-08-12 - Image-to-Image Original Comparison Regression Fix
+
+- restored the fullscreen `原图对比` entry for image-to-image results by capturing the first ordered image input when generation starts, rather than relying only on reference chips that may not yet have a loaded preview URL.
+- multiple image inputs now use the first image in the creator-visible input order; leading text inputs are ignored. The captured stable asset/upstream-node identity is copied into `lastGenerationSnapshot`, so later input reordering or removal cannot change an existing result's original comparison image.
+- preserved the existing asset-preview resolution path for the fullscreen viewer and the text-to-image behavior that omits the comparison control. Temporary preview and signed URLs remain outside persisted canvas data.
+- validation: `npm run test -- src/flowCanvas/utils/imageViewerComparison.test.ts src/flowCanvas/nodes/FlowNodes.image-inputs.test.tsx src/flowCanvas/runtime/v2WorkflowRunner.test.ts src/flowCanvas/store/flowCanvasStore.test.ts`; `npm run build`.
+
 ## 2026-08-12 - Text Node Multimodal Image Input Design
 
 - confirmed the current v2 Text Node bug: canvas connections and thumbnails recognize upstream images, but the authoritative Worker/Gateway text path serializes only string messages, so visual content never reaches the selected model.

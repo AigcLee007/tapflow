@@ -1,6 +1,6 @@
 import type { FlowImageReferenceComparisonSource } from '../types';
 
-type ImageViewerReferenceInput = {
+export type ImageViewerReferenceInput = {
   assetId?: string | null;
   id?: string | null;
   key?: string | null;
@@ -8,6 +8,15 @@ type ImageViewerReferenceInput = {
   mentionLabel?: string | null;
   nodeId?: string | null;
   source?: string | null;
+  title?: string | null;
+};
+
+export type ImageViewerOrderedInput = {
+  assetId?: string | null;
+  inputKey?: string | null;
+  kind?: string | null;
+  source?: string | null;
+  sourceNodeId?: string | null;
   title?: string | null;
 };
 
@@ -123,6 +132,28 @@ export function buildImageViewerComparisonSource(
   }
 
   return null;
+}
+
+export function buildImageViewerComparisonSourceFromInputs(input: {
+  inputs: readonly ImageViewerOrderedInput[] | undefined;
+  references: readonly ImageViewerReferenceInput[] | undefined;
+}): FlowImageReferenceComparisonSource | null {
+  const firstImage = input.inputs?.find((item) => readCleanString(item.kind) === 'image' && readCleanString(item.inputKey));
+  if (!firstImage) return null;
+
+  const key = readCleanString(firstImage.inputKey);
+  const reference = input.references?.find((item) => readCleanString(item.key) === key);
+  if (reference) return buildImageViewerComparisonSource([reference]);
+
+  return buildImageViewerComparisonSource([{
+    assetId: readCleanString(firstImage.assetId) || undefined,
+    id: readCleanString(firstImage.sourceNodeId)
+      || (key.startsWith('upstream:') ? parseKeyValue(key, 'upstream:') : undefined),
+    key,
+    source: readCleanString(firstImage.source)
+      || (key.startsWith('asset:') ? 'asset' : key.startsWith('upstream:') ? 'upstream' : undefined),
+    title: readCleanString(firstImage.title) || undefined,
+  }]);
 }
 
 export function buildImageViewerComparisonSourceFromReferenceKeys(input: {

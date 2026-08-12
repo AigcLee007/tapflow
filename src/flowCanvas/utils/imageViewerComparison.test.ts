@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildImageViewerComparisonSource,
+  buildImageViewerComparisonSourceFromInputs,
   calculateContainedImageRect,
   formatImageViewerDateTime,
   getComparisonSplitPercentFromClientX,
@@ -61,6 +62,48 @@ describe('image viewer comparison helpers', () => {
 
   test('does not create comparison source for text-to-image references', () => {
     expect(buildImageViewerComparisonSource([])).toBeNull();
+  });
+
+  test('uses the first ordered image input after leading text for the comparison source', () => {
+    expect(buildImageViewerComparisonSourceFromInputs({
+      inputs: [
+        { inputKey: 'upstream:brief', kind: 'text' },
+        { assetId: 'asset-first', inputKey: 'upstream:first-image', kind: 'image', sourceNodeId: 'first-image' },
+        { assetId: 'asset-second', inputKey: 'asset:asset-second', kind: 'image' },
+      ],
+      references: [
+        {
+          assetId: 'asset-first',
+          id: 'first-image',
+          key: 'upstream:first-image',
+          mentionLabel: 'Image 1',
+          nodeId: 'first-image',
+          source: 'upstream',
+          title: 'First image',
+        },
+        {
+          assetId: 'asset-second',
+          id: 'asset-second',
+          key: 'asset:asset-second',
+          mentionLabel: 'Image 2',
+          source: 'asset',
+          title: 'Second image',
+        },
+      ],
+    })).toEqual({
+      assetId: 'asset-first',
+      key: 'upstream:first-image',
+      label: 'Image 1',
+      nodeId: 'first-image',
+      source: 'upstream',
+    });
+  });
+
+  test('does not create a comparison source from text-only ordered inputs', () => {
+    expect(buildImageViewerComparisonSourceFromInputs({
+      inputs: [{ inputKey: 'upstream:brief', kind: 'text' }],
+      references: [],
+    })).toBeNull();
   });
 
   test('calculates the visible object-fit contain rect for wide generated images', () => {

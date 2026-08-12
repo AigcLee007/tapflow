@@ -174,6 +174,7 @@ import { downloadOriginalImage, getPreferredImageDownloadAssetId } from '../util
 import { resolveImageViewerFileSizeBytes } from '../utils/imageViewerFileSize';
 import {
   buildImageViewerComparisonSource,
+  buildImageViewerComparisonSourceFromInputs,
   calculateContainedImageRect,
   formatImageViewerDateTime,
   getComparisonSplitPercentFromClientX,
@@ -5353,7 +5354,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       .map((item) => item.imageUrl)
       .filter((url) => !String(url || '').trim().toLowerCase().startsWith('blob:'));
     updateNodeData(id, {
-      generationReferenceComparison: buildImageViewerComparisonSource(referenceChips),
+      generationReferenceComparison: buildImageViewerComparisonSourceFromInputs({
+        inputs: resolvedImageInputItems,
+        references: referenceChips,
+      }),
       lastGenerationInputSignature: currentImageInputSignature,
       referenceImages,
       routeKey: selectedRuntimeRoute.routeKey,

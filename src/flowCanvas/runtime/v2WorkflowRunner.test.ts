@@ -1240,7 +1240,7 @@ describe('v2WorkflowRunner', () => {
     expect(JSON.stringify(updatedDirector?.data.director3d)).not.toMatch(/blob:|data:|https?:\/\//);
   });
 
-  test('asset refs use signed preview urls and stay in runtime state', async () => {
+  test('asset refs use signed preview urls and preserve the launch-time comparison source', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       batchCount: 2,
       generationPrompt: 'a quiet studio product photo',
@@ -1257,7 +1257,8 @@ describe('v2WorkflowRunner', () => {
           subjectType: 'scene',
         },
       },
-      referenceOrder: ['asset:ref-1'],
+      referenceAssetItemIds: ['current-ref'],
+      referenceOrder: ['asset:current-ref'],
       generationReferenceComparison: {
         assetId: 'ref-1',
         key: 'asset:ref-1',
