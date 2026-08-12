@@ -46,7 +46,7 @@ const MAX_NODE_WAITING_BYTES = 1_500_000;
 type FfprobeResult = { format?: { duration?: string; size?: string }; streams?: Array<{ codec_name?: string; codec_type?: string; height?: number; width?: number }> };
 
 export function buildNodeWaitingFfmpegArgs(source: string, target: string) {
-  return ["-y", "-i", source, "-map", "0:v:0", "-an", "-vf", "scale=720:720:force_original_aspect_ratio=decrease", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", target];
+  return ["-y", "-i", source, "-map", "0:v:0", "-an", "-vf", "scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", target];
 }
 
 export function assertNodeWaitingVideoProbe(probe: FfprobeResult) {

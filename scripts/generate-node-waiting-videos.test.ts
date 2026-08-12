@@ -65,7 +65,7 @@ describe("node waiting video generation", () => {
 
   it("constructs a silent H.264 faststart transcode capped at 720 pixels", () => {
     expect(buildNodeWaitingFfmpegArgs("source.mp4", "final.mp4")).toEqual([
-      "-y", "-i", "source.mp4", "-map", "0:v:0", "-an", "-vf", "scale=720:720:force_original_aspect_ratio=decrease",
+      "-y", "-i", "source.mp4", "-map", "0:v:0", "-an", "-vf", "scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "final.mp4",
     ]);
   });
