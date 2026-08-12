@@ -53,6 +53,11 @@ export { redactString, redactValue } from "./redaction.js";
 export { RouteResolver } from "./route-resolver.js";
 export { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
 export {
+  TEXT_IMAGE_INPUT_ERROR_CODES,
+  resolveTextGenerationCapabilities,
+  validateTextImageInput,
+} from "./text-generation-contract.js";
+export {
   readVideoCapabilities,
   readVideoReferenceMetadata,
   validateVideoGenerationRequest,
@@ -75,6 +80,10 @@ export type {
   VideoGenerationRequest,
   VideoGenerationParams,
 } from "./types.js";
+export type {
+  TextGenerationCapabilities,
+  TextImageInputIssue,
+} from "./text-generation-contract.js";
 export type {
   VideoAspectRatio,
   VideoAudioControlMode,
