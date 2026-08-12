@@ -583,6 +583,24 @@ describe("worker skeleton", () => {
     expect(JSON.stringify(outputs)).not.toContain("base64");
   });
 
+  test("text message construction preserves structured upstream output without images", () => {
+    const buildTextMessages = (__workerTestUtils as {
+      buildTextMessages: (outputs: Array<Record<string, unknown> | null>, config: Record<string, unknown>, inputAssets?: unknown[]) => { messages: Array<{ content: string }> };
+    }).buildTextMessages;
+    expect(buildTextMessages([{ score: 7 }, { tags: ["cinematic"] }], {})).toMatchObject({
+      messages: [{ content: '{"score":7}\n{"tags":["cinematic"]}' }],
+    });
+  });
+
+  test("text image extraction preserves malformed asset declarations for validation", () => {
+    const extractTextInputAssets = (__workerTestUtils as {
+      extractTextInputAssets: (outputs: Array<Record<string, unknown> | null>) => Array<{ assetId: string; kind: string | null; mimeType: string | null }>;
+    }).extractTextInputAssets;
+    expect(extractTextInputAssets([{ assets: [{ kind: "image", mimeType: "image/png" }] }])).toEqual([
+      { assetId: "", kind: "image", mimeType: "image/png", durationMs: null, height: null, width: null },
+    ]);
+  });
+
   test("orders upstream text by inputOrder and appends unspecified dependencies in compiled order", () => {
     const getDependencyOutputs = (__workerTestUtils as {
       getDependencyOutputs: (node: {

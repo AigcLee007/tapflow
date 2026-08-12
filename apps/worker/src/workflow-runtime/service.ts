@@ -376,7 +376,9 @@ function buildTextMessages(
         return directText.trim();
       }
 
-      return "";
+      const isImageOnlyOutput = inputAssets && inputAssets.length > 0 &&
+        Array.isArray(value.assets) && Object.keys(value).every((key) => key === "assets");
+      return isImageOnlyOutput ? "" : JSON.stringify(value);
     })
     .filter(Boolean)
     .join("\n");
@@ -423,6 +425,25 @@ function extractAssetInputs(upstreamOutputs: Array<Record<string, unknown> | nul
     }
   }
 
+  return assets;
+}
+
+function extractTextInputAssets(upstreamOutputs: Array<Record<string, unknown> | null>): AssetReferenceInput[] {
+  const assets: AssetReferenceInput[] = [];
+  for (const output of upstreamOutputs) {
+    if (!output || !Array.isArray(output.assets)) continue;
+    for (const asset of output.assets) {
+      if (!isPlainObject(asset)) continue;
+      assets.push({
+        assetId: typeof asset.assetId === "string" ? asset.assetId : "",
+        durationMs: typeof asset.durationMs === "number" ? asset.durationMs : null,
+        height: typeof asset.height === "number" ? asset.height : null,
+        kind: typeof asset.kind === "string" ? asset.kind : null,
+        mimeType: typeof asset.mimeType === "string" ? asset.mimeType : null,
+        width: typeof asset.width === "number" ? asset.width : null,
+      });
+    }
+  }
   return assets;
 }
 
@@ -1018,6 +1039,8 @@ export const __workerTestUtils = {
   buildImageRequest,
   buildMediaUsageMetadata,
   buildVideoRequest,
+  buildTextMessages,
+  extractTextInputAssets,
   getDependencyOutputs: getDependencyOutputsFromRuntimeGraph,
   getDependencyOutputsByNodeId: getDependencyOutputsByNodeIdFromRuntimeGraph,
   localOutputDirFromRenderResult,
@@ -2558,7 +2581,7 @@ export class WorkflowNodeExecutionService {
         async (client) => this.loadTextGenerationRouteCapability(client, workflowRun.tenant_id, routeKey),
         this.pool,
       );
-      const inputAssets = extractAssetInputs(upstreamOutputs);
+      const inputAssets = extractTextInputAssets(upstreamOutputs);
       const issue = validateTextImageInput({
         capabilities: routeCapability?.capabilities ?? {
           maxImages: 0,
