@@ -26,6 +26,7 @@ test("renders an indeterminate reduced-motion-safe status without a percentage",
   expect(screen.getByRole("status").textContent).toContain("正在生成视频");
   expect(screen.queryByText(/0%/)).toBeNull();
   expect(screen.getByTestId("video-generation-indicator").className).toContain("motion-safe:animate-spin");
+  expect(screen.getByTestId("node-waiting-video-container")).toBeTruthy();
 });
 
 test("renders a retry action for failure", () => {
