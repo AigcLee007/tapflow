@@ -153,4 +153,12 @@ describe("FilmStage", () => {
     rerender(<FilmStage dialogOpen onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
     expect(video.playbackRate).toBe(0.35);
   });
+
+  test("marks the stage as drawer-open and keeps poster fallback behavior", () => {
+    mockMotion(true);
+    render(<FilmStage dialogOpen onEnterWorkspace={vi.fn()} onOpenAuth={vi.fn()} />);
+    expect(screen.getByRole("main").getAttribute("data-drawer-open")).toBe("true");
+    expect(screen.getAllByTestId("landing-film-poster")).toHaveLength(4);
+    expect(screen.queryAllByTestId("landing-film-video")).toHaveLength(0);
+  });
 });

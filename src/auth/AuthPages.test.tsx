@@ -231,7 +231,7 @@ describe("AuthExperiencePage", () => {
     window.history.replaceState(null, "", "/register?returnTo=%2Fassets");
     renderAuth(<AuthExperienceRouteHarness />);
     expect(screen.getByRole("dialog", { name: "创建账号" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭登录面板" }));
     expect(window.location.pathname + window.location.search).toBe("/login?returnTo=%2Fassets");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -240,7 +240,7 @@ describe("AuthExperiencePage", () => {
     window.history.replaceState(null, "", "/forgot-password");
     renderAuth(<AuthExperienceRouteHarness />);
     expect(screen.getByRole("dialog", { name: "重置密码" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭登录面板" }));
     expect(window.location.pathname).toBe("/login");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -257,7 +257,7 @@ describe("AuthExperiencePage", () => {
     await waitFor(() => expect(register).toHaveBeenCalledOnce());
 
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    fireEvent.mouseDown(screen.getByTestId("auth-dialog-backdrop"));
+    fireEvent.mouseDown(screen.getByTestId("auth-drawer-backdrop"));
     expect(window.location.pathname).toBe("/register");
     expect(screen.getByRole("dialog", { name: "创建账号" })).toBeTruthy();
 
@@ -278,7 +278,7 @@ describe("AuthExperiencePage", () => {
     expect(screen.getByRole("dialog", { name: "欢迎回来" })).toBeTruthy();
     expect(window.location.pathname).toBe("/login");
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭弹窗" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭登录面板" }));
     rerender(<AuthContext.Provider value={authState({ authenticated: true })}><AuthExperiencePage /></AuthContext.Provider>);
     fireEvent.click(screen.getByRole("button", { name: "Enter workspace" }));
     expect(window.location.pathname).toBe("/workspace");
