@@ -698,6 +698,80 @@ describe("useRemoteFlowAutosave", () => {
     expect(saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes).toHaveLength(2);
   });
 
+  it("preserves a text node font size through remote draft save and reload", async () => {
+    const initialDraft = createDraft(3);
+    initialDraft.graph = {
+      edges: [],
+      nodes: [
+        {
+          id: "text-readable",
+          position: { x: 120, y: 240 },
+          type: "text",
+          data: {
+            fontSize: "body",
+            height: 260,
+            kind: "text",
+            text: "Existing generated copy",
+            width: 320,
+          },
+        },
+      ],
+      viewport: { x: 15, y: -20, zoom: 0.7 },
+    };
+    act(() => {
+      loadStoreFromDraft(initialDraft);
+    });
+    saveFlowDraftMock.mockImplementationOnce(async (_flowId, input) => ({
+      ...initialDraft,
+      graph: input.graph,
+      revision: 4,
+      updatedAt: "2026-05-22T00:00:04.000Z",
+    }));
+
+    const { result } = renderHook(() =>
+      useRemoteFlowAutosave({
+        draft: initialDraft,
+        enabled: true,
+        flowId: "flow-1",
+      }),
+    );
+
+    act(() => {
+      useFlowCanvasStore.getState().updateNodeData("text-readable", { fontSize: "h1" });
+    });
+    await act(async () => {
+      await result.current.saveNow();
+    });
+
+    const savedGraph = saveFlowDraftMock.mock.calls[0]?.[1].graph;
+    expect(savedGraph.viewport).toEqual({ x: 15, y: -20, zoom: 0.7 });
+    expect(savedGraph.nodes).toEqual([
+      expect.objectContaining({
+        id: "text-readable",
+        position: { x: 120, y: 240 },
+        data: {
+          fontSize: "h1",
+          height: 260,
+          kind: "text",
+          text: "Existing generated copy",
+          width: 320,
+        },
+      }),
+    ]);
+
+    act(() => {
+      loadStoreFromDraft({
+        ...initialDraft,
+        graph: savedGraph,
+        revision: 4,
+        updatedAt: "2026-05-22T00:00:04.000Z",
+      });
+    });
+    const restoredStore = useFlowCanvasStore.getState();
+    expect(restoredStore.nodes.find((node) => node.id === "text-readable")?.data.fontSize).toBe("h1");
+    expect(restoredStore.viewport).toEqual({ x: 15, y: -20, zoom: 0.7 });
+  });
+
   it("saves the project default director desk outside the canvas nodes", async () => {
     const initialDraft = createDraft(1);
     loadStoreFromDraft(initialDraft);
