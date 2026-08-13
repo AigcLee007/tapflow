@@ -83,6 +83,12 @@ import {
 import { VideoReadyState } from '../video/VideoReadyState';
 import { VideoGenerationFeedback } from '../video/VideoGenerationFeedback';
 import { NodeWaitingVideo } from './NodeWaitingVideo';
+import {
+  getTextFontSizePx,
+  normalizeTextFontSize,
+  TEXT_FONT_SIZE_PRESETS,
+  type TextFontSizePreset,
+} from './textFontSize';
 import { getVideoNodeSizeForNaturalDimensions, getVideoNodeSizeForRequestedRatio } from '../video/videoNodeSizing';
 import {
   getImageModelById,
@@ -3302,7 +3308,7 @@ export const TextNodeComponent = memo(function TextNode({
     updateNodeData(id, { [key]: val });
   };
 
-  const applyTextAction = (type: 'bullet' | 'number' | 'divider' | 'bold' | 'italic' | 'h1' | 'h2' | 'h3') => {
+  const applyTextAction = (type: 'bullet' | 'number' | 'divider' | 'bold' | 'italic') => {
     const textarea = document.querySelector(`textarea[data-node-id="${id}"]`) as HTMLTextAreaElement;
     const text = String(resolvedText || '');
     
@@ -3348,12 +3354,6 @@ export const TextNodeComponent = memo(function TextNode({
       const processed = isItalic ? selected.substring(1, selected.length - 1) : `_${selected}_`;
       newText = before + processed + after;
       newCursorPos = start + processed.length;
-    } else if (type === 'h1' || type === 'h2' || type === 'h3') {
-      const prefix = type === 'h1' ? '# ' : type === 'h2' ? '## ' : '### ';
-      const lines = selected.length > 0 ? selected.split('\n') : [''];
-      const processed = lines.map(l => l.startsWith(prefix) ? l.replace(prefix, '') : prefix + l).join('\n');
-      newText = before + processed + after;
-      newCursorPos = start + processed.length;
     }
 
     updateNodeData(id, { text: newText });
@@ -3365,6 +3365,12 @@ export const TextNodeComponent = memo(function TextNode({
       }, 0);
     }
   };
+
+  const setTextFontSize = (fontSize: TextFontSizePreset) => {
+    updateNodeData(id, { fontSize });
+  };
+
+  const textFontSize = normalizeTextFontSize(d.fontSize);
 
   // Use undefined for transparent so card() uses default #161616/#222222
   const currentBg = d.backgroundColor === 'transparent' ? undefined : d.backgroundColor;
@@ -3423,11 +3429,13 @@ export const TextNodeComponent = memo(function TextNode({
         <div style={{ position: 'absolute', inset: 0, padding: '18px 20px', overflow: 'hidden', boxSizing: 'border-box' }}>
           <textarea
             data-node-id={id}
+            aria-label="文本内容"
             className="nodrag nopan nowheel sleek-scroll-y"
             value={resolvedText}
             readOnly={!showNodeEditor}
           onChange={(e) => updateNodeData(id, { text: e.target.value })}
             onKeyDown={stopCanvasKeyboardPropagation}
+            onWheel={(event) => event.stopPropagation()}
             placeholder="开始输入..."
             spellCheck={false}
             style={{
@@ -3438,7 +3446,7 @@ export const TextNodeComponent = memo(function TextNode({
               outline: 'none',
               color: '#f8fafc',
               caretColor: '#fff',
-              fontSize: d.fontSize === 'h1' ? 18 : d.fontSize === 'h2' ? 15 : d.fontSize === 'h3' ? 13 : 12,
+              fontSize: getTextFontSizePx(textFontSize, 'canvas'),
               fontWeight: d.fontWeight === 'bold' ? 700 : 400,
               fontStyle: d.fontStyle === 'italic' ? 'italic' : 'normal',
               lineHeight: 1.48,
@@ -3554,9 +3562,14 @@ export const TextNodeComponent = memo(function TextNode({
           
           {divider}
           
-          <Tooltip title="一级标题"><button onClick={() => applyTextAction('h1')} style={toolbarBtnStyle()}>H1</button></Tooltip>
-          <Tooltip title="二级标题"><button onClick={() => applyTextAction('h2')} style={toolbarBtnStyle()}>H2</button></Tooltip>
-          <Tooltip title="三级标题"><button onClick={() => applyTextAction('h3')} style={toolbarBtnStyle()}>H3</button></Tooltip>
+          {TEXT_FONT_SIZE_PRESETS.map(({ value, label }) => {
+            const tooltip = `全文设为${label}字号`;
+            return (
+              <Tooltip key={value} title={tooltip}>
+                <button type="button" aria-label={tooltip} aria-pressed={textFontSize === value} onClick={() => setTextFontSize(value)} style={toolbarBtnStyle(textFontSize === value)}>{label}</button>
+              </Tooltip>
+            );
+          })}
           
           {divider}
           
@@ -3582,7 +3595,7 @@ export const TextNodeComponent = memo(function TextNode({
               {copyToastVisible ? <Check size={16} /> : <Copy size={16} />}
             </button>
           </Tooltip>
-          <Tooltip title="全屏"><button onClick={() => setIsFullscreen(true)} style={toolbarBtnStyle()}><Maximize size={16} /></button></Tooltip>
+          <Tooltip title="全屏"><button type="button" aria-label="全屏" onClick={() => setIsFullscreen(true)} style={toolbarBtnStyle()}><Maximize size={16} /></button></Tooltip>
         </FloatingToolbar>
       </div>
     )}
@@ -3818,10 +3831,14 @@ export const TextNodeComponent = memo(function TextNode({
 
               {/* Center Controls */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 99 }}>
-                <button onClick={() => applyTextAction('h1')} style={toolbarBtnStyle()}>H1</button>
-                <button onClick={() => applyTextAction('h2')} style={toolbarBtnStyle()}>H2</button>
-                <button onClick={() => applyTextAction('h3')} style={toolbarBtnStyle()}>H3</button>
-                <button onClick={() => applyTextAction('body')} style={toolbarBtnStyle()}><Type size={16} /></button>
+                {TEXT_FONT_SIZE_PRESETS.map(({ value, label }) => {
+                  const tooltip = `全文设为${label}字号`;
+                  return (
+                    <Tooltip key={value} title={tooltip}>
+                      <button type="button" aria-label={tooltip} aria-pressed={textFontSize === value} onClick={() => setTextFontSize(value)} style={toolbarBtnStyle(textFontSize === value)}>{label}</button>
+                    </Tooltip>
+                  );
+                })}
                 <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
                 <button onClick={() => applyTextAction('bold')} style={toolbarBtnStyle()}><Bold size={16} /></button>
                 <button onClick={() => applyTextAction('italic')} style={toolbarBtnStyle()}><Italic size={16} /></button>
@@ -3868,7 +3885,7 @@ export const TextNodeComponent = memo(function TextNode({
                   whiteSpace: 'pre-wrap',
                   wordWrap: 'break-word',
                   color: '#f8fafc',
-                  fontSize: d.fontSize === 'h1' ? 34 : d.fontSize === 'h2' ? 28 : d.fontSize === 'h3' ? 22 : 15,
+                  fontSize: getTextFontSizePx(textFontSize, 'fullscreen'),
                   fontWeight: d.fontWeight === 'bold' ? 700 : 400,
                   fontStyle: d.fontStyle === 'italic' ? 'italic' : 'normal',
                   lineHeight: 1.6,
@@ -3923,6 +3940,7 @@ export const TextNodeComponent = memo(function TextNode({
 
                 <textarea
                   autoFocus
+                  aria-label="全屏文本内容"
                   className="nodrag nopan nowheel"
                   value={resolvedText}
                   onChange={(e) => updateNodeData(id, { text: e.target.value })}
@@ -3937,7 +3955,7 @@ export const TextNodeComponent = memo(function TextNode({
                     outline: 'none',
                     color: '#f8fafc',
                     caretColor: '#fff',
-                    fontSize: d.fontSize === 'h1' ? 34 : d.fontSize === 'h2' ? 28 : d.fontSize === 'h3' ? 22 : 15,
+                    fontSize: getTextFontSizePx(textFontSize, 'fullscreen'),
                     fontWeight: d.fontWeight === 'bold' ? 700 : 400,
                     fontStyle: d.fontStyle === 'italic' ? 'italic' : 'normal',
                     lineHeight: 1.6,

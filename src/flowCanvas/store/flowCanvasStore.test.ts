@@ -488,7 +488,7 @@ describe('flowCanvasStore upstream image references', () => {
     });
   });
 
-  it('retains a direct video asset reference and role when an upstream image connects', () => {
+  it('drops a direct image reference when an upstream image connects in image-to-video mode', () => {
     const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Upstream image' });
     const target = useFlowCanvasStore.getState().addNode('video', { x: 400, y: 0 }, {
       params: {
@@ -506,10 +506,9 @@ describe('flowCanvasStore upstream image references', () => {
     useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
 
     const references = normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs;
-    expect(references).toEqual(expect.arrayContaining([
-      expect.objectContaining({ referenceKey: 'asset:hero-image:0', role: 'main_image', source: { kind: 'asset', id: 'hero-image' } }),
+    expect(references).toEqual([
       expect.objectContaining({ referenceKey: `upstream:${image.id}`, source: { kind: 'upstream', id: image.id } }),
-    ]));
+    ]);
   });
 
   it('deletes selected source nodes through input reconciliation', () => {
@@ -738,10 +737,42 @@ describe('flowCanvasStore upstream image references', () => {
 
     useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
 
-    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual(expect.arrayContaining([
+    expect(normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs).toEqual([
       expect.objectContaining({ mediaKind: 'image', role: 'main_image', source: { kind: 'upstream', id: image.id } }),
-      expect.objectContaining({ mediaKind: 'image', role: 'main_image', source: { kind: 'asset', id: 'stale-image' } }),
-    ]));
+    ]);
+  });
+
+  it('keeps only the connected upstream image for image-to-video single-reference modes', () => {
+    const image = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { kind: 'image', title: 'Image source' });
+    const target = useFlowCanvasStore.getState().addNode('video', { x: 320, y: 0 }, {
+      kind: 'video',
+      title: 'Video target',
+      params: {
+        videoGeneration: {
+          ...normalizeVideoGenerationParams({}).params,
+          mode: 'image_to_video',
+          referenceInputs: [{
+            mediaKind: 'image',
+            order: 0,
+            referenceKey: 'asset:direct-image',
+            role: 'main_image',
+            source: { kind: 'asset', id: 'direct-image' },
+          }],
+        },
+      },
+      referenceAssetItemIds: ['direct-image'],
+      referenceOrder: ['asset:direct-image'],
+    });
+
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: 'out', target: target.id, targetHandle: 'in' });
+
+    const references = normalizeVideoGenerationParams(useFlowCanvasStore.getState().nodes.find((node) => node.id === target.id)?.data).params.referenceInputs;
+    expect(references).toHaveLength(1);
+    expect(references[0]).toEqual(expect.objectContaining({
+      mediaKind: 'image',
+      role: 'main_image',
+      source: { kind: 'upstream', id: image.id },
+    }));
   });
 
   it('removes only the matching upstream reference when its dependency edge is removed', () => {

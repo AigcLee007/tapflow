@@ -280,7 +280,6 @@ async function runTextGeneration(
   store.updateNodeData(nodeId, {
     results: finalResults,
     text: finalResults.join('\n\n'),
-    fontSize: 'body',
     fontWeight: 'normal',
     fontStyle: 'normal',
     modelId: res.model || modelId,

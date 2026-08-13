@@ -47,7 +47,7 @@ export class PixelHubVideoAdapter implements ProviderAdapter {
     if (model === "veo31-fast") { if (urls.image.length) body.image_urls = urls.image; }
     else {
       if (urls.image.length) {
-        if (model === "gemini-omni-flash" && params.mode === "image_to_video") body.image_url = urls.image[0];
+        if (model === "gemini-omni-flash" && params.mode === "image_to_video") body.image_urls = urls.image;
         else body.reference_image_urls = urls.image;
       }
       if (urls.video.length) body.reference_videos = urls.video;

@@ -3,6 +3,27 @@
 Last updated: 2026-08-13
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Signed Asset Attachment Download Repair
+
+- fixed S3-compatible GET URL signing so the asset service's requested `Content-Disposition: attachment` filename and response content type are included in the signed `GetObject` request. Cross-origin video download actions now receive attachment responses instead of navigating to the object-storage playback URL.
+- kept large media downloads direct from object storage without buffering the full video in browser or API memory. The existing storage regression now verifies the signed response-content-disposition parameter.
+
+## 2026-08-13 - Video Route Capability Merge Repair
+
+- fixed API workflow preflight capability merging so text-generation `maxImages: 0` defaults no longer overwrite validated video-route media limits. This restores single-image `image_to_video` requests across Gemini Omni Flash and other structured video routes while preserving route-specific video constraints.
+- production diagnostics confirmed the failing draft contained exactly one upstream image and the selected route allowed exactly one image; the request stopped before pricing, enqueue, Worker execution, or provider dispatch. The existing route-context regression now passes and protects the shared-field collision.
+
+## 2026-08-13 - Image-to-Video Reference Limit Repair
+
+- fixed canvas input reconciliation so an `image_to_video` video node keeps exactly one image reference when a connected upstream image coexists with stale/direct asset reference metadata. The upstream image is preferred, preventing `REFERENCE_LIMIT_EXCEEDED` before provider execution.
+- added store regressions covering direct asset cleanup and the one-image invariant. Focused store tests pass (`45` tests).
+## 2026-08-13 - Text Node Whole-Content Font Sizing
+
+- replaced the text-node H1/H2/H3 Markdown-prefix actions with node-level `一号`/`二号`/`三号`/`正文` presets; existing, newly typed, and generated text now immediately shares the selected size without changing text content.
+- kept node geometry and canvas zoom independent from font sizing; overflowing text scrolls inside the node and its wheel events do not reach the canvas.
+- preserved the existing `fontSize` draft field with a `body` fallback for old nodes; no API or database migration was required.
+- validation passed: `npx vitest --run src/flowCanvas/nodes/textFontSize.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx src/flowCanvas/runtime/graphExecutor.test.ts --exclude '.worktrees/**' --reporter=dot` passed (4 files, 69 tests), and `npm run build` passed. Browser acceptance is blocked: `npm run dev:infra` exited 1 with `unable to get image 'postgres:17': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.`; no browser pass is claimed.
+
 ## 2026-08-13 - Text Relay Inline Image Transport Repair
 
 - production logs confirmed that Gemini, GPT, and Claude routes all reached the shared Aittco relay with one validated PNG image, then failed with the same HTTP 400. The common failure was the relay receiving tenant object-storage signed URLs that it could not fetch, not a lack of upstream multimodal capability.
@@ -6527,6 +6548,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added public `/legal/terms` and `/legal/privacy` pages sourced from the API, plus an opt-in remembered-email preference that stores only a normalized email address and never a password, verification code, or token.
 - added migration `000066_user_legal_consents.sql`, API legal endpoints, focused frontend/API/database coverage, and cinematic browser acceptance checks for the drawer, consent links, and remembered-email boundary.
 - production publication remains gated on operator/legal review of both Aittco legal drafts and a real approved `LEGAL_CONTACT_URL` in `/opt/aittco/env/tapflow.staging.env`; run migration `000066` with the worker stopped before rolling out API/frontend images.
+
+## 2026-08-13 - Gemini Omni Flash Image-To-Video Reference Fix
+
+- corrected the PixelHub Gemini Omni Flash `image_to_video` provider mapping to send the main reference as `image_urls: [url]` instead of the ignored singular `image_url` field.
+- regression coverage now asserts the exact outbound request body. AI Gateway validation passed with `171` tests and a successful TypeScript build.
 
 ## 2026-08-12 - Flow Node Waiting Videos
 

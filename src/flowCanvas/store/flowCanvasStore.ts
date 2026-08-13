@@ -728,13 +728,18 @@ const reconcileNodeInputs = (
     // image-to-video node. Keep all edges in the unified input order, but only
     // the newest upstream image can be its single typed main-image reference.
     const normalizedReferenceInputs = normalized!.mode === 'image_to_video'
-      ? referenceInputs.filter((reference, index) => (
-        reference.source.kind !== 'upstream'
-        || reference.mediaKind !== 'image'
-        || !referenceInputs.slice(index + 1).some((candidate) => (
-          candidate.source.kind === 'upstream' && candidate.mediaKind === 'image'
-        ))
-      )).map((reference, order) => ({ ...reference, order }))
+      ? (() => {
+        const lastUpstreamImageIndex = referenceInputs.reduce((lastIndex, reference, index) => (
+          reference.source.kind === 'upstream' && reference.mediaKind === 'image' ? index : lastIndex
+        ), -1);
+        return referenceInputs.filter((reference, index) => {
+          if (reference.mediaKind !== 'image') return true;
+          if (lastUpstreamImageIndex >= 0) {
+            return reference.source.kind === 'upstream' && index === lastUpstreamImageIndex;
+          }
+          return index === referenceInputs.findIndex((candidate) => candidate.mediaKind === 'image');
+        }).map((reference, order) => ({ ...reference, order }));
+      })()
       : referenceInputs;
     const roleNormalizedReferenceInputs = normalized!.mode === 'first_last_frame'
       ? normalizeReferenceRolesForMode(normalizedReferenceInputs, normalized!.mode, 'ordered_first_last_frames')
