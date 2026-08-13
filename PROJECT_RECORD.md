@@ -3,6 +3,11 @@
 Last updated: 2026-08-13
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Signed Asset Attachment Download Repair
+
+- fixed S3-compatible GET URL signing so the asset service's requested `Content-Disposition: attachment` filename and response content type are included in the signed `GetObject` request. Cross-origin video download actions now receive attachment responses instead of navigating to the object-storage playback URL.
+- kept large media downloads direct from object storage without buffering the full video in browser or API memory. The existing storage regression now verifies the signed response-content-disposition parameter.
+
 ## 2026-08-13 - Video Route Capability Merge Repair
 
 - fixed API workflow preflight capability merging so text-generation `maxImages: 0` defaults no longer overwrite validated video-route media limits. This restores single-image `image_to_video` requests across Gemini Omni Flash and other structured video routes while preserving route-specific video constraints.
