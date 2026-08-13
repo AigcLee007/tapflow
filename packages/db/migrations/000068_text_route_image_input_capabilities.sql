@@ -63,9 +63,9 @@ SET
     true
   ),
   updated_at = now()
-FROM ai_providers AS provider
-JOIN ai_models AS model ON model.id = route.model_id
+FROM ai_providers AS provider, ai_models AS model
 WHERE route.provider_id = provider.id
+  AND model.id = route.model_id
   AND provider.key = 'aittco-text-relay'
   AND route.route_key = 'text.' || replace(model.model_key, '.', '-')
   AND model.model_key IN (SELECT model_key FROM verified_models);
