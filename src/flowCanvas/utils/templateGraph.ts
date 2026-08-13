@@ -2,6 +2,8 @@ import { nanoid } from 'nanoid';
 import type { Edge, Node } from '@xyflow/react';
 
 import type { FlowEdgeData, FlowNodeData } from '../types';
+import { applyTemplateInputValues, type TemplateGraphLike, type TemplateInputValues } from '../../admin/templates/templateInputSchema';
+import type { FlowTemplateInputDefinition } from '../../services/v2FlowTemplatesApi';
 
 type FlowNode = Node<FlowNodeData>;
 type FlowEdge = Edge<FlowEdgeData>;
@@ -10,9 +12,14 @@ export function offsetTemplateGraphForInsert(input: {
   graph: { nodes: FlowNode[]; edges: FlowEdge[] };
   center: { x: number; y: number };
   idPrefix?: string;
+  inputSchema?: FlowTemplateInputDefinition[];
+  inputValues?: TemplateInputValues;
 }): { nodes: FlowNode[]; edges: FlowEdge[] } {
-  const nodes = Array.isArray(input.graph.nodes) ? input.graph.nodes : [];
-  const edges = Array.isArray(input.graph.edges) ? input.graph.edges : [];
+  const preparedGraph = input.inputSchema?.length
+    ? applyTemplateInputValues(input.graph as unknown as TemplateGraphLike, input.inputSchema, input.inputValues ?? {})
+    : input.graph;
+  const nodes = Array.isArray(preparedGraph.nodes) ? preparedGraph.nodes : [];
+  const edges = Array.isArray(preparedGraph.edges) ? preparedGraph.edges : [];
   if (nodes.length === 0) {
     return { nodes: [], edges: [] };
   }

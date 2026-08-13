@@ -34,4 +34,16 @@ describe("TemplateAdminEditorPage", () => {
     await waitFor(() => expect(api.validateAdminFlowTemplate).toHaveBeenCalledWith("template-1"));
     expect((screen.getByRole("button", { name: "发布模板" }) as HTMLButtonElement).disabled).toBe(false);
   });
+
+  test('saves template input markers with the draft graph', async () => {
+    render(<TemplateAdminEditorPage templateId="template-1" />);
+    await screen.findByDisplayValue("初始模板");
+    fireEvent.change(screen.getByLabelText('模板输入 ID'), { target: { value: 'subject' } });
+    fireEvent.change(screen.getByLabelText('模板输入名称'), { target: { value: '商品描述' } });
+    fireEvent.change(screen.getByLabelText('目标节点 ID'), { target: { value: 'node-1' } });
+    fireEvent.change(screen.getByLabelText('字段路径'), { target: { value: 'data.generationPrompt' } });
+    fireEvent.click(screen.getByRole('button', { name: '设为模板输入' }));
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(api.saveAdminFlowTemplateDraft).toHaveBeenCalledWith('template-1', expect.objectContaining({ inputSchema: [expect.objectContaining({ id: 'subject', target: { nodeId: 'node-1', fieldPath: 'data.generationPrompt' } })] })));
+  });
 });

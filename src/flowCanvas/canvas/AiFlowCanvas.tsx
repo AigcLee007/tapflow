@@ -774,13 +774,15 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   );
 
   const handleInsertTemplate = useCallback(
-    async (templateId: string) => {
+    async (templateId: string, inputValues: Record<string, string | number | undefined>) => {
       const template = await getFlowTemplate(templateId);
       const center = getCanvasCenterFlowPosition();
       const graph = offsetTemplateGraphForInsert({
         graph: template.graph as { edges: any[]; nodes: any[] },
         center,
         idPrefix: 'tpl',
+        inputSchema: template.inputSchema ?? [],
+        inputValues,
       });
       mergeTemplateGraph(graph as any);
       await recordFlowTemplateUsage(templateId, backendProjectId || undefined).catch(() => undefined);
