@@ -469,14 +469,15 @@ function mergeRouteRuntimeCapabilities(input: {
   };
 }
 
-function getOrderedDependencyIds(node: Pick<CompiledWorkflow["nodes"][number], "config" | "dependencies">): string[] {
+function getOrderedDependencyIds(node: Pick<CompiledWorkflow["nodes"][number], "config"> & { dependencies?: string[] }): string[] {
+  const dependencies = Array.isArray(node.dependencies) ? node.dependencies : [];
   const requestedOrder = Array.isArray(node.config?.inputOrder)
     ? node.config.inputOrder
       .filter((value): value is string => typeof value === "string")
       .map((value) => value.startsWith("upstream:") ? value.slice("upstream:".length) : "")
-      .filter((dependencyId) => node.dependencies.includes(dependencyId))
+      .filter((dependencyId) => dependencies.includes(dependencyId))
     : [];
-  return Array.from(new Set([...requestedOrder, ...node.dependencies]));
+  return Array.from(new Set([...requestedOrder, ...dependencies]));
 }
 
 export function getTextImageInputCandidates(
@@ -580,17 +581,6 @@ function extractStaticTextFromConfig(config: Record<string, unknown>): string {
     if (text) return text;
   }
   return "";
-}
-
-function getOrderedDependencyIds(node: Pick<CompiledWorkflowNode, "config"> & { dependencies?: string[] }): string[] {
-  const dependencies = Array.isArray(node.dependencies) ? node.dependencies : [];
-  const requestedOrder = Array.isArray(node.config?.inputOrder)
-    ? node.config.inputOrder
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.startsWith("upstream:") ? value.slice("upstream:".length) : "")
-      .filter((dependencyId) => dependencies.includes(dependencyId))
-    : [];
-  return Array.from(new Set([...requestedOrder, ...dependencies]));
 }
 
 function resolveVideoPreflightPrompt(
