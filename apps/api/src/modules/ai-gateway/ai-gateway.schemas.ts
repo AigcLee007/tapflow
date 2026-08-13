@@ -177,7 +177,7 @@ export const generateTextSchema = z.object({
   model: z.string().trim().min(1).max(255).nullable().optional(),
   routeKey: z.string().trim().min(1).max(255).nullable().optional(),
   temperature: z.number().min(0).max(2).nullable().optional(),
-});
+}).strict();
 
 export const listRuntimeRoutesQuerySchema = z.object({
   modality: z.enum(["image", "text", "video"]).optional(),

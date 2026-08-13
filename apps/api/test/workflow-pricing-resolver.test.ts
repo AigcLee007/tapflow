@@ -11,6 +11,7 @@ import {
   resolveNodePricing,
   WorkflowRunsService,
 } from "../src/modules/workflow-runs/workflow-runs.service.js";
+import { generateTextSchema } from "../src/modules/ai-gateway/ai-gateway.schemas.js";
 
 const pricingRows = [
   {
@@ -105,6 +106,12 @@ function withFirstLastFrameMinImages(capabilities: VideoGenerationCapabilities, 
 }
 
 describe("workflow pricing resolver", () => {
+  it("rejects image assets from the public text generation endpoint", () => {
+    expect(() => generateTextSchema.parse({
+      inputAssets: [{ assetId: "image-1", kind: "image" }],
+      messages: [{ content: "describe this", role: "user" }],
+    })).toThrow();
+  });
   it.each([
     ["gemini-omni-flash", "video.pixelhub.gemini-omni-flash", 1, 4, 4, 4],
     ["gemini-omni-flash", "video.pixelhub.gemini-omni-flash", 1, 4, 10, 10],

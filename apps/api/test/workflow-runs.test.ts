@@ -8,6 +8,7 @@ import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/modules/auth/password.js";
 import {
+  assertTextImageInputsSupportedByRuntimeGraph,
   getTextImageInputCandidates,
   WorkflowRunsService,
 } from "../src/modules/workflow-runs/workflow-runs.service.js";
@@ -694,6 +695,26 @@ function parseSseEvents(body: string) {
 }
 
 describe("text image preflight candidates", () => {
+  test("rejects connected video and audio inputs for text nodes", () => {
+    const workflow = {
+      nodes: [
+        { config: {}, dependencies: [], dependents: ["text"], id: "video", type: "video.generate" },
+        { config: {}, dependencies: [], dependents: ["text"], id: "audio", type: "audio.generate" },
+        { config: {}, dependencies: ["video", "audio"], dependents: [], id: "text", type: "text.generate" },
+      ],
+    } as Parameters<typeof assertTextImageInputsSupportedByRuntimeGraph>[0]["workflow"];
+
+    expect(() => assertTextImageInputsSupportedByRuntimeGraph({
+      node: workflow.nodes[2]!,
+      routeContext: {
+        capabilities: { maxImages: 3, supportedImageMimeTypes: ["image/png"], supportsImageInput: true },
+        modelKey: "visual-text",
+        providerKey: "test",
+        routeKey: "text.gpt-5-5",
+      },
+      workflow,
+    })).toThrow("Only image inputs are supported");
+  });
   test("uses inputOrder before compiled dependency order", () => {
     const workflow = {
       edges: [],

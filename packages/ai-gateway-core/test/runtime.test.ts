@@ -2687,6 +2687,30 @@ describe("redaction", () => {
     expect(redacted.nested.header).not.toContain("sk-secret-1234");
     expect(redacted.nested.header).toContain("[REDACTED]");
   });
+
+  test("removes storage locations from persisted provider diagnostics", () => {
+    const redacted = redactValue({
+      bucket: "tenant-private-media",
+      metadata: {
+        objectKey: "tenant-1/images/secret.png",
+        publicUrl: "https://cdn.test/public.png",
+        signedUrl: "https://storage.test/private.png?signature=secret",
+        url: "https://storage.test/raw.png",
+      },
+    });
+
+    expect(JSON.stringify(redacted)).not.toContain("tenant-private-media");
+    expect(JSON.stringify(redacted)).not.toContain("secret.png");
+    expect(redacted).toEqual({
+      bucket: "[REDACTED]",
+      metadata: {
+        objectKey: "[REDACTED]",
+        publicUrl: "[REDACTED]",
+        signedUrl: "[REDACTED]",
+        url: "[REDACTED]",
+      },
+    });
+  });
 });
 
 describe("route resolver and ai gateway", () => {

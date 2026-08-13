@@ -481,3 +481,27 @@ describe("buildImageRequest", () => {
     });
   });
 });
+
+describe("text image runtime inputs", () => {
+  test("uses the default text route when the node route is absent", () => {
+    expect(__workerTestUtils.resolveTextRequestRouteKey({})).toBe("text.gpt-5-5");
+    expect(__workerTestUtils.buildTextMessages([], {}).routeKey).toBe("text.gpt-5-5");
+  });
+
+  test("only reads assets from image-producing upstream nodes", () => {
+    const workflow = {
+      nodes: [
+        { config: {}, dependencies: [], dependents: ["text"], id: "image", type: "image.generate" },
+        { config: {}, dependencies: [], dependents: ["text"], id: "video", type: "video.generate" },
+      ],
+    } as Parameters<typeof __workerTestUtils.extractTextInputAssets>[1];
+    const outputs = new Map<string, Record<string, unknown> | null>([
+      ["image", { assets: [{ assetId: "image-asset", kind: "image", mimeType: "image/png" }] }],
+      ["video", { assets: [{ assetId: "video-asset", kind: "video", mimeType: "video/mp4" }] }],
+    ]);
+
+    expect(__workerTestUtils.extractTextInputAssets(outputs, { compiled_graph_json: workflow })).toEqual([
+      expect.objectContaining({ assetId: "image-asset", kind: "image" }),
+    ]);
+  });
+});

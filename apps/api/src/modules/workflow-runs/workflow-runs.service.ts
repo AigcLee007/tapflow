@@ -502,6 +502,17 @@ export function assertTextImageInputsSupportedByRuntimeGraph(input: {
   workflow: CompiledWorkflow;
 }): void {
   if (input.node.type !== "text.generate") return;
+  const nodesById = new Map(input.workflow.nodes.map((candidate) => [candidate.id, candidate]));
+  const unsupportedMediaDependency = getOrderedDependencyIds(input.node)
+    .map((dependencyId) => nodesById.get(dependencyId))
+    .find((dependency) => dependency?.type === "video.asset" || dependency?.type === "video.generate" || dependency?.type === "audio.asset" || dependency?.type === "audio.generate");
+  if (unsupportedMediaDependency) {
+    throw new WorkflowRunsApiError(
+      422,
+      "TEXT_IMAGE_TYPE_UNSUPPORTED",
+      "Only image inputs are supported for text generation.",
+    );
+  }
   const issue = validateTextImageInput({
     capabilities: input.routeContext?.capabilities ?? {
       maxImages: 0,

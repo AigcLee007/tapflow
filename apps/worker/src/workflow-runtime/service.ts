@@ -395,7 +395,7 @@ function buildTextMessages(
     ...(inputAssets && inputAssets.length > 0 ? { inputAssets } : {}),
     maxTokens: typeof config.maxTokens === "number" ? config.maxTokens : null,
     messages,
-    routeKey: typeof config.routeKey === "string" ? config.routeKey : null,
+    routeKey: resolveTextRequestRouteKey(config),
     temperature: typeof config.temperature === "number" ? config.temperature : null,
   };
 }
@@ -428,9 +428,15 @@ function extractAssetInputs(upstreamOutputs: Array<Record<string, unknown> | nul
   return assets;
 }
 
-function extractTextInputAssets(upstreamOutputs: Array<Record<string, unknown> | null>): AssetReferenceInput[] {
+function extractTextInputAssets(
+  upstreamOutputsByNodeId: ReadonlyMap<string, Record<string, unknown> | null>,
+  runtimeFlow: Pick<RuntimeFlowRecord, "compiled_graph_json">,
+): AssetReferenceInput[] {
   const assets: AssetReferenceInput[] = [];
-  for (const output of upstreamOutputs) {
+  const nodesById = new Map(runtimeFlow.compiled_graph_json.nodes.map((candidate) => [candidate.id, candidate]));
+  for (const [nodeId, output] of upstreamOutputsByNodeId) {
+    const sourceNode = nodesById.get(nodeId);
+    if (sourceNode?.type !== "image.asset" && sourceNode?.type !== "image.generate") continue;
     if (!output || !Array.isArray(output.assets)) continue;
     for (const asset of output.assets) {
       if (!isPlainObject(asset)) continue;
@@ -794,6 +800,10 @@ function resolveVideoRequestRouteKey(config: Record<string, unknown>): string {
   return readTrimmedString(config.routeKey) ?? "video.default";
 }
 
+function resolveTextRequestRouteKey(config: Record<string, unknown>): string {
+  return readTrimmedString(config.routeKey) ?? "text.gpt-5-5";
+}
+
 function readVideoEditorRenderEngine(requestConfig: Record<string, unknown> | null): "ffmpeg" | null {
   const capabilities = isPlainObject(requestConfig?.capabilities) ? requestConfig.capabilities : {};
   const supportedVideoWorkflows = Array.isArray(capabilities.supportedVideoWorkflows)
@@ -1047,6 +1057,7 @@ export const __workerTestUtils = {
   normalizeMediaOutputs,
   readVideoEditorRenderEngine,
   resolveImageRequestRouteKey,
+  resolveTextRequestRouteKey,
 };
 
 function readVideoEditorConfig(config: Record<string, unknown>): Record<string, unknown> | null {
@@ -2575,13 +2586,13 @@ export class WorkflowNodeExecutionService {
     }
 
     if (node.type === "text.generate") {
-      const routeKey = typeof node.config?.routeKey === "string" ? node.config.routeKey : "";
+      const routeKey = resolveTextRequestRouteKey(node.config ?? {});
       const routeCapability = await withTenantTransaction(
         { tenantId: workflowRun.tenant_id, userId: context.userId },
         async (client) => this.loadTextGenerationRouteCapability(client, workflowRun.tenant_id, routeKey),
         this.pool,
       );
-      const inputAssets = extractTextInputAssets(upstreamOutputs);
+      const inputAssets = extractTextInputAssets(upstreamOutputsByNodeId, runtimeFlow);
       const issue = validateTextImageInput({
         capabilities: routeCapability?.capabilities ?? {
           maxImages: 0,

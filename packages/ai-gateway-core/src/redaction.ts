@@ -6,8 +6,16 @@ const SENSITIVE_KEYS = new Set([
   "bearer",
   "encrypted_secret",
   "nonce",
+  "objectkey",
+  "object_key",
   "password_hash",
+  "publicurl",
+  "public_url",
+  "signedurl",
+  "signed_url",
   "token_hash",
+  "url",
+  "bucket",
 ]);
 
 function redactBearerTokens(input: string): string {
