@@ -2711,6 +2711,21 @@ describe("redaction", () => {
       },
     });
   });
+
+  test("removes inline image data from persisted provider diagnostics", () => {
+    const redacted = redactValue({
+      base64: "c2Vuc2l0aXZlLWltYWdl",
+      nested: {
+        image_url: "data:image/png;base64,c2Vuc2l0aXZlLWltYWdl",
+      },
+    });
+
+    expect(JSON.stringify(redacted)).not.toContain("c2Vuc2l0aXZlLWltYWdl");
+    expect(redacted).toEqual({
+      base64: "[REDACTED]",
+      nested: { image_url: "data:[REDACTED]" },
+    });
+  });
 });
 
 describe("route resolver and ai gateway", () => {

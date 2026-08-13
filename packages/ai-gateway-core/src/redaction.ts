@@ -3,6 +3,7 @@ const SENSITIVE_KEYS = new Set([
   "apikey",
   "auth_tag",
   "authorization",
+  "base64",
   "bearer",
   "encrypted_secret",
   "nonce",
@@ -19,7 +20,9 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 function redactBearerTokens(input: string): string {
-  return input.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
+  return input
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/data:[^;,\s]+;base64,[A-Za-z0-9+/=]+/gi, "data:[REDACTED]");
 }
 
 function redactAuthorizationHeaders(input: string): string {

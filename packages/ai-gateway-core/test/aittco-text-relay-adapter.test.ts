@@ -34,8 +34,8 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const imageInputs = [
-  { assetId: "first", kind: "image", mimeType: "image/png", metadata: { signedUrl: "https://signed.test/first.png" } },
-  { assetId: "second", kind: "image", mimeType: "image/webp", metadata: { publicUrl: "https://signed.test/second.webp" } },
+  { assetId: "first", kind: "image", mimeType: "image/png", metadata: { base64: "cG5nLWJ5dGVz" } },
+  { assetId: "second", kind: "image", mimeType: "image/webp", metadata: { base64: "d2VicC1ieXRlcw==" } },
 ];
 
 describe("AittcoTextRelayAdapter", () => {
@@ -96,7 +96,7 @@ describe("AittcoTextRelayAdapter", () => {
     expect(JSON.stringify(result.providerRequest)).not.toContain("previous answer");
   });
 
-  test("maps image inputs into Gemini fileData parts and redacts diagnostics", async () => {
+  test("maps image inputs into Gemini inlineData parts and redacts diagnostics", async () => {
     const fetchImplementation = vi.fn(async () => jsonResponse({
       candidates: [{ content: { parts: [{ text: "Gemini reply" }] } }],
       usageMetadata: {},
@@ -112,8 +112,8 @@ describe("AittcoTextRelayAdapter", () => {
     expect(JSON.parse(String(init.body))).toMatchObject({
       contents: [{ parts: [
         { text: "describe" },
-        { fileData: { fileUri: "https://signed.test/first.png", mimeType: "image/png" } },
-        { fileData: { fileUri: "https://signed.test/second.webp", mimeType: "image/webp" } },
+        { inlineData: { data: "cG5nLWJ5dGVz", mimeType: "image/png" } },
+        { inlineData: { data: "d2VicC1ieXRlcw==", mimeType: "image/webp" } },
       ], role: "user" }],
     });
     expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
@@ -172,8 +172,8 @@ describe("AittcoTextRelayAdapter", () => {
     const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toMatchObject({ input: [{ role: "user", content: [
       { type: "input_text", text: "describe" },
-      { type: "input_image", image_url: "https://signed.test/first.png" },
-      { type: "input_image", image_url: "https://signed.test/second.webp" },
+      { type: "input_image", image_url: "data:image/png;base64,cG5nLWJ5dGVz" },
+      { type: "input_image", image_url: "data:image/webp;base64,d2VicC1ieXRlcw==" },
     ] }] });
     expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
       imageInputCount: 2,
@@ -229,8 +229,8 @@ describe("AittcoTextRelayAdapter", () => {
     const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toMatchObject({ messages: [{ role: "user", content: [
       { type: "text", text: "describe" },
-      { type: "image_url", image_url: { url: "https://signed.test/first.png" } },
-      { type: "image_url", image_url: { url: "https://signed.test/second.webp" } },
+      { type: "image_url", image_url: { url: "data:image/png;base64,cG5nLWJ5dGVz" } },
+      { type: "image_url", image_url: { url: "data:image/webp;base64,d2VicC1ieXRlcw==" } },
     ] }] });
     expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
       imageInputCount: 2,
@@ -254,8 +254,8 @@ describe("AittcoTextRelayAdapter", () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ messages: [
       { role: "user", content: [
         { type: "text", text: "describe" },
-        { type: "image_url", image_url: { url: "https://signed.test/first.png" } },
-        { type: "image_url", image_url: { url: "https://signed.test/second.webp" } },
+        { type: "image_url", image_url: { url: "data:image/png;base64,cG5nLWJ5dGVz" } },
+        { type: "image_url", image_url: { url: "data:image/webp;base64,d2VicC1ieXRlcw==" } },
       ] },
       { role: "assistant", content: "Earlier answer" },
     ] });
@@ -327,8 +327,8 @@ describe("AittcoTextRelayAdapter", () => {
     const [, init] = fetchImplementation.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toMatchObject({ messages: [{ role: "user", content: [
       { type: "text", text: "describe" },
-      { type: "image", source: { type: "url", url: "https://signed.test/first.png" } },
-      { type: "image", source: { type: "url", url: "https://signed.test/second.webp" } },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "cG5nLWJ5dGVz" } },
+      { type: "image", source: { type: "base64", media_type: "image/webp", data: "d2VicC1ieXRlcw==" } },
     ] }] });
     expect((result.providerRequest as { body: Record<string, unknown> }).body).toEqual({
       imageInputCount: 2,

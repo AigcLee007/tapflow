@@ -98,6 +98,17 @@ class MemoryStorageProvider implements StorageProvider {
     };
   }
 
+  async getObject(input: { bucket: string; key: string }) {
+    const object = this.objects.get(`${input.bucket}/${input.key}`);
+    if (!object) throw new Error("Object not found");
+    return {
+      body: object.body,
+      contentLength: object.body.byteLength,
+      contentType: object.contentType,
+      metadata: object.metadata,
+    };
+  }
+
   async deleteObject(input: { bucket: string; key: string }): Promise<void> {
     this.objects.delete(`${input.bucket}/${input.key}`);
   }
@@ -2298,7 +2309,7 @@ describeWithDatabase("workflow node execution", () => {
     });
   });
 
-  test("text.generate passes input-order image assets with transient URLs only to the runtime", async () => {
+  test("text.generate passes input-order image assets as transient inline bytes to the runtime", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
       const adminPool = createPgPool();
@@ -2348,16 +2359,21 @@ describeWithDatabase("workflow node execution", () => {
           );
         }, appPool);
 
+        const storageProvider = new MemoryStorageProvider();
+        await storageProvider.putObject({ body: Buffer.from("first-image"), bucket: "test-bucket", contentType: "image/png", key: "tenants/text/first.png" });
+        await storageProvider.putObject({ body: Buffer.from("second-image"), bucket: "test-bucket", contentType: "image/png", key: "tenants/text/second.png" });
         const generateText = vi.fn(async () => ({ modelKey: "mock-model", outputText: "generated text", providerKey: "mock-provider", providerRequest: {}, providerResponse: {}, status: "succeeded" as const, usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 } }));
-        const service = createWorkflowService({ nodeQueue: createFakeNodeExecuteQueue(), pollQueue: createFakeProviderPollQueue(), pool: appPool, storageProvider: new MemoryStorageProvider(), textGenerationRuntime: { generateText } });
+        const service = createWorkflowService({ nodeQueue: createFakeNodeExecuteQueue(), pollQueue: createFakeProviderPollQueue(), pool: appPool, storageProvider, textGenerationRuntime: { generateText } });
         await processNodeExecuteJob({ data: { nodeRunId: seeded.middleNodeRunId, tenantId: seeded.tenantId, traceId: "trace-text-images", workflowRunId: seeded.workflowRunId }, id: "job-text-images", queueName: QUEUE_NAMES.nodeExecute } as never, createTestLogger(), { executionService: service });
 
-        const request = generateText.mock.calls[0]?.[1] as { inputAssets?: Array<{ assetId: string; metadata?: { url?: string; objectKey?: string } }> };
+        const request = generateText.mock.calls[0]?.[1] as { inputAssets?: Array<{ assetId: string; metadata?: { base64?: string; url?: string; signedUrl?: string; objectKey?: string } }> };
         expect(request.inputAssets?.map((asset) => asset.assetId)).toEqual([secondAssetId, firstAssetId]);
-        expect(request.inputAssets?.map((asset) => asset.metadata?.url)).toEqual([
-          expect.stringMatching(/^https:\/\/storage\.test\//),
-          expect.stringMatching(/^https:\/\/storage\.test\//),
+        expect(request.inputAssets?.map((asset) => asset.metadata?.base64)).toEqual([
+          Buffer.from("second-image").toString("base64"),
+          Buffer.from("first-image").toString("base64"),
         ]);
+        expect(JSON.stringify(request)).not.toContain("storage.test");
+        expect(JSON.stringify(request)).not.toContain('"signedUrl"');
         expect(JSON.stringify(request)).not.toContain('"objectKey"');
       } finally {
         await appPool.end();

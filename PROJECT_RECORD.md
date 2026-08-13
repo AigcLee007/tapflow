@@ -1,7 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 Maintainers: project team + Codex sessions
+
+## 2026-08-13 - Text Relay Inline Image Transport Repair
+
+- production logs confirmed that Gemini, GPT, and Claude routes all reached the shared Aittco relay with one validated PNG image, then failed with the same HTTP 400. The common failure was the relay receiving tenant object-storage signed URLs that it could not fetch, not a lack of upstream multimodal capability.
+- Worker text-image execution now reads the tenant-owned object directly from storage into transient memory, rejects individual images larger than 10 MiB, and supplies only Base64 bytes to the relay adapter. It does not persist bytes, data URLs, buckets, object keys, or signed URLs in drafts, node results, or call diagnostics.
+- the Aittco protocol mappings now send Gemini `inlineData`, OpenAI Responses/Chat Completion data URLs, and Claude Base64 image sources. Diagnostic redaction also removes Base64/data URL content recursively.
 
 ## 2026-08-13 - Text Route Image Capability Backfill
 

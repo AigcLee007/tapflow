@@ -109,6 +109,7 @@ const UNKNOWN_PROVIDER_RECONCILE_PREFIX = "timeout-unknown:";
 const UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS = 10 * 60 * 1000;
 const VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
 const VIDEO_EDITOR_FFMPEG_RENDER_ENGINE = "ffmpeg";
+const MAX_TEXT_IMAGE_INLINE_BYTES = 10 * 1024 * 1024;
 
 type TextGenerationRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 type MediaGenerationRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">;
@@ -3392,18 +3393,30 @@ export class WorkflowNodeExecutionService {
             statusCode: 422,
           });
         }
-        const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
+        if (!this.assetStore.storageProvider.getObject) {
+          throw new AiGatewayError({
+            code: TEXT_IMAGE_INPUT_ERROR_CODES.URL_HYDRATION_FAILED,
+            message: "The image input could not be read from storage.",
+            statusCode: 502,
+          });
+        }
+        const object = await this.assetStore.storageProvider.getObject({
           bucket: lookup.bucket,
-          expiresInSeconds: 15 * 60,
           key: lookup.objectKey,
-          responseContentType: lookup.mimeType,
         });
+        if (object.body.byteLength > MAX_TEXT_IMAGE_INLINE_BYTES) {
+          throw new AiGatewayError({
+            code: TEXT_IMAGE_INPUT_ERROR_CODES.LIMIT_EXCEEDED,
+            message: "The image input is too large to send to the text provider.",
+            statusCode: 422,
+          });
+        }
         asset.kind = lookup.kind;
         asset.mimeType = lookup.mimeType;
         asset.width = lookup.width ?? null;
         asset.height = lookup.height ?? null;
         asset.durationMs = lookup.durationMs ?? null;
-        asset.metadata = { url: signed.url };
+        asset.metadata = { base64: object.body.toString("base64") };
       }
     } catch (error) {
       if (error instanceof AiGatewayError && error.code.startsWith("TEXT_IMAGE_")) {

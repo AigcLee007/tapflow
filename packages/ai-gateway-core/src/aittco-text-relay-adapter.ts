@@ -30,16 +30,19 @@ function compactObject<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
 }
 
-function readImageInputs(inputAssets: AssetReferenceInput[] | null | undefined): Array<{ mimeType: string; url: string }> {
+type RelayImageInput = { base64: string; mimeType: string };
+
+function readImageInputs(inputAssets: AssetReferenceInput[] | null | undefined): RelayImageInput[] {
   if (!Array.isArray(inputAssets)) return [];
   return inputAssets.filter((asset) => asset.kind === "image").map((asset) => {
     const metadata = asRecord(asset.metadata);
-    const url = [metadata.url, metadata.signedUrl, metadata.publicUrl].find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim();
     const mimeType = typeof asset.mimeType === "string" && asset.mimeType.trim() ? asset.mimeType.trim().toLowerCase() : "application/octet-stream";
-    if (!url) {
+    const raw = asString(metadata.base64);
+    const base64 = raw?.match(/^data:[^;]+;base64,(.*)$/s)?.[1]?.trim() ?? raw;
+    if (!base64) {
       throw new AiGatewayError({ code: "TEXT_IMAGE_URL_HYDRATION_FAILED", message: "The image input URL could not be hydrated", statusCode: 502 });
     }
-    return { mimeType, url };
+    return { base64, mimeType };
   });
 }
 
@@ -305,7 +308,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     system: string | null,
     maxTokens: number | undefined,
     temperature: number | undefined,
-    images: Array<{ mimeType: string; url: string }>,
+    images: RelayImageInput[],
   ): Record<string, unknown> {
     const finalUserMessageIndex = messages.reduce<number>((lastIndex, message, index) => message.role === "user" ? index : lastIndex, -1);
     if (protocol === "gemini") {
@@ -313,7 +316,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
         contents: messages.map((message, index) => ({
           parts: [
             { text: message.content },
-            ...(index === finalUserMessageIndex ? images.map((image) => ({ fileData: { fileUri: image.url, mimeType: image.mimeType } })) : []),
+            ...(index === finalUserMessageIndex ? images.map((image) => ({ inlineData: { data: image.base64, mimeType: image.mimeType } })) : []),
           ],
           role: message.role === "assistant" ? "model" : "user",
         })),
@@ -326,7 +329,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     }
     if (protocol === "responses") {
       return compactObject({
-        input: system ? [{ content: system, role: "system" }, ...messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content }))] : messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: image.url }))] : message.content })),
+        input: system ? [{ content: system, role: "system" }, ...messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` }))] : message.content }))] : messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` }))] : message.content })),
         max_output_tokens: maxTokens,
         model,
         temperature,
@@ -335,7 +338,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     if (protocol === "chat-completions") {
       return compactObject({
         max_tokens: maxTokens,
-        messages: (system ? [{ content: system, role: "system" as const }, ...messages] : messages).map((message, index, all) => ({ ...message, content: images.length && index === (system ? finalUserMessageIndex + 1 : finalUserMessageIndex) ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image_url", image_url: { url: image.url } }))] : message.content })),
+        messages: (system ? [{ content: system, role: "system" as const }, ...messages] : messages).map((message, index) => ({ ...message, content: images.length && index === (system ? finalUserMessageIndex + 1 : finalUserMessageIndex) ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.base64}` } }))] : message.content })),
         model,
         temperature,
       });
@@ -343,7 +346,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     return compactObject({
       max_tokens: maxTokens ?? 2048,
       messages: messages.map((message, index) => ({
-        content: images.length && index === finalUserMessageIndex ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image", source: { type: "url", url: image.url } }))] : message.content,
+        content: images.length && index === finalUserMessageIndex ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } }))] : message.content,
         role: message.role === "assistant" ? "assistant" : "user",
       })),
       model,
