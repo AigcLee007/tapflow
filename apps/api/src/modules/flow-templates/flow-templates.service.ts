@@ -1,5 +1,5 @@
 import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import type { FlowTemplateListQuery } from './flow-templates.schemas.js';
 
@@ -10,6 +10,34 @@ type FlowTemplateContext = {
   userId: string | null;
 };
 
+export type SystemAdminFlowTemplateContext = Required<FlowTemplateContext>;
+
+/**
+ * Establishes the database RLS context for service methods reached through an
+ * already-authorized `admin:system` route. Never derive this flag from input.
+ */
+export async function withSystemAdminFlowTemplateTransaction<T>(
+  ctx: SystemAdminFlowTemplateContext,
+  fn: (client: PoolClient) => Promise<T>,
+  pool: Pool,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [ctx.tenantId]);
+    await client.query("SELECT set_config('app.user_id', $1, true)", [ctx.userId]);
+    await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 type FlowTemplateRecord = {
   category: string;
   cover_asset_id: string | null;
@@ -19,6 +47,7 @@ type FlowTemplateRecord = {
   estimated_credits: string | null;
   graph_json: Record<string, unknown>;
   id: string;
+  input_schema: unknown[];
   node_count: number;
   published_at: string | null;
   published_by: string | null;
@@ -40,6 +69,7 @@ export type FlowTemplateView = {
   estimatedCredits: number | null;
   graph: Record<string, unknown>;
   id: string;
+  inputSchema: unknown[];
   nodeCount: number;
   publishedAt: string | null;
   publishedBy: string | null;
@@ -64,7 +94,7 @@ export class FlowTemplatesApiError extends Error {
   }
 }
 
-function mapTemplate(row: FlowTemplateRecord): FlowTemplateView {
+export function mapFlowTemplateRecord(row: FlowTemplateRecord): FlowTemplateView {
   return {
     category: row.category,
     coverAssetId: row.cover_asset_id,
@@ -74,6 +104,7 @@ function mapTemplate(row: FlowTemplateRecord): FlowTemplateView {
     estimatedCredits: row.estimated_credits === null ? null : Number(row.estimated_credits),
     graph: row.graph_json,
     id: row.id,
+    inputSchema: row.input_schema,
     nodeCount: row.node_count,
     publishedAt: row.published_at,
     publishedBy: row.published_by,
@@ -108,6 +139,7 @@ export class FlowTemplatesService {
             visibility,
             cover_asset_id::text AS cover_asset_id,
             graph_json,
+            input_schema,
             node_count,
             estimated_credits::text AS estimated_credits,
             status,
@@ -134,7 +166,7 @@ export class FlowTemplatesService {
         [query.category ?? null, query.query?.trim() || null],
       );
 
-      return result.rows.map(mapTemplate);
+      return result.rows.map(mapFlowTemplateRecord);
     }, this.pool);
   }
 
@@ -152,6 +184,7 @@ export class FlowTemplatesService {
             visibility,
             cover_asset_id::text AS cover_asset_id,
             graph_json,
+            input_schema,
             node_count,
             estimated_credits::text AS estimated_credits,
             status,
@@ -176,7 +209,7 @@ export class FlowTemplatesService {
         throw new FlowTemplatesApiError(404, 'FLOW_TEMPLATE_NOT_FOUND', '未找到对应模板');
       }
 
-      return mapTemplate(row);
+      return mapFlowTemplateRecord(row);
     }, this.pool);
   }
 

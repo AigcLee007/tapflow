@@ -1,9 +1,8 @@
--- Platform-owned flow template lifecycle and immutable version identity.
+-- Platform-owned flow template lifecycle and immutable published snapshots.
 
 ALTER TABLE flow_templates
   ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'draft',
-  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS version_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS input_schema jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS published_at timestamptz NULL,
   ADD COLUMN IF NOT EXISTS published_by uuid NULL REFERENCES users(id) ON DELETE SET NULL;
@@ -26,26 +25,56 @@ ALTER TABLE flow_templates
   ADD CONSTRAINT flow_templates_platform_scope_check
     CHECK (tenant_id IS NULL OR status = 'archived');
 
-CREATE UNIQUE INDEX IF NOT EXISTS flow_templates_version_identity_idx
-  ON flow_templates (id, version_id);
+CREATE TABLE IF NOT EXISTS flow_template_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL REFERENCES flow_templates(id) ON DELETE CASCADE,
+  version integer NOT NULL CHECK (version > 0),
+  graph_json jsonb NOT NULL,
+  input_schema jsonb NOT NULL DEFAULT '[]'::jsonb,
+  node_count integer NOT NULL DEFAULT 0 CHECK (node_count >= 0),
+  estimated_credits numeric(12, 4) NULL CHECK (estimated_credits >= 0),
+  created_by uuid NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (template_id, version)
+);
 
-CREATE OR REPLACE FUNCTION app.prevent_flow_template_version_identity_change()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  IF NEW.version_id IS DISTINCT FROM OLD.version_id THEN
-    RAISE EXCEPTION 'flow template version_id is immutable';
-  END IF;
-  RETURN NEW;
-END;
-$$;
+CREATE INDEX IF NOT EXISTS idx_flow_template_versions_template_version
+  ON flow_template_versions (template_id, version DESC);
 
-DROP TRIGGER IF EXISTS flow_templates_version_identity_immutable ON flow_templates;
-CREATE TRIGGER flow_templates_version_identity_immutable
-  BEFORE UPDATE ON flow_templates
-  FOR EACH ROW
-  EXECUTE FUNCTION app.prevent_flow_template_version_identity_change();
+ALTER TABLE flow_template_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flow_template_versions FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY flow_template_versions_select_published_official_or_admin
+  ON flow_template_versions
+  FOR SELECT
+  USING (
+    app.current_is_system_admin()
+    OR EXISTS (
+      SELECT 1
+      FROM flow_templates AS template
+      WHERE template.id = flow_template_versions.template_id
+        AND template.tenant_id IS NULL
+        AND template.visibility = 'official'
+        AND template.status = 'published'
+        AND template.version = flow_template_versions.version
+    )
+  );
+
+CREATE POLICY flow_template_versions_insert_system_admin
+  ON flow_template_versions
+  FOR INSERT
+  WITH CHECK (app.current_is_system_admin());
+
+CREATE POLICY flow_template_versions_update_never
+  ON flow_template_versions
+  FOR UPDATE
+  USING (false)
+  WITH CHECK (false);
+
+CREATE POLICY flow_template_versions_delete_system_admin
+  ON flow_template_versions
+  FOR DELETE
+  USING (app.current_is_system_admin());
 
 CREATE INDEX IF NOT EXISTS idx_flow_templates_lifecycle_category_updated
   ON flow_templates (status, category, updated_at DESC);

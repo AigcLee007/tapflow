@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, test } from 'vitest';
 
 import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
+import type { PoolClient } from 'pg';
 
 import { buildApp } from '../src/app.js';
 import type { ApiEnv } from '../src/config/env.js';
@@ -13,6 +14,10 @@ import {
   flowTemplateLifecycleStatusSchema,
   saveFlowTemplateDraftSchema,
 } from '../src/modules/flow-templates/flow-templates.schemas.js';
+import {
+  mapFlowTemplateRecord,
+  withSystemAdminFlowTemplateTransaction,
+} from '../src/modules/flow-templates/flow-templates.service.js';
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
@@ -48,6 +53,7 @@ describe('flow template lifecycle schemas', () => {
 
     expect(result.inputSchema).toHaveLength(4);
     expect(flowTemplateLifecycleStatusSchema.parse('testing')).toBe('testing');
+    expect(result.inputSchema[0]?.type).toBe('text');
   });
 
   test('rejects duplicate input IDs and invalid type-specific defaults', () => {
@@ -83,6 +89,53 @@ describe('flow template lifecycle schemas', () => {
         type: 'number',
       }),
     ).toThrow();
+  });
+
+  test('maps persisted template input schema into the API response', () => {
+    const template = mapFlowTemplateRecord({
+      category: 'image',
+      cover_asset_id: null,
+      created_at: '2026-08-13T00:00:00.000Z',
+      created_by: null,
+      description: '',
+      estimated_credits: null,
+      graph_json: { edges: [], nodes: [] },
+      id: randomUUID(),
+      input_schema: [{ id: 'prompt', label: 'Prompt', target: { fieldPath: 'data.prompt', nodeId: 'node-a' }, type: 'text' }],
+      node_count: 0,
+      published_at: null,
+      published_by: null,
+      status: 'draft',
+      tenant_id: null,
+      title: 'Draft',
+      updated_at: '2026-08-13T00:00:00.000Z',
+      version: 1,
+      visibility: 'official',
+    });
+
+    expect(template.inputSchema).toEqual([
+      expect.objectContaining({ id: 'prompt', type: 'text' }),
+    ]);
+  });
+
+  test('establishes the server-trusted system-admin database context', async () => {
+    const queries: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        queries.push(sql);
+        return { rows: [] };
+      },
+      release: () => undefined,
+    } as unknown as PoolClient;
+    const pool = { connect: async () => client } as unknown as ReturnType<typeof createPgPool>;
+
+    await withSystemAdminFlowTemplateTransaction(
+      { tenantId: randomUUID(), userId: randomUUID() },
+      async () => 'ok',
+      pool,
+    );
+
+    expect(queries).toContain("SELECT set_config('app.is_system_admin', 'true', true)");
   });
 });
 
@@ -192,13 +245,15 @@ describeWithDatabase('flow templates API', () => {
                   category,
                   visibility,
                   status,
+                  published_at,
+                  input_schema,
                   graph_json,
                   node_count
                 )
                 VALUES
-                  ($1::uuid, NULL, $4::uuid, 'Official Portrait', 'Official template', 'image', 'official', 'published', '{"nodes":[],"edges":[]}'::jsonb, 0),
-                  ($2::uuid, NULL, $4::uuid, 'Draft Moodboard', 'Draft template', 'image', 'official', 'draft', '{"nodes":[{"id":"node-a"}],"edges":[]}'::jsonb, 1),
-                  ($3::uuid, NULL, $4::uuid, 'Archived Template', 'Archived template', 'image', 'official', 'archived', '{"nodes":[{"id":"node-b"}],"edges":[]}'::jsonb, 1)
+                  ($1::uuid, NULL, $4::uuid, 'Official Portrait', 'Official template', 'image', 'official', 'published', now(), '[{"id":"prompt","label":"Prompt","type":"text","target":{"nodeId":"node-a","fieldPath":"data.prompt"}}]'::jsonb, '{"nodes":[],"edges":[]}'::jsonb, 0),
+                  ($2::uuid, NULL, $4::uuid, 'Draft Moodboard', 'Draft template', 'image', 'official', 'draft', NULL, '[]'::jsonb, '{"nodes":[{"id":"node-a"}],"edges":[]}'::jsonb, 1),
+                  ($3::uuid, NULL, $4::uuid, 'Archived Template', 'Archived template', 'image', 'official', 'archived', NULL, '[]'::jsonb, '{"nodes":[{"id":"node-b"}],"edges":[]}'::jsonb, 1)
               `,
               [officialTemplateId, draftTemplateId, archivedTemplateId, ownerA.user.id],
             );
@@ -247,6 +302,7 @@ describeWithDatabase('flow templates API', () => {
             edges: [],
             nodes: [],
           },
+          inputSchema: [expect.objectContaining({ id: 'prompt', type: 'text' })],
         });
 
         const usageResponse = await api.inject({
