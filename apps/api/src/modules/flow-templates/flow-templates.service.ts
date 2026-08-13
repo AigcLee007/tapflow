@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
 import type { Pool, PoolClient } from 'pg';
 
@@ -430,22 +431,35 @@ export class FlowTemplatesService {
   }
 
   async markTesting(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
+    return this.validateDraft(ctx, templateId);
+  }
+
+  async validateDraft(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
     return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
       const current = await this.getAdminTemplateForUpdate(client, templateId);
+      let graph = current.graph;
+      let inputSchema = current.inputSchema;
       if (current.status === 'published') {
-        const draft = await client.query<{ draft_graph_json: Record<string, unknown> | null }>(
-          'SELECT draft_graph_json FROM flow_templates WHERE id=$1::uuid', [templateId]);
+        const draft = await client.query<{ draft_graph_json: Record<string, unknown> | null; draft_input_schema: unknown[] | null }>(
+          'SELECT draft_graph_json, draft_input_schema FROM flow_templates WHERE id=$1::uuid', [templateId]);
         if (!draft.rows[0]?.draft_graph_json) {
           throw new FlowTemplatesApiError(409, 'FLOW_TEMPLATE_DRAFT_REQUIRED', '请先保存下一版本草稿');
         }
+        graph = draft.rows[0].draft_graph_json;
+        inputSchema = draft.rows[0].draft_input_schema ?? [];
       }
+      const normalizedGraph = normalizeTemplateGraph(graph);
+      validateTemplateInputs(inputSchema, normalizedGraph);
+      if (!normalizedGraph.nodes.length) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板至少需要一个节点');
+      const graphHash = createHash('sha256').update(JSON.stringify({ graph: normalizedGraph, inputSchema })).digest('hex');
       const result = await client.query<FlowTemplateRecord>(`UPDATE flow_templates
         SET status = CASE WHEN status = 'published' THEN status ELSE 'testing' END,
-          draft_status = CASE WHEN status = 'published' THEN 'testing' ELSE draft_status END, updated_at=now()
+          draft_status = CASE WHEN status = 'published' THEN 'testing' ELSE draft_status END,
+          last_tested_at=now(), last_tested_by=$2::uuid, last_tested_graph_hash=$3, updated_at=now()
         WHERE id=$1::uuid
         RETURNING id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
           cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status,
-          version, NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at`, [templateId]);
+          version, NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at`, [templateId, ctx.userId, graphHash]);
       return mapFlowTemplateRecord(result.rows[0]!);
     }, this.pool);
   }
@@ -457,19 +471,21 @@ export class FlowTemplatesService {
   async publish(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
     return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
       const current = await this.getAdminTemplateForUpdate(client, templateId);
-      const draft = await client.query<{ graph_json: Record<string, unknown>; input_schema: unknown[]; node_count: number; estimated_credits: string | null; draft_status: string | null }>(
+      const draft = await client.query<{ graph_json: Record<string, unknown>; input_schema: unknown[]; node_count: number; estimated_credits: string | null; draft_status: string | null; last_tested_graph_hash: string | null }>(
         `SELECT draft_graph_json AS graph_json, draft_input_schema AS input_schema, draft_node_count AS node_count,
-          draft_estimated_credits::text AS estimated_credits, draft_status FROM flow_templates WHERE id=$1::uuid`, [templateId]);
-      const source = current.status === 'published' ? draft.rows[0] : { graph_json: current.graph, input_schema: current.inputSchema, node_count: current.nodeCount, estimated_credits: current.estimatedCredits === null ? null : String(current.estimatedCredits), draft_status: current.status };
+          draft_estimated_credits::text AS estimated_credits, draft_status, last_tested_graph_hash FROM flow_templates WHERE id=$1::uuid`, [templateId]);
+      const source = current.status === 'published' ? draft.rows[0] : { graph_json: current.graph, input_schema: current.inputSchema, node_count: current.nodeCount, estimated_credits: current.estimatedCredits === null ? null : String(current.estimatedCredits), draft_status: current.status, last_tested_graph_hash: draft.rows[0]?.last_tested_graph_hash ?? null };
       if (source?.draft_status !== 'testing') throw new FlowTemplatesApiError(409, 'FLOW_TEMPLATE_NOT_READY', '模板必须先通过测试');
       const graph = normalizeTemplateGraph(source.graph_json);
       validateTemplateInputs(source.input_schema, graph);
       if (!graph.nodes.length) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板至少需要一个节点');
+      const graphHash = createHash('sha256').update(JSON.stringify({ graph, inputSchema: source.input_schema })).digest('hex');
+      if (source.last_tested_graph_hash !== graphHash) throw new FlowTemplatesApiError(409, 'FLOW_TEMPLATE_TEST_REQUIRED', '模板草稿变更后必须重新验证');
       const nextVersion = current.version + 1;
       await client.query(`INSERT INTO flow_template_versions (template_id, version, graph_json, input_schema, node_count, estimated_credits, created_by)
         VALUES ($1::uuid, $2, $3::jsonb, $4::jsonb, $5, $6, $7::uuid)`, [templateId, nextVersion, JSON.stringify(graph), JSON.stringify(source.input_schema), graph.nodes.length, source.estimated_credits, ctx.userId]);
       const result = await client.query<FlowTemplateRecord>(`UPDATE flow_templates SET graph_json=$2::jsonb, input_schema=$3::jsonb, node_count=$4, estimated_credits=$5, version=$6, status='published', published_at=now(), published_by=$7::uuid,
-        draft_graph_json=NULL, draft_input_schema=NULL, draft_node_count=NULL, draft_estimated_credits=NULL, draft_status=NULL, updated_at=now()
+        draft_graph_json=NULL, draft_input_schema=NULL, draft_node_count=NULL, draft_estimated_credits=NULL, draft_status=NULL, last_tested_at=NULL, last_tested_by=NULL, last_tested_graph_hash=NULL, updated_at=now()
         WHERE id=$1::uuid
         RETURNING id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
           cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status,

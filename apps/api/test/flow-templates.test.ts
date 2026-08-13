@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, test } from 'vitest';
 
 import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
@@ -27,14 +27,17 @@ const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 describe('flow template lifecycle schemas', () => {
   test('publishing stores normalized content as an immutable current-version snapshot', async () => {
     const queries: Array<{ sql: string; values?: unknown[] }> = [];
+    const graphHash = createHash('sha256').update(JSON.stringify({
+      graph: { nodes: [{ id: 'node-a', position: { x: 0, y: 0 } }], edges: [] }, inputSchema: [],
+    })).digest('hex');
     const client = {
       query: async (sql: string, values?: unknown[]) => {
         queries.push({ sql, values });
-        if ((sql.includes('SELECT id::text AS id') && sql.includes('FOR UPDATE')) || sql.includes('UPDATE flow_templates SET graph_json')) {
+        if ((sql.includes('SELECT id::text AS id') && sql.includes('FOR UPDATE')) || sql.includes('UPDATE flow_templates SET graph_json') || sql.includes('last_tested_graph_hash FROM flow_templates')) {
           return {
             rows: [
               {
-                category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(),
+                category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(), last_tested_graph_hash: graphHash,
                 description: '', estimated_credits: '2', graph_json: { nodes: [{ id: 'node-a', position: { x: 10, y: 20 } }], edges: [] },
                 id: randomUUID(), input_schema: [], node_count: 1, published_at: null, published_by: null, status: 'testing',
                 tenant_id: null, title: 'Snapshot', updated_at: '2026-08-13T00:00:00.000Z', version: 0, version_snapshot_id: null, visibility: 'official',
@@ -71,6 +74,23 @@ describe('flow template lifecycle schemas', () => {
       code: 'FLOW_TEMPLATE_NOT_READY',
       statusCode: 409,
     } satisfies Partial<FlowTemplatesApiError>);
+  });
+
+  test('records a server validation hash and only transitions the validated draft to testing', async () => {
+    const queries: Array<{ sql: string; values?: unknown[] }> = [];
+    const record = {
+      category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(), description: '', estimated_credits: null,
+      graph_json: { nodes: [{ id: 'node-a', data: { prompt: 'hello' } }], edges: [] }, id: randomUUID(), input_schema: [], node_count: 1,
+      published_at: null, published_by: null, status: 'draft', tenant_id: null, title: 'Validated', updated_at: '2026-08-13T00:00:00.000Z', version: 0, version_snapshot_id: null, visibility: 'official',
+    };
+    const client = { query: async (sql: string, values?: unknown[]) => { queries.push({ sql, values }); return { rows: [record] }; }, release: () => undefined } as unknown as PoolClient;
+    const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
+
+    await service.validateDraft({ tenantId: randomUUID(), userId: randomUUID() }, record.id);
+
+    const update = queries.find(({ sql }) => sql.includes('last_tested_graph_hash'));
+    expect(update?.sql).toContain("status = CASE WHEN status = 'published' THEN status ELSE 'testing' END");
+    expect(update?.values?.[2]).toMatch(/^[a-f0-9]{64}$/);
   });
 
   test('rejects template inputs that do not target an existing node data field', async () => {

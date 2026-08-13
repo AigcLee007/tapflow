@@ -97,7 +97,7 @@ export function saveAdminFlowTemplateDraft(templateId: string, input: SaveFlowTe
   return apiPut<FlowTemplateGraph>(`/admin/flow-templates/${encodeURIComponent(templateId)}`, input);
 }
 
-export function markAdminFlowTemplateTesting(templateId: string) {
+export function validateAdminFlowTemplate(templateId: string) {
   return apiPost<FlowTemplateGraph>(`/admin/flow-templates/${encodeURIComponent(templateId)}/testing`);
 }
 

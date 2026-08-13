@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { getAdminFlowTemplate, publishAdminFlowTemplate, saveAdminFlowTemplateDraft } from "./v2FlowTemplatesApi";
+import { getAdminFlowTemplate, publishAdminFlowTemplate, saveAdminFlowTemplateDraft, validateAdminFlowTemplate } from "./v2FlowTemplatesApi";
 
 const fetchMock = vi.fn();
 
@@ -22,14 +22,17 @@ describe("v2FlowTemplatesApi admin client", () => {
       graph: { nodes: [], edges: [] },
       inputSchema: [],
     });
+    await validateAdminFlowTemplate("template-1");
     await publishAdminFlowTemplate("template-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/v2/admin/flow-templates/template-1",
       "/api/v2/admin/flow-templates/template-1",
+      "/api/v2/admin/flow-templates/template-1/testing",
       "/api/v2/admin/flow-templates/template-1/publish",
     ]);
     expect(fetchMock.mock.calls[1][1].method).toBe("PUT");
     expect(fetchMock.mock.calls[2][1].method).toBe("POST");
+    expect(fetchMock.mock.calls[3][1].method).toBe("POST");
   });
 });

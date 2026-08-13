@@ -21,4 +21,13 @@ describe("TemplateAdminListPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "编辑 商品视频" }));
     await waitFor(() => expect(window.location.pathname).toBe("/admin/templates/template-1/editor"));
   });
+
+  test("filters statuses through the shared menu rather than a native select", async () => {
+    render(<TemplateAdminListPage />);
+    await screen.findByText("商品视频");
+    expect(document.querySelector("select")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "模板状态 全部状态" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "已发布" }));
+    await waitFor(() => expect(api.listAdminFlowTemplates).toHaveBeenLastCalledWith({ query: undefined, status: "published" }));
+  });
 });

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Archive, FilePlus2, Loader2, Pencil, RefreshCw, Search } from "lucide-react";
 
 import { type FlowTemplateGraph, type FlowTemplateStatus, listAdminFlowTemplates } from "../../services/v2FlowTemplatesApi";
+import { MenuSelect } from "../../components/menu/MenuSelect";
 import { getTemplateAdminEditorRoute, navigateTemplateAdmin } from "./templateAdminNavigation";
 
 const STATUS_LABEL: Record<FlowTemplateStatus, string> = {
@@ -44,7 +45,7 @@ export function TemplateAdminListPage() {
         <label className="sr-only" htmlFor="template-search">搜索模板</label><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-500" size={16} /><input className="h-10 w-full rounded border border-white/10 bg-black/25 pl-9 pr-3 text-sm text-white outline-none focus:border-cyan-300/50" id="template-search" onChange={(event) => setQuery(event.target.value)} placeholder="搜索模板" value={query} /></div>
         <button className="h-10 rounded border border-white/10 px-3 text-sm text-slate-100 hover:bg-white/10" type="submit">搜索</button>
       </form>
-      <label className="sr-only" htmlFor="template-status">模板状态</label><select aria-label="模板状态" className="h-10 rounded border border-white/10 bg-[#171717] px-3 text-sm text-slate-100" id="template-status" onChange={(event) => setStatus(event.target.value as FlowTemplateStatus | "all")} value={status}><option value="all">全部状态</option>{Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      <MenuSelect label="模板状态" onChange={(value) => setStatus(value as FlowTemplateStatus | "all")} options={[{ label: "全部状态", value: "all" }, ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ label, value }))]} value={status} />
       <button aria-label="刷新模板列表" className="grid h-10 w-10 place-items-center rounded border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void load()} type="button"><RefreshCw size={16} /></button>
     </div>
     {error ? <div className="rounded border border-red-300/20 bg-red-500/10 p-4 text-sm text-red-100">{error}</div> : null}
