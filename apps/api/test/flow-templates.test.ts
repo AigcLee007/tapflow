@@ -98,6 +98,21 @@ describe('flow template lifecycle schemas', () => {
 
     await expect(service.createDraft(context, createInput({ nested: { apiKey: 'value' } }))).rejects.toMatchObject({ code: 'UNSAFE_TEMPLATE_GRAPH' });
     await expect(service.createDraft(context, createInput({ previewUrl: 'https://bucket.example/file.png?X-Amz-Signature=abc&X-Amz-Credential=key' }))).rejects.toMatchObject({ code: 'UNSAFE_TEMPLATE_GRAPH' });
+    await expect(service.createDraft(context, createInput({ previewUrl: 'https://storage.googleapis.com/bucket/file.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=abc' }))).rejects.toMatchObject({ code: 'UNSAFE_TEMPLATE_GRAPH' });
+  });
+
+  test('does not mark a published template testing without a saved next draft', async () => {
+    const queries: Array<{ sql: string }> = [];
+    const published = {
+      category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(), description: '', estimated_credits: '2',
+      graph_json: { nodes: [{ id: 'node-a', data: { prompt: 'old' } }], edges: [] }, id: randomUUID(), input_schema: [], node_count: 1,
+      published_at: '2026-08-13T00:00:00.000Z', published_by: randomUUID(), status: 'published', tenant_id: null, title: 'Published', updated_at: '2026-08-13T00:00:00.000Z', version: 1, version_snapshot_id: null, visibility: 'official',
+    };
+    const client = { query: async (sql: string) => { queries.push({ sql }); return { rows: sql.includes('FOR UPDATE') ? [published] : [] }; }, release: () => undefined } as unknown as PoolClient;
+    const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
+
+    await expect(service.markTesting({ tenantId: randomUUID(), userId: randomUUID() }, published.id)).rejects.toMatchObject({ code: 'FLOW_TEMPLATE_DRAFT_REQUIRED', statusCode: 409 });
+    expect(queries.some(({ sql }) => sql.includes('UPDATE flow_templates'))).toBe(false);
   });
 
   test('editing a published template writes its next draft without changing the published status', async () => {

@@ -135,7 +135,7 @@ function normalizeTemplateGraph(value: Record<string, unknown>): TemplateGraph {
       try {
         const url = new URL(input);
         if (!/^https?:$/.test(url.protocol)) return false;
-        return [...url.searchParams.keys()].some((key) => /^(x-amz-(signature|credential|expires)|signature|expires|token)$/i.test(key));
+        return [...url.searchParams.keys()].some((key) => /^(x-(amz|goog)-(algorithm|credential|date|expires|signedheaders|signature)|signature|expires|token)$/i.test(key));
       } catch { return false; }
     }
     if (Array.isArray(input)) return input.some(containsUnsafeValue);
@@ -432,6 +432,13 @@ export class FlowTemplatesService {
   async markTesting(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
     return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
       const current = await this.getAdminTemplateForUpdate(client, templateId);
+      if (current.status === 'published') {
+        const draft = await client.query<{ draft_graph_json: Record<string, unknown> | null }>(
+          'SELECT draft_graph_json FROM flow_templates WHERE id=$1::uuid', [templateId]);
+        if (!draft.rows[0]?.draft_graph_json) {
+          throw new FlowTemplatesApiError(409, 'FLOW_TEMPLATE_DRAFT_REQUIRED', '请先保存下一版本草稿');
+        }
+      }
       const result = await client.query<FlowTemplateRecord>(`UPDATE flow_templates
         SET status = CASE WHEN status = 'published' THEN status ELSE 'testing' END,
           draft_status = CASE WHEN status = 'published' THEN 'testing' ELSE draft_status END, updated_at=now()
