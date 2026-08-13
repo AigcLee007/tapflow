@@ -30,6 +30,7 @@ import type {
   V2WorkflowRunEventView,
   V2WorkflowRunStatus,
 } from '../../services/v2WorkflowRunsApi';
+import { buildGroupExecutionPlan, type GroupExecutionPlan } from '../groupExecution/groupExecutionPlan';
 
 type FlowNode = Node<FlowNodeData>;
 type FlowEdge = Edge<FlowEdgeData>;
@@ -137,6 +138,7 @@ interface FlowCanvasState {
   runError: string | null;
   runEvents: V2WorkflowRunEventView[];
   runStatus: V2WorkflowRunStatus | null;
+  latestGroupExecutionPlan: GroupExecutionPlan | null;
 
   onNodesChange: OnNodesChange<FlowNode>;
   onEdgesChange: OnEdgesChange<FlowEdge>;
@@ -184,6 +186,9 @@ interface FlowCanvasState {
   groupSelectedNodes: () => void;
   ungroupSelectedGroups: () => void;
   layoutSelectedGroup: (layout: 'grid' | 'horizontal') => void;
+  getSelectedGroup: () => FlowNode | null;
+  getSelectedGroupGraph: () => { groupId: string; nodes: FlowNode[]; edges: FlowEdge[] } | null;
+  buildSelectedGroupExecutionPlan: () => GroupExecutionPlan | null;
   deleteSelectedNodes: () => void;
   duplicateSelectedNodes: () => void;
   mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
@@ -993,6 +998,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   runError: null,
   runEvents: [],
   runStatus: null,
+  latestGroupExecutionPlan: null,
 
   onNodesChange: (changes) => {
     const dirty = shouldMarkNodeChangesDirty(changes);
@@ -1626,6 +1632,26 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         isDirty: true,
       };
     });
+  },
+
+  getSelectedGroup: () => get().nodes.find((node) => node.selected && node.type === 'group') ?? null,
+
+  getSelectedGroupGraph: () => {
+    const group = get().getSelectedGroup();
+    if (!group) return null;
+    const { nodes, edges } = get();
+    return { groupId: group.id, nodes, edges };
+  },
+
+  buildSelectedGroupExecutionPlan: () => {
+    const graph = get().getSelectedGroupGraph();
+    if (!graph) {
+      set({ latestGroupExecutionPlan: null });
+      return null;
+    }
+    const plan = buildGroupExecutionPlan(graph.nodes, graph.edges, graph.groupId, get().nodeOutputByNodeId);
+    set({ latestGroupExecutionPlan: plan });
+    return plan;
   },
 
   deleteSelectedNodes: () => {

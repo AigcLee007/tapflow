@@ -4,6 +4,33 @@ import { useFlowCanvasStore } from './flowCanvasStore';
 import { buildAssetBackedNodeData } from '../utils/assetNodeData';
 import { normalizeVideoGenerationParams } from '../video/videoGenerationParams';
 
+describe('flowCanvasStore group execution helpers', () => {
+  beforeEach(() => {
+    useFlowCanvasStore.getState().newProject();
+  });
+
+  it('returns the selected group graph and retains the latest in-memory execution plan', () => {
+    const first = useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'First' });
+    const second = useFlowCanvasStore.getState().addNode('video', { x: 360, y: 0 }, { title: 'Second' });
+    useFlowCanvasStore.getState().selectNodesByIds([first.id, second.id]);
+    useFlowCanvasStore.getState().groupSelectedNodes();
+    const group = useFlowCanvasStore.getState().getSelectedGroup();
+
+    expect(group?.type).toBe('group');
+    expect(useFlowCanvasStore.getState().getSelectedGroupGraph()).toEqual(expect.objectContaining({
+      groupId: group?.id,
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: first.id, parentId: group?.id }),
+        expect.objectContaining({ id: second.id, parentId: group?.id }),
+      ]),
+    }));
+
+    const plan = useFlowCanvasStore.getState().buildSelectedGroupExecutionPlan();
+    expect(plan?.nodeIds).toEqual([first.id, second.id]);
+    expect(useFlowCanvasStore.getState().latestGroupExecutionPlan).toBe(plan);
+  });
+});
+
 describe('flowCanvasStore upstream image references', () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().newProject();
