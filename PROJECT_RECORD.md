@@ -3,6 +3,11 @@
 Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Text Route Image Capability Backfill
+
+- production inspection confirmed all eight Aittco Text Relay models already had verified image-input capabilities, while their `ai_routes.request_config.capabilities` values were null. `000068` attempted to write nested JSON paths without first creating the intermediate `capabilities` object, so PostgreSQL left the route configuration unchanged.
+- added `000069_backfill_text_route_image_input_capabilities.sql`, which creates or preserves each target route's `capabilities` object and sets the verified image-input contract for the eight stable Aittco text routes. It does not modify route keys, credentials, connections, pricing, or status. Added SQL regression coverage; database tests and build pass with environment-dependent database integration tests skipped locally.
+
 ## 2026-08-13 - Text Image Capability Migration SQL Repair
 
 - repaired `000068_text_route_image_input_capabilities.sql`: PostgreSQL does not permit the target `ai_routes AS route` alias inside a `FROM ... JOIN ... ON` clause. The route/model relationship now uses the legal `WHERE model.id = route.model_id` predicate, preserving the intended provider, model, and stable route-key restrictions.
