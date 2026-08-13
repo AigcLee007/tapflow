@@ -10,7 +10,7 @@ export type FlowTemplateInputDefinition = {
   target: { nodeId: string; fieldPath: string };
 } & (
   | { type: 'text'; defaultValue?: string }
-  | { type: 'asset'; defaultValue?: string }
+  | { type: 'asset'; assetKinds?: Array<'image' | 'video' | 'audio'>; defaultValue?: string }
   | { type: 'enum'; options: string[]; defaultValue?: string }
   | { type: 'number'; minimum?: number; maximum?: number; step?: number; defaultValue?: number }
 );

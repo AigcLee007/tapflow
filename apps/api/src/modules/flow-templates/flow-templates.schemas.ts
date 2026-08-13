@@ -32,7 +32,11 @@ const templateInputBaseSchema = z.object({
 
 export const flowTemplateInputDefinitionSchema = z.discriminatedUnion('type', [
   templateInputBaseSchema.extend({ type: z.literal('text'), defaultValue: z.string().optional() }),
-  templateInputBaseSchema.extend({ type: z.literal('asset'), defaultValue: z.string().uuid().optional() }),
+  templateInputBaseSchema.extend({
+    type: z.literal('asset'),
+    assetKinds: z.array(z.enum(['image', 'video', 'audio'])).min(1).max(3).optional(),
+    defaultValue: z.string().uuid().optional(),
+  }),
   templateInputBaseSchema
     .extend({
       type: z.literal('enum'),
