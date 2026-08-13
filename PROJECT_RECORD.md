@@ -6561,3 +6561,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added a guarded `NodeWaitingVideo` boundary that honors reduced-motion before mounting media, preserves the existing CSS loading UIs as fallback, handles codec/playback failures, and safely cancels stale playback state.
 - text, image, and video generation overlays now use their matching static animation. The reproducible generator requires explicit `--generate --confirm-generation-cost`, uses the Gemini Omni Flash route, and normalizes/validates output before publishing.
 - focused component, overlay, and generator coverage passed (`35` tests). Full frontend build validation is pending this task's final command.
+
+## 2026-08-14 - Canvas Text Preset Scale Update
+
+- updated canvas text-node preset labels and rendered sizes while keeping the persisted preset values unchanged: `h1` is `特大` at 24px, `h2` is `大` at 20px, `h3` is `中` at 16px, and `body` is `小` at 12px.
+- fullscreen editor typography remains unchanged at 34px, 28px, 22px, and 15px respectively.
+- focused text-font-size regression coverage passed after the mapping update.

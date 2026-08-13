@@ -214,16 +214,16 @@ describe("FlowNodes agent metadata", () => {
 
       const textarea = screen.getByLabelText("文本内容") as HTMLTextAreaElement;
       expect(textarea.style.fontSize).toBe("12px");
-      expect(screen.getByRole("button", { name: "全文设为正文字号" }).getAttribute("aria-pressed")).toBe("true");
+      expect(screen.getByRole("button", { name: "全文设为小字号" }).getAttribute("aria-pressed")).toBe("true");
       const normalToolbarFontButtons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[aria-label^="全文设为"]'));
       expect(normalToolbarFontButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
-        "全文设为一号字号",
-        "全文设为二号字号",
-        "全文设为三号字号",
-        "全文设为正文字号",
+        "全文设为特大字号",
+        "全文设为大字号",
+        "全文设为中字号",
+        "全文设为小字号",
       ]);
 
-      fireEvent.click(screen.getByRole("button", { name: "全文设为一号字号" }));
+      fireEvent.click(screen.getByRole("button", { name: "全文设为特大字号" }));
 
       const updatedNode = useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)!;
       expect(updatedNode.data).toEqual({ ...beforeData, fontSize: "h1" });
@@ -231,8 +231,8 @@ describe("FlowNodes agent metadata", () => {
       expect(updatedNode.width).toBe(originalNode.width);
       expect(updatedNode.height).toBe(originalNode.height);
       expect(useFlowCanvasStore.getState().viewport).toEqual(originalViewport);
-      expect((screen.getByLabelText("文本内容") as HTMLTextAreaElement).style.fontSize).toBe("18px");
-      expect(screen.getByRole("button", { name: "全文设为一号字号" }).getAttribute("aria-pressed")).toBe("true");
+      expect((screen.getByLabelText("文本内容") as HTMLTextAreaElement).style.fontSize).toBe("24px");
+      expect(screen.getByRole("button", { name: "全文设为特大字号" }).getAttribute("aria-pressed")).toBe("true");
 
       act(() => useFlowCanvasStore.getState().updateNodeData(node.id, { text: "Generated text" }));
       expect(useFlowCanvasStore.getState().nodes.find((item) => item.id === node.id)?.data).toMatchObject({
@@ -268,7 +268,7 @@ describe("FlowNodes agent metadata", () => {
 
     const fullscreenTextarea = screen.getByLabelText("全屏文本内容") as HTMLTextAreaElement;
     expect(fullscreenTextarea.style.fontSize).toBe("34px");
-    expect(screen.getByRole("button", { name: "全文设为一号字号" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "全文设为特大字号" }).getAttribute("aria-pressed")).toBe("true");
     expect(document.body.querySelectorAll('button[aria-label^="全文设为"]').length).toBe(4);
   });
 
