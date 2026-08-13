@@ -458,9 +458,12 @@ function mergeRouteRuntimeCapabilities(input: {
   const videoCapabilities = readVideoCapabilities(routeCapabilities)
     ?? readVideoCapabilities(input.modelCapabilities);
   const textCapabilities = resolveTextGenerationCapabilities(input.modelCapabilities, routeCapabilities);
+  // Video routes and text routes both use `maxImages`, but the fields have
+  // different meanings. Do not let the text-input fallback (`maxImages: 0`
+  // for video-only routes) overwrite the validated video media limits.
   return {
-    ...(videoCapabilities ?? {}),
     ...textCapabilities,
+    ...(videoCapabilities ?? {}),
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows: Array.from(new Set([
       ...readSupportedVideoWorkflows(input.modelCapabilities),

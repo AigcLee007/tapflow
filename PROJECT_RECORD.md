@@ -3,6 +3,11 @@
 Last updated: 2026-08-13
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Video Route Capability Merge Repair
+
+- fixed API workflow preflight capability merging so text-generation `maxImages: 0` defaults no longer overwrite validated video-route media limits. This restores single-image `image_to_video` requests across Gemini Omni Flash and other structured video routes while preserving route-specific video constraints.
+- production diagnostics confirmed the failing draft contained exactly one upstream image and the selected route allowed exactly one image; the request stopped before pricing, enqueue, Worker execution, or provider dispatch. The existing route-context regression now passes and protects the shared-field collision.
+
 ## 2026-08-13 - Image-to-Video Reference Limit Repair
 
 - fixed canvas input reconciliation so an `image_to_video` video node keeps exactly one image reference when a connected upstream image coexists with stale/direct asset reference metadata. The upstream image is preferred, preventing `REFERENCE_LIMIT_EXCEEDED` before provider execution.
