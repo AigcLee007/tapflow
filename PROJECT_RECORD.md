@@ -3,6 +3,11 @@
 Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Text Image Capability Migration SQL Repair
+
+- repaired `000068_text_route_image_input_capabilities.sql`: PostgreSQL does not permit the target `ai_routes AS route` alias inside a `FROM ... JOIN ... ON` clause. The route/model relationship now uses the legal `WHERE model.id = route.model_id` predicate, preserving the intended provider, model, and stable route-key restrictions.
+- added a regression test that rejects the invalid target-alias join form. Validation passed: database workspace tests (`53` passed, `38` environment-dependent skips) and database build. Server migration failure is transactional, so it leaves no `schema_migrations` entry for `000068`; after deploying this repair, rerun the normal migration command.
+
 ## 2026-08-13 - Text Node Multimodal Image Input Implementation
 
 - implemented ordered upstream Image Node delivery for Text Nodes. The shared text-generation contract accepts at most three images, validates route/model capability and MIME compatibility, and never falls back to a text-only provider request when image input is invalid.
