@@ -56,7 +56,7 @@ type FlowTemplateRecord = {
   title: string;
   updated_at: string;
   version: number;
-  version_id: string;
+  version_snapshot_id: string | null;
   visibility: 'official' | 'private' | 'tenant';
 };
 
@@ -78,7 +78,7 @@ export type FlowTemplateView = {
   title: string;
   updatedAt: string;
   version: number;
-  versionId: string;
+  versionId: string | null;
   visibility: 'official' | 'private' | 'tenant';
 };
 
@@ -113,7 +113,7 @@ export function mapFlowTemplateRecord(row: FlowTemplateRecord): FlowTemplateView
     title: row.title,
     updatedAt: row.updated_at,
     version: row.version,
-    versionId: row.version_id,
+    versionId: row.version_snapshot_id,
     visibility: row.visibility,
   };
 }
@@ -144,12 +144,15 @@ export class FlowTemplatesService {
             estimated_credits::text AS estimated_credits,
             status,
             version,
-            version_id::text AS version_id,
+            version_snapshot.id::text AS version_snapshot_id,
             published_at::text AS published_at,
             published_by::text AS published_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM flow_templates
+          LEFT JOIN flow_template_versions AS version_snapshot
+            ON version_snapshot.template_id = flow_templates.id
+            AND version_snapshot.version = flow_templates.version
           WHERE tenant_id IS NULL
             AND visibility = 'official'
             AND status = 'published'
@@ -189,12 +192,15 @@ export class FlowTemplatesService {
             estimated_credits::text AS estimated_credits,
             status,
             version,
-            version_id::text AS version_id,
+            version_snapshot.id::text AS version_snapshot_id,
             published_at::text AS published_at,
             published_by::text AS published_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM flow_templates
+          LEFT JOIN flow_template_versions AS version_snapshot
+            ON version_snapshot.template_id = flow_templates.id
+            AND version_snapshot.version = flow_templates.version
           WHERE id = $1::uuid
             AND tenant_id IS NULL
             AND visibility = 'official'

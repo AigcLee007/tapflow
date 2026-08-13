@@ -110,12 +110,14 @@ describe('flow template lifecycle schemas', () => {
       title: 'Draft',
       updated_at: '2026-08-13T00:00:00.000Z',
       version: 1,
+      version_snapshot_id: randomUUID(),
       visibility: 'official',
     });
 
     expect(template.inputSchema).toEqual([
       expect.objectContaining({ id: 'prompt', type: 'text' }),
     ]);
+    expect(template.versionId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   test('establishes the server-trusted system-admin database context', async () => {

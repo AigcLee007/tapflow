@@ -38,6 +38,45 @@ CREATE TABLE IF NOT EXISTS flow_template_versions (
   UNIQUE (template_id, version)
 );
 
+-- Preserve a stable snapshot for every pre-existing published official
+-- template before its current version pointer becomes visible to users.
+INSERT INTO flow_template_versions (
+  template_id,
+  version,
+  graph_json,
+  input_schema,
+  node_count,
+  estimated_credits,
+  created_by,
+  created_at
+)
+SELECT
+  template.id,
+  1,
+  template.graph_json,
+  template.input_schema,
+  template.node_count,
+  template.estimated_credits,
+  template.created_by,
+  template.published_at
+FROM flow_templates AS template
+WHERE template.tenant_id IS NULL
+  AND template.visibility = 'official'
+  AND template.status = 'published'
+ON CONFLICT (template_id, version) DO NOTHING;
+
+UPDATE flow_templates AS template
+SET version = 1
+WHERE template.tenant_id IS NULL
+  AND template.visibility = 'official'
+  AND template.status = 'published'
+  AND EXISTS (
+    SELECT 1
+    FROM flow_template_versions AS snapshot
+    WHERE snapshot.template_id = template.id
+      AND snapshot.version = 1
+  );
+
 CREATE INDEX IF NOT EXISTS idx_flow_template_versions_template_version
   ON flow_template_versions (template_id, version DESC);
 
