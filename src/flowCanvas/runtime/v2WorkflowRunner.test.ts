@@ -238,6 +238,23 @@ describe('v2WorkflowRunner', () => {
     );
   });
 
+  test('group runs send a scoped group request to the workflow API', async () => {
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-group', status: 'pending' });
+    getWorkflowRunMock.mockResolvedValue({
+      nodeRuns: [],
+      workflowRun: {
+        canceledAt: null, createdAt: '2026-05-17T00:00:00.000Z', createdBy: 'user-1', errorJson: null, finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111', flowVersionId: 'version-1', id: 'run-group', idempotencyKey: null,
+        inputJson: { runMode: 'group', groupId: 'group-1' }, outputJson: null, startedAt: null, status: 'pending', tenantId: 'tenant-1', updatedAt: '2026-05-17T00:00:00.000Z',
+      },
+    });
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    await runBackendWorkflow({ runMode: 'group', groupId: 'group-1' });
+
+    expect(createWorkflowRunMock).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111', expect.objectContaining({ runMode: 'group', groupId: 'group-1' }));
+  });
+
   test('waits for remote draft save before creating a target-node run', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       routeKey: 'image.default',

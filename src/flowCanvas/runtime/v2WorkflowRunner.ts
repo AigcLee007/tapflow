@@ -61,7 +61,8 @@ type AssetLike = {
 type PersistableNodeRun = Pick<V2NodeRunView, 'errorJson' | 'id' | 'nodeId' | 'nodeType' | 'status' | 'outputJson' | 'workflowRunId'>;
 
 type RunScope = {
-  runMode: 'flow' | 'target_node';
+  runMode: 'flow' | 'target_node' | 'group';
+  groupId: string | null;
   targetNodeId: string | null;
 };
 
@@ -106,13 +107,18 @@ function closeAllStreams(): void {
 }
 
 function resolveRunScope(inputJson: Record<string, unknown> | null | undefined): RunScope {
-  const runMode = inputJson?.runMode === 'target_node' ? 'target_node' : 'flow';
+  const runMode = inputJson?.runMode === 'target_node' || inputJson?.runMode === 'group' ? inputJson.runMode : 'flow';
+  const groupId =
+    typeof inputJson?.groupId === 'string' && inputJson.groupId.trim()
+      ? inputJson.groupId.trim()
+      : null;
   const targetNodeId =
     typeof inputJson?.targetNodeId === 'string' && inputJson.targetNodeId.trim()
       ? inputJson.targetNodeId.trim()
       : null;
   return {
     runMode,
+    groupId,
     targetNodeId,
   };
 }
@@ -1421,7 +1427,9 @@ export async function recoverFlowTargetNodeRuns(flowId: string): Promise<void> {
 }
 
 export async function runBackendWorkflow(options?: {
-  runMode?: 'flow' | 'target_node';
+  runMode?: 'flow' | 'target_node' | 'group';
+  groupId?: string;
+  planHash?: string;
   targetNodeId?: string;
 }): Promise<void> {
   if (!RUNNER_ENABLED) {
@@ -1434,6 +1442,7 @@ export async function runBackendWorkflow(options?: {
   }
 
   const isTargetNodeRun = options?.runMode === 'target_node' && !!options.targetNodeId;
+  const isGroupRun = options?.runMode === 'group' && !!options.groupId;
   let creditReservation: CreditPreflightReservation | null = null;
 
   try {
@@ -1475,12 +1484,16 @@ export async function runBackendWorkflow(options?: {
       updateTargetNodeLaunchState(options.targetNodeId as string, 'creating_run');
     }
     const request: CreateWorkflowRunInput = {
-      idempotencyKey: `flow-canvas:${state.backendFlowId}:${options?.targetNodeId ?? 'flow'}:${Date.now()}`,
+      idempotencyKey: `flow-canvas:${state.backendFlowId}:${isGroupRun ? `group:${options?.groupId}` : options?.targetNodeId ?? 'flow'}:${Date.now()}`,
       input: {},
     };
     if (isTargetNodeRun) {
       request.runMode = 'target_node';
       request.targetNodeId = options.targetNodeId;
+    } else if (isGroupRun) {
+      request.runMode = 'group';
+      request.groupId = options.groupId;
+      if (options?.planHash) request.planHash = options.planHash;
     }
 
     const created = await createWorkflowRun(state.backendFlowId, request);
