@@ -1006,6 +1006,74 @@ describe("useRemoteFlowAutosave", () => {
     expect(JSON.stringify(reloadedVideo)).not.toMatch(/"aspect_ratio"|"duration"|"quality"|blob:|data:/);
   });
 
+  it("persists a text node font size change across save and reload", async () => {
+    vi.useRealTimers();
+    const serverDraft = createDraft(4);
+    serverDraft.graph = {
+      edges: [],
+      nodes: [{
+        id: "text-a",
+        position: { x: 12, y: 34 },
+        width: 320,
+        height: 240,
+        type: "text",
+        data: { fontSize: "body", text: "Existing text" },
+      }],
+      viewport: { x: 56, y: 78, zoom: 0.9 },
+    };
+    getProjectMock.mockResolvedValue({ id: "project-1", name: "Project 1" });
+    listProjectFlowsMock.mockResolvedValue([{ id: "flow-1", currentVersionId: null }]);
+    getFlowDraftMock.mockResolvedValue(serverDraft);
+    saveFlowDraftMock.mockImplementation(async (_flowId: string, input: { graph: FlowDraft["graph"] }) => {
+      const savedDraft = {
+        ...serverDraft,
+        graph: input.graph,
+        revision: 5,
+        updatedAt: "2026-05-22T00:00:05.000Z",
+      };
+      getFlowDraftMock.mockResolvedValue(savedDraft);
+      return savedDraft;
+    });
+
+    const { result } = renderHook(() => {
+      const project = useRemoteFlowProject("project-1");
+      const autosave = useRemoteFlowAutosave({
+        draft: project.draft,
+        enabled: !project.loading,
+        flowId: project.flow?.id ?? null,
+      });
+      return { autosave, project };
+    });
+
+    await waitFor(() => expect(result.current.project.loading).toBe(false));
+    act(() => {
+      useFlowCanvasStore.getState().updateNodeData("text-a", { fontSize: "h1" });
+    });
+    await act(async () => {
+      await result.current.autosave.saveNow();
+    });
+
+    const savedNode = saveFlowDraftMock.mock.calls[0]?.[1].graph.nodes[0];
+    expect(savedNode).toMatchObject({
+      data: { fontSize: "h1", text: "Existing text" },
+      height: 240,
+      position: { x: 12, y: 34 },
+      width: 320,
+    });
+    expect(saveFlowDraftMock.mock.calls[0]?.[1].graph.viewport).toEqual({ x: 56, y: 78, zoom: 0.9 });
+
+    await act(async () => {
+      await result.current.project.reload();
+    });
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === "text-a")).toMatchObject({
+      data: { fontSize: "h1", text: "Existing text" },
+      height: 240,
+      position: { x: 12, y: 34 },
+      width: 320,
+    });
+    expect(useFlowCanvasStore.getState().viewport).toEqual({ x: 56, y: 78, zoom: 0.9 });
+  });
+
   it("syncs once when generation completion writes durable output to the target node", async () => {
     const initialDraft = createDraft(1);
     initialDraft.graph.nodes = [

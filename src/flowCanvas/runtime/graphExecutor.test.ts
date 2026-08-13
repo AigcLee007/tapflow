@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, test, vi } from 'vitest';
 
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
-import { mergeImageReferences, prepareImageTemplateEdit, runImageEdit } from './graphExecutor';
+import { mergeImageReferences, prepareImageTemplateEdit, runImageEdit, runNodeGeneration } from './graphExecutor';
 
 const editImageApiMock = vi.fn();
+const generateTextApiMock = vi.fn();
 
 vi.mock('../../../services/api', () => ({
   checkTaskStatus: vi.fn(),
   editImageApi: (...args: unknown[]) => editImageApiMock(...args),
   findAllUrlsInObject: vi.fn(),
   generateImageApi: vi.fn(),
-  generateTextApi: vi.fn(),
+  generateTextApi: (...args: unknown[]) => generateTextApiMock(...args),
 }));
 
 vi.mock('../../../services/videoService', () => ({
@@ -156,6 +157,32 @@ describe('runImageEdit', () => {
     expect(targetNode?.data.generationRunLabel).toBe('正在生成图片');
     expect(String(targetNode?.data.generationRunLabel)).not.toContain('pixellelabs');
     expect(String(targetNode?.data.generationRunLabel)).not.toContain('image.');
+  });
+});
+
+describe('runNodeGeneration', () => {
+  beforeEach(() => {
+    generateTextApiMock.mockReset();
+    useFlowCanvasStore.getState().newProject();
+  });
+
+  it('preserves the selected text font size when generation replaces the text', async () => {
+    const textNode = useFlowCanvasStore.getState().addNode('text', { x: 10, y: 20 }, {
+      fontSize: 'h1',
+      generationPrompt: 'Write a headline',
+      text: 'Existing text',
+    });
+    generateTextApiMock.mockResolvedValue({
+      model: 'gpt-5.6-terra',
+      results: ['Generated headline'],
+    });
+
+    await runNodeGeneration(textNode.id);
+
+    expect(useFlowCanvasStore.getState().nodes.find((node) => node.id === textNode.id)?.data).toMatchObject({
+      fontSize: 'h1',
+      text: 'Generated headline',
+    });
   });
 });
 
