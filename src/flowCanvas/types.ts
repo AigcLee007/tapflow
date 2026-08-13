@@ -235,6 +235,7 @@ export interface FlowRuntimeNodeOutput {
   errorMessage?: string | null;
   output?: Record<string, unknown> | null;
   providerTask?: Record<string, unknown> | null;
+  status?: 'pending' | 'running' | 'succeeded' | 'failed';
   text?: string | null;
 }
 

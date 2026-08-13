@@ -28,6 +28,18 @@ describe('flowCanvasStore group execution helpers', () => {
     const plan = useFlowCanvasStore.getState().buildSelectedGroupExecutionPlan();
     expect(plan?.nodeIds).toEqual([first.id, second.id]);
     expect(useFlowCanvasStore.getState().latestGroupExecutionPlan).toBe(plan);
+
+    useFlowCanvasStore.getState().deselectAll();
+    expect(useFlowCanvasStore.getState().latestGroupExecutionPlan).toBeNull();
+
+    useFlowCanvasStore.getState().selectNodesByIds([group!.id]);
+    useFlowCanvasStore.getState().buildSelectedGroupExecutionPlan();
+    useFlowCanvasStore.getState().updateNodeData(first.id, { generationPrompt: 'changed prompt' });
+    expect(useFlowCanvasStore.getState().latestGroupExecutionPlan).toBeNull();
+
+    useFlowCanvasStore.getState().buildSelectedGroupExecutionPlan();
+    useFlowCanvasStore.getState().newProject();
+    expect(useFlowCanvasStore.getState().latestGroupExecutionPlan).toBeNull();
   });
 });
 

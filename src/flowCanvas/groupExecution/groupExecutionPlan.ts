@@ -11,7 +11,10 @@ export type GroupExecutionIssueCode =
   | 'MISSING_EXTERNAL_RESULT'
   | 'MISSING_GENERATION_PROMPT'
   | 'MISSING_ROUTE'
-  | 'NESTED_GROUP_UNSUPPORTED';
+  | 'NESTED_GROUP_UNSUPPORTED'
+  | 'UNSUPPORTED_NODE_KIND'
+  | 'INVALID_EXTERNAL_RESULT'
+  | 'CYCLE_BLOCKED_DESCENDANTS';
 
 export interface GroupExecutionIssue {
   code: GroupExecutionIssueCode;
@@ -36,23 +39,23 @@ export interface GroupExecutionPlan {
   retryableNodeIds: string[];
 }
 
-const EXECUTABLE_KINDS = new Set<FlowNodeData['kind']>([
-  'audio',
-  'image',
-  'image_editor',
-  'text',
-  'video',
-]);
+const EXECUTABLE_KINDS = new Set<FlowNodeData['kind']>(['image', 'text', 'video']);
+const STATIC_INPUT_KINDS = new Set<FlowNodeData['kind']>(['upload']);
 
 function compareNodes(left: FlowNode, right: FlowNode): number {
   return left.position.y - right.position.y || left.position.x - right.position.x || left.id.localeCompare(right.id);
 }
 
-function hasRuntimeResult(output: FlowRuntimeNodeOutput | undefined): boolean {
-  if (!output) return false;
-  if (output.assets?.some((asset) => Boolean(asset.assetId))) return true;
-  if (typeof output.text === 'string' && output.text.trim()) return true;
-  return Boolean(output.output && Object.keys(output.output).length > 0);
+function hasRuntimeResultForEdge(output: FlowRuntimeNodeOutput | undefined, dataType: FlowEdgeData['dataType']): boolean {
+  if (!output || output.status !== 'succeeded' || output.errorMessage || output.providerTask?.status === 'failed') return false;
+  if (dataType === 'text') return typeof output.text === 'string' && output.text.trim().length > 0;
+  if (dataType === 'json') return Boolean(output.output && Object.keys(output.output).length > 0);
+  if (dataType === 'any') return Boolean(
+    output.assets?.some((asset) => Boolean(asset.assetId)) ||
+    (typeof output.text === 'string' && output.text.trim()) ||
+    (output.output && Object.keys(output.output).length > 0),
+  );
+  return output.assets?.some((asset) => asset.kind === dataType && Boolean(asset.assetId)) ?? false;
 }
 
 function readEstimatedCredits(node: FlowNode): number {
@@ -81,6 +84,30 @@ function validateNode(node: FlowNode): GroupExecutionIssue[] {
   return issues;
 }
 
+function findCycleNodeIds(
+  unresolvedIds: string[],
+  outgoing: Map<string, string[]>,
+  byId: Map<string, FlowNode>,
+): string[] {
+  const unresolved = new Set(unresolvedIds);
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const cycle = new Set<string>();
+  const visit = (nodeId: string, path: string[]): void => {
+    if (cycle.size > 0 || visited.has(nodeId) || !unresolved.has(nodeId)) return;
+    if (visiting.has(nodeId)) {
+      path.slice(path.indexOf(nodeId)).forEach((id) => cycle.add(id));
+      return;
+    }
+    visiting.add(nodeId);
+    for (const targetId of outgoing.get(nodeId) ?? []) visit(targetId, [...path, nodeId]);
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+  };
+  [...unresolved].sort((left, right) => compareNodes(byId.get(left)!, byId.get(right)!)).forEach((id) => visit(id, []));
+  return [...cycle].sort((left, right) => compareNodes(byId.get(left)!, byId.get(right)!));
+}
+
 export function buildGroupExecutionPlan(
   nodes: FlowNode[],
   edges: FlowEdge[],
@@ -102,6 +129,7 @@ export function buildGroupExecutionPlan(
   const directChildren = nodes.filter((node) => node.parentId === groupId);
   const nestedGroups = directChildren.filter((node) => node.type === 'group');
   const executableNodes = directChildren.filter((node) => EXECUTABLE_KINDS.has(node.data.kind)).sort(compareNodes);
+  const unsupportedNodes = directChildren.filter((node) => !EXECUTABLE_KINDS.has(node.data.kind) && !STATIC_INPUT_KINDS.has(node.data.kind) && node.type !== 'group');
   const executableIds = new Set(executableNodes.map((node) => node.id));
   const blockingIssues = [
     ...nestedGroups.map((node) => ({
@@ -109,23 +137,28 @@ export function buildGroupExecutionPlan(
       message: `Nested group ${node.id} must be ungrouped before this group can run.`,
       nodeId: node.id,
     })),
+    ...unsupportedNodes.map((node) => ({
+      code: 'UNSUPPORTED_NODE_KIND' as const,
+      message: `Node ${node.id} (${node.data.kind}) cannot be executed as part of a group.`,
+      nodeId: node.id,
+    })),
     ...executableNodes.flatMap(validateNode),
   ];
 
   const externalDependencies = edges
-    .filter((edge) => executableIds.has(edge.target) && !executableIds.has(edge.source))
+    .filter((edge) => executableIds.has(edge.target) && !executableIds.has(edge.source) && !directChildren.some((node) => node.id === edge.source && STATIC_INPUT_KINDS.has(node.data.kind)))
     .map((edge) => ({
       edgeId: edge.id,
       sourceNodeId: edge.source,
       targetNodeId: edge.target,
-      satisfied: hasRuntimeResult(runtimeOutputs[edge.source]),
+      satisfied: hasRuntimeResultForEdge(runtimeOutputs[edge.source], edge.data?.dataType ?? 'any'),
     }))
     .sort((left, right) => left.targetNodeId.localeCompare(right.targetNodeId) || left.sourceNodeId.localeCompare(right.sourceNodeId) || left.edgeId.localeCompare(right.edgeId));
 
   for (const dependency of externalDependencies) {
     if (!dependency.satisfied) {
       blockingIssues.push({
-        code: 'MISSING_EXTERNAL_RESULT',
+        code: runtimeOutputs[dependency.sourceNodeId] ? 'INVALID_EXTERNAL_RESULT' : 'MISSING_EXTERNAL_RESULT',
         message: `Node ${dependency.targetNodeId} requires an existing result from ${dependency.sourceNodeId}.`,
         nodeId: dependency.targetNodeId,
       });
@@ -163,12 +196,22 @@ export function buildGroupExecutionPlan(
   }
 
   if (scheduledCount !== executableNodes.length) {
-    const cycleNodeIds = executableNodes.filter((node) => (indegree.get(node.id) ?? 0) > 0).sort(compareNodes).map((node) => node.id);
+    const unresolvedIds = new Set(executableNodes.filter((node) => (indegree.get(node.id) ?? 0) > 0).map((node) => node.id));
+    const cycleNodeIds = findCycleNodeIds([...unresolvedIds], outgoing, byId);
+    const cycleIdSet = new Set(cycleNodeIds);
+    const blockedDescendantIds = [...unresolvedIds].filter((nodeId) => !cycleIdSet.has(nodeId)).sort((left, right) => compareNodes(byId.get(left)!, byId.get(right)!));
     blockingIssues.push({
       code: 'CYCLE_DETECTED',
       message: `Group contains a dependency cycle: ${cycleNodeIds.join(', ')}.`,
       nodeIds: cycleNodeIds,
     });
+    if (blockedDescendantIds.length > 0) {
+      blockingIssues.push({
+        code: 'CYCLE_BLOCKED_DESCENDANTS',
+        message: `Group nodes are blocked by a dependency cycle: ${blockedDescendantIds.join(', ')}.`,
+        nodeIds: blockedDescendantIds,
+      });
+    }
     return {
       blockingIssues,
       estimatedCredits: executableNodes.reduce((sum, node) => sum + readEstimatedCredits(node), 0),
