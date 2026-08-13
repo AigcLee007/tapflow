@@ -73,6 +73,58 @@ describe('flow template lifecycle schemas', () => {
     } satisfies Partial<FlowTemplatesApiError>);
   });
 
+  test('rejects template inputs that do not target an existing node data field', async () => {
+    const service = new FlowTemplatesService({
+      pool: { connect: async () => { throw new Error('database must not be reached'); } } as unknown as ReturnType<typeof createPgPool>,
+    });
+
+    await expect(service.createDraft({ tenantId: randomUUID(), userId: randomUUID() }, {
+      category: 'image', estimatedCredits: null,
+      graph: { nodes: [{ id: 'image', data: { prompt: 'hello' } }], edges: [] },
+      inputSchema: [{ id: 'missing', label: 'Missing', target: { nodeId: 'image', fieldPath: 'data.notThere' }, type: 'text' }],
+      title: 'Invalid input',
+    })).rejects.toMatchObject({ code: 'INVALID_TEMPLATE_INPUT' });
+  });
+
+  test('rejects secret-bearing keys and signed URLs anywhere in a template graph', async () => {
+    const service = new FlowTemplatesService({
+      pool: { connect: async () => { throw new Error('database must not be reached'); } } as unknown as ReturnType<typeof createPgPool>,
+    });
+    const context = { tenantId: randomUUID(), userId: randomUUID() };
+    const createInput = (data: Record<string, unknown>) => ({
+      category: 'image', estimatedCredits: null,
+      graph: { nodes: [{ id: 'image', data }], edges: [] }, inputSchema: [], title: 'Unsafe graph',
+    });
+
+    await expect(service.createDraft(context, createInput({ nested: { apiKey: 'value' } }))).rejects.toMatchObject({ code: 'UNSAFE_TEMPLATE_GRAPH' });
+    await expect(service.createDraft(context, createInput({ previewUrl: 'https://bucket.example/file.png?X-Amz-Signature=abc&X-Amz-Credential=key' }))).rejects.toMatchObject({ code: 'UNSAFE_TEMPLATE_GRAPH' });
+  });
+
+  test('editing a published template writes its next draft without changing the published status', async () => {
+    const queries: Array<{ sql: string }> = [];
+    const published = {
+      category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(), description: '',
+      estimated_credits: '2', graph_json: { nodes: [{ id: 'node-a', data: { prompt: 'old' } }], edges: [] }, id: randomUUID(), input_schema: [], node_count: 1,
+      published_at: '2026-08-13T00:00:00.000Z', published_by: randomUUID(), status: 'published', tenant_id: null, title: 'Published',
+      updated_at: '2026-08-13T00:00:00.000Z', version: 1, version_snapshot_id: null, visibility: 'official',
+    };
+    const client = {
+      query: async (sql: string) => {
+        queries.push({ sql });
+        return { rows: sql.includes('FOR UPDATE') || sql.includes('UPDATE flow_templates') ? [published] : [] };
+      }, release: () => undefined,
+    } as unknown as PoolClient;
+    const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
+
+    await service.updateDraft({ tenantId: randomUUID(), userId: randomUUID() }, published.id, {
+      category: 'image', estimatedCredits: 3, graph: { nodes: [{ id: 'node-a', data: { prompt: 'new' } }], edges: [] }, inputSchema: [], title: 'Published',
+    });
+
+    const updateSql = queries.find(({ sql }) => sql.includes('UPDATE flow_templates'))?.sql ?? '';
+    expect(updateSql).toContain('draft_graph_json');
+    expect(updateSql).not.toMatch(/\n\s*status\s*=/);
+  });
+
   test('accepts a draft with the supported template input definitions', () => {
     const result = saveFlowTemplateDraftSchema.parse({
       category: 'video',
@@ -277,6 +329,21 @@ describeWithDatabase('flow templates API', () => {
           url: '/api/v2/projects',
         });
         expect(projectA.statusCode).toBe(201);
+
+        const nonAdminRead = await api.inject({
+          headers: { authorization: `Bearer ${ownerA.accessToken}` },
+          method: 'GET',
+          url: '/api/v2/admin/flow-templates',
+        });
+        expect(nonAdminRead.statusCode).toBe(403);
+
+        const nonAdminMutation = await api.inject({
+          headers: { authorization: `Bearer ${ownerA.accessToken}` },
+          method: 'POST',
+          payload: { category: 'image', graph: { edges: [], nodes: [] }, title: 'Forbidden' },
+          url: '/api/v2/admin/flow-templates',
+        });
+        expect(nonAdminMutation.statusCode).toBe(403);
 
         const officialTemplateId = randomUUID();
         const draftTemplateId = randomUUID();
