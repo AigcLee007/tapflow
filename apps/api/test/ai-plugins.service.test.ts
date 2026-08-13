@@ -558,4 +558,18 @@ describe("AiPluginService route install statements", () => {
 
     expect(statement.values[16]).toBe("gemini-3.1-pro-preview");
   });
+
+  test("persists Aittco text image input capabilities on each route", () => {
+    const capability = {
+      maxImages: 3,
+      supportedImageMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+      supportsImageInput: true,
+    };
+    for (const route of aittcoTextRelayManifest.routes) {
+      expect(route.requestConfig.capabilities).toEqual(capability);
+    }
+    for (const model of aittcoTextRelayManifest.models) {
+      expect(model.capabilities).toEqual(expect.objectContaining(capability));
+    }
+  });
 });

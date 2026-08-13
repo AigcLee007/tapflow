@@ -16,6 +16,7 @@ export type AssetReferenceInput = {
 };
 
 export type TextGenerationRequest = {
+  inputAssets?: AssetReferenceInput[] | null;
   maxTokens?: number | null;
   messages: TextMessage[];
   model?: string | null;

@@ -49,8 +49,11 @@ export type AiPluginModelManifest = {
     supportedGenerationModes?: string[];
     supportedSizes?: string[];
     supportsImageEdit?: boolean;
+    supportsImageInput?: boolean;
     supportsReferenceImages?: boolean;
     supportsStreaming?: boolean;
+    maxImages?: number;
+    supportedImageMimeTypes?: string[];
   };
   defaultRouteKey: string;
   displayName: string;

@@ -1,6 +1,7 @@
-import type { AiModelCatalogItem, AiModelCatalogRoute } from "../../services/v2AiModelCatalogApi";
+import type { AiModelCatalogItem, AiModelCatalogRoute, AiModelCatalogRouteCapabilities } from "../../services/v2AiModelCatalogApi";
 
 export type TextRouteOption = {
+  capabilities: Pick<AiModelCatalogRouteCapabilities, "maxImages" | "supportedImageMimeTypes" | "supportsImageInput">;
   credits: number;
   id: string;
   label: string;
@@ -86,11 +87,26 @@ function toTextRouteOption(route: AiModelCatalogRoute): TextRouteOption | null {
   const credits = positiveNumber(route.estimatedCredits) ?? positiveNumber(route.minChargeCredits);
   if (credits === null || !route.routeId.trim() || !route.routeKey.trim()) return null;
   return {
+    capabilities: readTextImageCapabilities(route.capabilities),
     credits,
     id: route.routeId,
     label: route.routeLabel?.trim() || "默认线路",
     providerKey: route.providerKey,
     routeKey: route.routeKey,
+  };
+}
+
+function readTextImageCapabilities(capabilities: AiModelCatalogRouteCapabilities | undefined): TextRouteOption["capabilities"] {
+  const maxImages = typeof capabilities?.maxImages === "number" && Number.isFinite(capabilities.maxImages)
+    ? Math.max(1, Math.floor(capabilities.maxImages))
+    : undefined;
+  const supportedImageMimeTypes = Array.isArray(capabilities?.supportedImageMimeTypes)
+    ? capabilities.supportedImageMimeTypes.filter((value): value is string => typeof value === "string" && value.trim().startsWith("image/"))
+    : undefined;
+  return {
+    maxImages,
+    supportedImageMimeTypes,
+    supportsImageInput: capabilities?.supportsImageInput === true,
   };
 }
 

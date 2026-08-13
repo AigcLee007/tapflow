@@ -533,9 +533,10 @@ function buildNodeFailureMessageFromErrorJson(
   errorJson: Record<string, unknown> | null | undefined,
   fallbackMessage = '节点生成失败，请稍后重试。',
 ): string {
-  const message = typeof errorJson?.message === 'string' && errorJson.message.trim()
+  const mappedTextImageMessage = getTextImageErrorMessage(errorJson?.code);
+  const message = mappedTextImageMessage ?? (typeof errorJson?.message === 'string' && errorJson.message.trim()
     ? errorJson.message.trim()
-    : fallbackMessage;
+    : fallbackMessage);
   const details = formatProviderErrorDetails(errorJson?.details);
   if (!details) {
     return message;
@@ -1112,8 +1113,8 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
       ...workflowRunIdByNodeId,
     },
     runError:
-      snapshot.workflowRun.errorJson && typeof snapshot.workflowRun.errorJson.message === 'string'
-        ? snapshot.workflowRun.errorJson.message
+      snapshot.workflowRun.errorJson
+        ? buildNodeFailureMessageFromErrorJson(snapshot.workflowRun.errorJson)
         : state.runError,
     runStatus: snapshot.workflowRun.status,
   }));
@@ -1226,7 +1227,7 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
 
   if (event.eventType === 'workflow.run.failed') {
     useFlowCanvasStore.setState({
-      runError: typeof event.payload.message === 'string' ? event.payload.message : '工作流运行失败，请稍后重试。',
+      runError: buildNodeFailureMessageFromErrorJson(event.payload),
       runStatus: 'failed',
     });
   } else if (event.eventType === 'workflow.run.canceled') {
@@ -1275,6 +1276,18 @@ function buildRunLaunchError(message: string): Error {
   return new Error(message);
 }
 
+const TEXT_IMAGE_ERROR_MESSAGES: Record<string, string> = {
+  TEXT_IMAGE_ASSET_NOT_FOUND: '图片素材不存在或无权访问',
+  TEXT_IMAGE_INPUT_LIMIT_EXCEEDED: '当前模型最多支持 3 张图片',
+  TEXT_IMAGE_TYPE_UNSUPPORTED: '当前图片格式不受支持',
+  TEXT_IMAGE_URL_HYDRATION_FAILED: '图片读取失败，请稍后重试',
+  TEXT_MODEL_IMAGE_INPUT_UNSUPPORTED: '当前文本模型线路不支持图片输入，请切换支持图片的线路',
+};
+
+function getTextImageErrorMessage(code: unknown): string | null {
+  return typeof code === 'string' ? TEXT_IMAGE_ERROR_MESSAGES[code] ?? null : null;
+}
+
 export function getBackendRunLaunchErrorMessage(error: unknown): string {
   if (error instanceof V2HttpError && isInsufficientCreditsError(error)) {
     return buildInsufficientCreditsMessageFromError(error);
@@ -1286,11 +1299,19 @@ export function getBackendRunLaunchErrorMessage(error: unknown): string {
     const message = typeof (error as { message?: unknown }).message === 'string'
       ? String((error as { message?: unknown }).message)
       : '';
+    const textImageMessage = getTextImageErrorMessage(code);
+    if (textImageMessage) {
+      return textImageMessage;
+    }
     if (code || message) {
       return `${code ? `${code}: ` : ''}${message || 'Failed to start backend workflow.'}`;
     }
   }
   if (error instanceof V2HttpError) {
+    const textImageMessage = getTextImageErrorMessage(error.code);
+    if (textImageMessage) {
+      return textImageMessage;
+    }
     const code = error.code ? `${error.code}: ` : '';
     return `${code}${error.message || 'Failed to start backend workflow.'}`;
   }

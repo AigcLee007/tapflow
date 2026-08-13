@@ -104,6 +104,53 @@ async function registerOwner(
 }
 
 describeWithDatabase("ai model catalog API", () => {
+  test("publishes only safe Aittco text image input capabilities", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "aittco-text-image-owner@example.com", "Aittco Text Image Owner");
+        const install = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: { credential: { name: "Aittco Text Key", secret: "aittco-text-secret" }, publishImmediately: true },
+          url: "/api/v2/admin/ai/plugins/aittco.text-relay/install",
+        });
+        expect(install.statusCode).toBe(201);
+
+        const routes = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/gpt-5.5/routes",
+        });
+        expect(routes.statusCode).toBe(200);
+        expect(routes.json()).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            capabilities: expect.objectContaining({
+              maxImages: 3,
+              supportedImageMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+              supportsImageInput: true,
+            }),
+            routeKey: "text.gpt-5-5",
+          }),
+        ]));
+        const serialized = JSON.stringify(routes.json());
+        for (const unsafeKey of ["baseUrl", "credentialId", "signedUrl", "url", "objectKey"]) {
+          expect(serialized).not.toContain(unsafeKey);
+        }
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("publishes GPT-Image-2 production image modes into the safe runtime catalog", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

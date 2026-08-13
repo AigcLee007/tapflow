@@ -583,6 +583,30 @@ describe("worker skeleton", () => {
     expect(JSON.stringify(outputs)).not.toContain("base64");
   });
 
+  test("text message construction preserves structured upstream output without images", () => {
+    const buildTextMessages = (__workerTestUtils as {
+      buildTextMessages: (outputs: Array<Record<string, unknown> | null>, config: Record<string, unknown>, inputAssets?: unknown[]) => { messages: Array<{ content: string }> };
+    }).buildTextMessages;
+    expect(buildTextMessages([{ score: 7 }, { tags: ["cinematic"] }], {})).toMatchObject({
+      messages: [{ content: '{"score":7}\n{"tags":["cinematic"]}' }],
+    });
+  });
+
+  test("text image extraction preserves malformed asset declarations for validation", () => {
+    const extractTextInputAssets = (__workerTestUtils as {
+      extractTextInputAssets: (
+        outputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        runtimeFlow: { compiled_graph_json: { nodes: Array<{ id: string; type: string }> } },
+      ) => Array<{ assetId: string; kind: string | null; mimeType: string | null }>;
+    }).extractTextInputAssets;
+    expect(extractTextInputAssets(
+      new Map([["image-source", { assets: [{ kind: "image", mimeType: "image/png" }] }]]),
+      { compiled_graph_json: { nodes: [{ id: "image-source", type: "image.asset" }] } },
+    )).toEqual([
+      { assetId: "", kind: "image", mimeType: "image/png", durationMs: null, height: null, width: null },
+    ]);
+  });
+
   test("orders upstream text by inputOrder and appends unspecified dependencies in compiled order", () => {
     const getDependencyOutputs = (__workerTestUtils as {
       getDependencyOutputs: (node: {
@@ -2267,6 +2291,74 @@ describeWithDatabase("workflow node execution", () => {
           ledgerEntries: 1,
           usageEvents: 1,
         });
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("text.generate passes input-order image assets with transient URLs only to the runtime", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const seeded = await seedWorkflowRuntime(appPool, { middleNodeStatus: "runnable" });
+        const firstAssetId = "00000000-0000-4000-8000-000000000511";
+        const secondAssetId = "00000000-0000-4000-8000-000000000512";
+
+        await withTenantTransaction({ tenantId: seeded.tenantId, userId: seeded.userId }, async (client) => {
+          await client.query(
+            `INSERT INTO ai_providers (id, key, name, kind, status, default_base_url, capabilities, updated_at)
+             VALUES ($1::uuid, 'text-image-provider', 'Text Image Provider', 'mock', 'active', 'https://provider.invalid', '{}'::jsonb, now())`,
+            ["00000000-0000-4000-8000-000000000513"],
+          );
+          await client.query(
+            `INSERT INTO ai_models (id, provider_id, model_key, display_name, modality, capabilities, status, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'text-image-model', 'Text Image Model', 'text', $3::jsonb, 'active', now())`,
+            ["00000000-0000-4000-8000-000000000514", "00000000-0000-4000-8000-000000000513", JSON.stringify({ supportsImageInput: true, maxImages: 3, supportedImageMimeTypes: ["image/png"] })],
+          );
+          await client.query(
+            `INSERT INTO ai_routes (tenant_id, provider_id, model_id, route_key, modality, status, request_config, pricing, rate_limit, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'default-text', 'text', 'active', $4::jsonb, '{}'::jsonb, '{}'::jsonb, now())`,
+            [seeded.tenantId, "00000000-0000-4000-8000-000000000513", "00000000-0000-4000-8000-000000000514", JSON.stringify({ capabilities: { supportsImageInput: true, maxImages: 3, supportedImageMimeTypes: ["image/png"] } })],
+          );
+          for (const [id, objectKey] of [[firstAssetId, "tenants/text/first.png"], [secondAssetId, "tenants/text/second.png"]]) {
+            await client.query(
+              `INSERT INTO assets (id, tenant_id, project_id, owner_user_id, kind, mime_type, bucket, object_key, original_filename, status, source)
+               VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'image', 'image/png', 'test-bucket', $5, 'image.png', 'available', 'upload')`,
+              [id, seeded.tenantId, seeded.projectId, seeded.userId, objectKey],
+            );
+          }
+          await client.query(
+            `UPDATE flow_versions SET compiled_graph_json = $2::jsonb WHERE id = $1::uuid`,
+            [seeded.flowVersionId, JSON.stringify({
+              edges: [{ source: "first", target: "text" }, { source: "second", target: "text" }, { source: "text", target: "output" }],
+              entryNodeIds: ["first", "second"], outputNodeIds: ["output"], schemaVersion: "v2",
+              nodes: [
+                { id: "first", type: "image.asset", config: { assetId: firstAssetId, mimeType: "image/png" }, dependencies: [], dependents: ["text"] },
+                { id: "second", type: "image.asset", config: { assetId: secondAssetId, mimeType: "image/png" }, dependencies: [], dependents: ["text"] },
+                { id: "text", type: "text.generate", config: { routeKey: "default-text", inputOrder: ["upstream:second", "upstream:first"], generationPrompt: "describe these images" }, dependencies: ["first", "second"], dependents: ["output"] },
+                { id: "output", type: "output", config: {}, dependencies: ["text"], dependents: [] },
+              ],
+            })],
+          );
+        }, appPool);
+
+        const generateText = vi.fn(async () => ({ modelKey: "mock-model", outputText: "generated text", providerKey: "mock-provider", providerRequest: {}, providerResponse: {}, status: "succeeded" as const, usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 } }));
+        const service = createWorkflowService({ nodeQueue: createFakeNodeExecuteQueue(), pollQueue: createFakeProviderPollQueue(), pool: appPool, storageProvider: new MemoryStorageProvider(), textGenerationRuntime: { generateText } });
+        await processNodeExecuteJob({ data: { nodeRunId: seeded.middleNodeRunId, tenantId: seeded.tenantId, traceId: "trace-text-images", workflowRunId: seeded.workflowRunId }, id: "job-text-images", queueName: QUEUE_NAMES.nodeExecute } as never, createTestLogger(), { executionService: service });
+
+        const request = generateText.mock.calls[0]?.[1] as { inputAssets?: Array<{ assetId: string; metadata?: { url?: string; objectKey?: string } }> };
+        expect(request.inputAssets?.map((asset) => asset.assetId)).toEqual([secondAssetId, firstAssetId]);
+        expect(request.inputAssets?.map((asset) => asset.metadata?.url)).toEqual([
+          expect.stringMatching(/^https:\/\/storage\.test\//),
+          expect.stringMatching(/^https:\/\/storage\.test\//),
+        ]);
+        expect(JSON.stringify(request)).not.toContain('"objectKey"');
       } finally {
         await appPool.end();
         await adminPool.end();

@@ -653,6 +653,43 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('markBackendRunLaunchFailed maps text image error codes to creator messages', () => {
+    useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      status: 'running',
+      title: 'Prompt',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    markBackendRunLaunchFailed(nodeId, new V2HttpError({
+      code: 'TEXT_IMAGE_INPUT_LIMIT_EXCEEDED',
+      message: 'The input has too many images',
+      status: 422,
+    }));
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)
+      .toBe('当前模型最多支持 3 张图片');
+    expect(useFlowCanvasStore.getState().runError).toBe('当前模型最多支持 3 张图片');
+  });
+
+  test('markBackendRunLaunchFailed maps unsupported text image routes to the menu message', () => {
+    useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      status: 'running',
+      title: 'Prompt',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    markBackendRunLaunchFailed(nodeId, new V2HttpError({
+      code: 'TEXT_MODEL_IMAGE_INPUT_UNSUPPORTED',
+      message: 'The route does not accept images',
+      status: 422,
+    }));
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)
+      .toBe('当前文本模型线路不支持图片输入，请切换支持图片的线路');
+  });
+
   test('markBackendRunLaunchFailed appends panorama generation context for provider failures', () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationMode: 'panorama_360',

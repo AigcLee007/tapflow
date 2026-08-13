@@ -3,6 +3,17 @@
 Last updated: 2026-08-12
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Text Node Multimodal Image Input Implementation
+
+- implemented ordered upstream Image Node delivery for Text Nodes. The shared text-generation contract accepts at most three images, validates route/model capability and MIME compatibility, and never falls back to a text-only provider request when image input is invalid.
+- added native image protocol mappings for OpenAI-compatible Chat Completions/Responses and Aittco relay Chat Completions, Responses, Gemini, and Claude routes. Provider diagnostics contain only image count and MIME types; signed URLs remain in Worker memory and are omitted from drafts, outputs, and diagnostic payloads.
+- added typed image-input capabilities to the Aittco text plugin and safe runtime/catalog projections, plus migration `000068_text_route_image_input_capabilities.sql` to update verified models, routes, and installed catalog entries without changing route keys, credentials, pricing, or status.
+- Worker execution now uses the creator's `inputOrder`, validates tenant-owned image assets, hydrates short-lived URLs immediately before execution, preserves pure-text behavior, and maps malformed/missing assets and signing failures to stable `TEXT_IMAGE_*` errors. API preflight rejects deterministic unsupported-route and four-image cases before pricing, workflow-run insertion, credit reserve, or queue enqueue.
+- Text Node model menus disable incompatible routes when connected image inputs are present, and runtime errors now have creator-facing Chinese messages.
+- aligned the final boundaries across the API and Worker: both use the default `text.gpt-5-5` route, only `image.asset` and `image.generate` source assets reach a Text Node, and video/audio dependencies are rejected before billing. The public text-generation API rejects undeclared image input rather than silently dropping it; provider error logging also redacts storage and signed-URL fields.
+- validation passed: `@aigc-flow/ai-gateway-core` full suite (`170` tests); `@aigc-flow/worker` full suite (`88` passed, `18` skipped because database integration is unavailable); focused frontend suite (`81` tests); focused API workflow-run suite (`2` passed, `15` skipped because database integration is unavailable); API and Worker package builds; root frontend build.
+- remaining validation: API database integration tests (including no-billing/no-queue preflight assertions) require a configured `DATABASE_URL`. The full API suite is additionally blocked by pre-existing syntax damage in `apps/api/test/admin.test.ts` and `apps/api/test/queues.test.ts`, plus an unrelated existing video pricing assertion. No authenticated local browser smoke or staging deployment was run. Before staging, use the Docker Compose v2 path, stop the Worker, run `node packages/db/dist/cli.js`, restart services, then validate one image, ordered three images, pure text, unsupported route, and four-image preflight behavior.
+
 ## 2026-08-12 - Text Node Multimodal Image Input Implementation Plan
 
 - completed the approved implementation plan in `docs/superpowers/plans/2026-08-12-text-node-multimodal-image-input.md`.

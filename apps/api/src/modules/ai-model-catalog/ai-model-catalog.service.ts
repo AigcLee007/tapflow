@@ -131,6 +131,8 @@ export type ModelCatalogRouteView = {
     supportedVideoWorkflows: string[];
     supportsAudio?: boolean;
     supportsHumanReview?: boolean;
+    supportsImageInput?: boolean;
+    supportedImageMimeTypes?: string[];
   };
   estimatedCredits: number | null;
   minChargeCredits: number | null;
@@ -378,10 +380,19 @@ function projectModelCatalogCapabilities(source: Record<string, unknown> | null 
 
   return {
     ...projectSafeImageCatalogCapabilities(source),
+    ...projectSafeTextImageCatalogCapabilities(source),
     ...(supportedGenerationModes.length ? { supportedGenerationModes } : {}),
     ...(supportedVideoWorkflows.length ? { supportedVideoWorkflows } : {}),
     ...mergeSafeVideoCapabilities(source),
   };
+}
+
+function projectSafeTextImageCatalogCapabilities(source: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (readBoolean(source, "supportsImageInput") !== true) return {};
+  const maxImages = readPositiveInteger(source, "maxImages");
+  const supportedImageMimeTypes = readSupportedImageMimeTypes(source);
+  if (!maxImages || !supportedImageMimeTypes.length) return {};
+  return { maxImages: Math.min(3, maxImages), supportedImageMimeTypes, supportsImageInput: true };
 }
 
 function mapModelCatalogRoute(row: ModelRouteRecord): ModelCatalogRouteView {
@@ -449,6 +460,11 @@ function readPositiveNumber(source: unknown, key: string): number | undefined {
   return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+function readPositiveInteger(source: unknown, key: string): number | undefined {
+  const value = readPositiveNumber(source, key);
+  return value !== undefined && Number.isInteger(value) ? value : undefined;
+}
+
 function readBoolean(source: unknown, key: string): boolean | undefined {
   const value = source && typeof source === "object"
     ? (source as Record<string, unknown>)[key]
@@ -507,12 +523,42 @@ function mergeModelRouteCapabilities(input: {
     ...readSupportedVideoWorkflows(routeCapabilities),
   ]));
   const videoCapabilities = mergeSafeVideoCapabilities(input.modelCapabilities, routeCapabilities);
+  const textImageCapabilities = mergeSafeTextImageCapabilities(input.modelCapabilities, routeCapabilities);
 
   return {
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows,
     ...videoCapabilities,
+    ...textImageCapabilities,
   };
+}
+
+function mergeSafeTextImageCapabilities(
+  modelCapabilities?: Record<string, unknown> | null,
+  routeCapabilities?: Record<string, unknown> | null,
+): Pick<ModelCatalogRouteView["capabilities"], "maxImages" | "supportedImageMimeTypes" | "supportsImageInput"> {
+  if (readBoolean(modelCapabilities, "supportsImageInput") !== true || readBoolean(routeCapabilities, "supportsImageInput") !== true) {
+    return {};
+  }
+  const modelMax = readPositiveInteger(modelCapabilities, "maxImages");
+  const routeMax = readPositiveInteger(routeCapabilities, "maxImages");
+  const modelMimeTypes = readSupportedImageMimeTypes(modelCapabilities);
+  const routeMimeTypes = readSupportedImageMimeTypes(routeCapabilities);
+  if (!modelMax || !routeMax || !modelMimeTypes.length || !routeMimeTypes.length) return {};
+
+  const supportedImageMimeTypes = modelMimeTypes.filter((mimeType) => routeMimeTypes.includes(mimeType));
+  if (!supportedImageMimeTypes.length) return {};
+  return {
+    maxImages: Math.min(3, modelMax, routeMax),
+    supportedImageMimeTypes,
+    supportsImageInput: true,
+  };
+}
+
+function readSupportedImageMimeTypes(source: unknown): string[] {
+  return readStringArray(source, "supportedImageMimeTypes")
+    .map((mimeType) => mimeType.toLowerCase())
+    .filter((mimeType) => /^image\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(mimeType));
 }
 
 function mergeSafeVideoCapabilities(...sources: Array<Record<string, unknown> | null | undefined>) {

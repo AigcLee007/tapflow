@@ -28,8 +28,11 @@ import {
 } from "@aigc-flow/workflow-core";
 import {
   readVideoCapabilities,
+  resolveTextGenerationCapabilities,
+  validateTextImageInput,
   validateVideoGenerationRequest,
   type AssetReferenceInput,
+  type TextGenerationCapabilities,
   type VideoGenerationCapabilities,
   type VideoGenerationParams,
   type VideoGenerationRequest,
@@ -123,7 +126,7 @@ export type ResolvedNodePricing = {
 };
 
 type RouteRuntimeContext = {
-  capabilities: Partial<VideoGenerationCapabilities> & {
+  capabilities: Partial<VideoGenerationCapabilities> & TextGenerationCapabilities & {
     supportedGenerationModes: string[];
     supportedVideoWorkflows: string[];
   };
@@ -454,14 +457,82 @@ function mergeRouteRuntimeCapabilities(input: {
   ]));
   const videoCapabilities = readVideoCapabilities(routeCapabilities)
     ?? readVideoCapabilities(input.modelCapabilities);
+  const textCapabilities = resolveTextGenerationCapabilities(input.modelCapabilities, routeCapabilities);
   return {
     ...(videoCapabilities ?? {}),
+    ...textCapabilities,
     supportedGenerationModes: supportedGenerationModes.length > 0 ? supportedGenerationModes : ["standard"],
     supportedVideoWorkflows: Array.from(new Set([
       ...readSupportedVideoWorkflows(input.modelCapabilities),
       ...readSupportedVideoWorkflows(routeCapabilities),
     ])),
   };
+}
+
+function getOrderedDependencyIds(node: Pick<CompiledWorkflow["nodes"][number], "config" | "dependencies">): string[] {
+  const requestedOrder = Array.isArray(node.config?.inputOrder)
+    ? node.config.inputOrder
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.startsWith("upstream:") ? value.slice("upstream:".length) : "")
+      .filter((dependencyId) => node.dependencies.includes(dependencyId))
+    : [];
+  return Array.from(new Set([...requestedOrder, ...node.dependencies]));
+}
+
+export function getTextImageInputCandidates(
+  node: CompiledWorkflow["nodes"][number],
+  workflow: CompiledWorkflow,
+  capabilities: TextGenerationCapabilities,
+): AssetReferenceInput[] {
+  const nodesById = new Map(workflow.nodes.map((candidate) => [candidate.id, candidate]));
+  return getOrderedDependencyIds(node)
+    .map((dependencyId) => nodesById.get(dependencyId))
+    .filter((dependency): dependency is CompiledWorkflow["nodes"][number] =>
+      dependency?.type === "image.asset" || dependency?.type === "image.generate")
+    .map((dependency) => ({
+      // The API validates deterministic topology only. The Worker validates real tenant assets and MIME types.
+      assetId: dependency.id,
+      kind: "image",
+      mimeType: capabilities.supportedImageMimeTypes[0] ?? "image/png",
+    }));
+}
+
+export function assertTextImageInputsSupportedByRuntimeGraph(input: {
+  node: CompiledWorkflow["nodes"][number];
+  routeContext: RouteRuntimeContext | null;
+  workflow: CompiledWorkflow;
+}): void {
+  if (input.node.type !== "text.generate") return;
+  const nodesById = new Map(input.workflow.nodes.map((candidate) => [candidate.id, candidate]));
+  const unsupportedMediaDependency = getOrderedDependencyIds(input.node)
+    .map((dependencyId) => nodesById.get(dependencyId))
+    .find((dependency) => dependency?.type === "video.asset" || dependency?.type === "video.generate" || dependency?.type === "audio.asset" || dependency?.type === "audio.generate");
+  if (unsupportedMediaDependency) {
+    throw new WorkflowRunsApiError(
+      422,
+      "TEXT_IMAGE_TYPE_UNSUPPORTED",
+      "Only image inputs are supported for text generation.",
+    );
+  }
+  const issue = validateTextImageInput({
+    capabilities: input.routeContext?.capabilities ?? {
+      maxImages: 0,
+      supportedImageMimeTypes: [],
+      supportsImageInput: false,
+    },
+    inputAssets: getTextImageInputCandidates(
+      input.node,
+      input.workflow,
+      input.routeContext?.capabilities ?? {
+        maxImages: 0,
+        supportedImageMimeTypes: [],
+        supportsImageInput: false,
+      },
+    ),
+  });
+  if (issue) {
+    throw new WorkflowRunsApiError(422, issue.code, issue.message);
+  }
 }
 
 function readTrimmedString(value: unknown): string | null {
@@ -867,19 +938,6 @@ export class WorkflowRunsService {
           },
           "workflow run runtime graph loaded",
         );
-        const pricingStartedAt = Date.now();
-        const pricingRows = await this.loadActivePricing(client);
-        this.logCreateRunDiagnostic(
-          {
-            flowId,
-            pricingLoadMs: Date.now() - pricingStartedAt,
-            runMode,
-            targetNodeId,
-            tenantId: context.tenantId,
-            traceId: context.traceId ?? null,
-          },
-          "workflow run pricing loaded",
-        );
         const routeContextStartedAt = Date.now();
         const routeContexts = await this.loadRouteRuntimeContexts(
           client,
@@ -965,12 +1023,32 @@ export class WorkflowRunsService {
 
         for (const node of nodesToRun) {
           const effectiveRoute = resolveEffectiveRouteKey(node);
+          const routeContext = routeContexts.get(effectiveRoute) ?? null;
+          assertTextImageInputsSupportedByRuntimeGraph({
+            node,
+            routeContext,
+            workflow: runtimeFlow.compiled_graph_json,
+          });
           assertNodeRouteSupportsRuntimeRequest({
             compiledGraph: runtimeFlow.compiled_graph_json,
             node,
-            routeContext: routeContexts.get(effectiveRoute) ?? null,
+            routeContext,
           });
         }
+
+        const pricingStartedAt = Date.now();
+        const pricingRows = await this.loadActivePricing(client);
+        this.logCreateRunDiagnostic(
+          {
+            flowId,
+            pricingLoadMs: Date.now() - pricingStartedAt,
+            runMode,
+            targetNodeId,
+            tenantId: context.tenantId,
+            traceId: context.traceId ?? null,
+          },
+          "workflow run pricing loaded",
+        );
 
         const runId = randomUUID();
         const runInsertStartedAt = Date.now();
