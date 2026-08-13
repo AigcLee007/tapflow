@@ -16,6 +16,8 @@ import {
 } from '../src/modules/flow-templates/flow-templates.schemas.js';
 import {
   mapFlowTemplateRecord,
+  FlowTemplatesApiError,
+  FlowTemplatesService,
   withSystemAdminFlowTemplateTransaction,
 } from '../src/modules/flow-templates/flow-templates.service.js';
 
@@ -23,6 +25,54 @@ const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 
 describe('flow template lifecycle schemas', () => {
+  test('publishing stores normalized content as an immutable current-version snapshot', async () => {
+    const queries: Array<{ sql: string; values?: unknown[] }> = [];
+    const client = {
+      query: async (sql: string, values?: unknown[]) => {
+        queries.push({ sql, values });
+        if ((sql.includes('SELECT id::text AS id') && sql.includes('FOR UPDATE')) || sql.includes('UPDATE flow_templates SET graph_json')) {
+          return {
+            rows: [
+              {
+                category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(),
+                description: '', estimated_credits: '2', graph_json: { nodes: [{ id: 'node-a', position: { x: 10, y: 20 } }], edges: [] },
+                id: randomUUID(), input_schema: [], node_count: 1, published_at: null, published_by: null, status: 'testing',
+                tenant_id: null, title: 'Snapshot', updated_at: '2026-08-13T00:00:00.000Z', version: 0, version_snapshot_id: null, visibility: 'official',
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+      release: () => undefined,
+    } as unknown as PoolClient;
+    const pool = { connect: async () => client } as unknown as ReturnType<typeof createPgPool>;
+    const service = new FlowTemplatesService({ pool });
+
+    await service.publish({ tenantId: randomUUID(), userId: randomUUID() }, randomUUID());
+
+    expect(queries.some(({ sql }) => sql.includes('INSERT INTO flow_template_versions'))).toBe(true);
+    expect(queries.some(({ sql }) => sql.includes("status='published'"))).toBe(true);
+  });
+
+  test('rejects publishing a draft before it has entered testing', async () => {
+    const client = {
+      query: async (sql: string) => ({
+        rows: sql.includes('FOR UPDATE')
+          ? [{ id: randomUUID(), status: 'draft', graph_json: { nodes: [], edges: [] }, input_schema: [], node_count: 0 }]
+          : [],
+      }),
+      release: () => undefined,
+    } as unknown as PoolClient;
+    const pool = { connect: async () => client } as unknown as ReturnType<typeof createPgPool>;
+    const service = new FlowTemplatesService({ pool });
+
+    await expect(service.publish({ tenantId: randomUUID(), userId: randomUUID() }, randomUUID())).rejects.toMatchObject({
+      code: 'FLOW_TEMPLATE_NOT_READY',
+      statusCode: 409,
+    } satisfies Partial<FlowTemplatesApiError>);
+  });
+
   test('accepts a draft with the supported template input definitions', () => {
     const result = saveFlowTemplateDraftSchema.parse({
       category: 'video',

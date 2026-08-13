@@ -1,11 +1,15 @@
 import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
 import type { Pool, PoolClient } from 'pg';
 
-import type { FlowTemplateListQuery } from './flow-templates.schemas.js';
+import type {
+  FlowTemplateAdminListQuery,
+  FlowTemplateListQuery,
+  SaveFlowTemplateDraftInput,
+} from './flow-templates.schemas.js';
 
 type PgPool = Pool;
 
-type FlowTemplateContext = {
+export type FlowTemplateContext = {
   tenantId: string;
   userId: string | null;
 };
@@ -82,6 +86,82 @@ export type FlowTemplateView = {
   visibility: 'official' | 'private' | 'tenant';
 };
 
+type TemplateGraph = {
+  edges: Array<Record<string, unknown>>;
+  nodes: Array<Record<string, unknown>>;
+};
+
+function normalizeTemplateGraph(value: Record<string, unknown>): TemplateGraph {
+  const nodes = Array.isArray(value.nodes) ? value.nodes : null;
+  const edges = Array.isArray(value.edges) ? value.edges : null;
+  if (!nodes || !edges) {
+    throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板必须包含 nodes 和 edges 数组');
+  }
+
+  const nodeIds = new Set<string>();
+  const normalizedNodes = nodes.map((rawNode) => {
+    if (!rawNode || typeof rawNode !== 'object' || Array.isArray(rawNode)) {
+      throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板节点无效');
+    }
+    const node = { ...(rawNode as Record<string, unknown>) };
+    if (typeof node.id !== 'string' || !node.id) {
+      throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板节点缺少 ID');
+    }
+    if (nodeIds.has(node.id)) {
+      throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板节点 ID 重复');
+    }
+    nodeIds.add(node.id);
+    delete node.selected;
+    delete node.dragging;
+    delete node.measured;
+    return node;
+  });
+
+  const normalizedEdges = edges.map((rawEdge) => {
+    if (!rawEdge || typeof rawEdge !== 'object' || Array.isArray(rawEdge)) {
+      throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板连线无效');
+    }
+    const edge = { ...(rawEdge as Record<string, unknown>) };
+    if (typeof edge.source !== 'string' || typeof edge.target !== 'string' || !nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板不能包含外部连线');
+    }
+    delete edge.selected;
+    return edge;
+  });
+
+  const containsUnsafeValue = (input: unknown): boolean => {
+    if (typeof input === 'string') return /^(data:|blob:)/i.test(input) || /(authorization|api[_-]?key|secret|token)/i.test(input);
+    if (Array.isArray(input)) return input.some(containsUnsafeValue);
+    return Boolean(input && typeof input === 'object' && Object.values(input as Record<string, unknown>).some(containsUnsafeValue));
+  };
+  if (containsUnsafeValue({ nodes: normalizedNodes, edges: normalizedEdges })) {
+    throw new FlowTemplatesApiError(400, 'UNSAFE_TEMPLATE_GRAPH', '模板不能包含临时媒体地址或敏感凭据');
+  }
+
+  const positions = normalizedNodes
+    .map((node) => node.position)
+    .filter((position): position is { x: number; y: number } => Boolean(position && typeof position === 'object' && typeof (position as { x?: unknown }).x === 'number' && typeof (position as { y?: unknown }).y === 'number'));
+  const minX = positions.length ? Math.min(...positions.map((position) => position.x)) : 0;
+  const minY = positions.length ? Math.min(...positions.map((position) => position.y)) : 0;
+  normalizedNodes.forEach((node) => {
+    const position = node.position;
+    if (position && typeof position === 'object' && typeof (position as { x?: unknown }).x === 'number' && typeof (position as { y?: unknown }).y === 'number') {
+      node.position = { x: (position as { x: number }).x - minX, y: (position as { y: number }).y - minY };
+    }
+  });
+  return { nodes: normalizedNodes, edges: normalizedEdges };
+}
+
+function validateTemplateInputs(inputSchema: unknown[], graph: TemplateGraph): void {
+  const nodeIds = new Set(graph.nodes.map((node) => node.id as string));
+  for (const input of inputSchema) {
+    const target = input && typeof input === 'object' ? (input as { target?: { nodeId?: unknown } }).target : undefined;
+    if (typeof target?.nodeId !== 'string' || !nodeIds.has(target.nodeId)) {
+      throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '模板输入必须绑定到模板内节点');
+    }
+  }
+}
+
 export class FlowTemplatesApiError extends Error {
   readonly code: string;
   readonly statusCode: number;
@@ -138,10 +218,10 @@ export class FlowTemplatesService {
             category,
             visibility,
             cover_asset_id::text AS cover_asset_id,
-            graph_json,
-            input_schema,
-            node_count,
-            estimated_credits::text AS estimated_credits,
+            version_snapshot.graph_json,
+            version_snapshot.input_schema,
+            version_snapshot.node_count,
+            version_snapshot.estimated_credits::text AS estimated_credits,
             status,
             version,
             version_snapshot.id::text AS version_snapshot_id,
@@ -150,7 +230,7 @@ export class FlowTemplatesService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM flow_templates
-          LEFT JOIN flow_template_versions AS version_snapshot
+          INNER JOIN flow_template_versions AS version_snapshot
             ON version_snapshot.template_id = flow_templates.id
             AND version_snapshot.version = flow_templates.version
           WHERE tenant_id IS NULL
@@ -186,10 +266,10 @@ export class FlowTemplatesService {
             category,
             visibility,
             cover_asset_id::text AS cover_asset_id,
-            graph_json,
-            input_schema,
-            node_count,
-            estimated_credits::text AS estimated_credits,
+            version_snapshot.graph_json,
+            version_snapshot.input_schema,
+            version_snapshot.node_count,
+            version_snapshot.estimated_credits::text AS estimated_credits,
             status,
             version,
             version_snapshot.id::text AS version_snapshot_id,
@@ -198,7 +278,7 @@ export class FlowTemplatesService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM flow_templates
-          LEFT JOIN flow_template_versions AS version_snapshot
+          INNER JOIN flow_template_versions AS version_snapshot
             ON version_snapshot.template_id = flow_templates.id
             AND version_snapshot.version = flow_templates.version
           WHERE id = $1::uuid
@@ -271,5 +351,106 @@ export class FlowTemplatesService {
 
       return { ok: true as const };
     }, this.pool);
+  }
+
+  async listAdminTemplates(ctx: SystemAdminFlowTemplateContext, query: FlowTemplateAdminListQuery): Promise<FlowTemplateView[]> {
+    return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
+      const result = await client.query<FlowTemplateRecord>(`
+        SELECT id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category,
+          visibility, cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count,
+          estimated_credits::text AS estimated_credits, status, version, NULL::text AS version_snapshot_id,
+          published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at
+        FROM flow_templates
+        WHERE tenant_id IS NULL AND ($1::text IS NULL OR status = $1)
+          AND ($2::text IS NULL OR category = $2)
+          AND ($3::text IS NULL OR title ILIKE '%' || $3 || '%' OR description ILIKE '%' || $3 || '%')
+        ORDER BY updated_at DESC, id ASC`, [query.status ?? null, query.category ?? null, query.query?.trim() || null]);
+      return result.rows.map(mapFlowTemplateRecord);
+    }, this.pool);
+  }
+
+  async getAdminTemplate(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
+    return withSystemAdminFlowTemplateTransaction(ctx, async (client) => this.getAdminTemplateForUpdate(client, templateId), this.pool);
+  }
+
+  async createDraft(ctx: SystemAdminFlowTemplateContext, input: SaveFlowTemplateDraftInput): Promise<FlowTemplateView> {
+    const graph = normalizeTemplateGraph(input.graph);
+    validateTemplateInputs(input.inputSchema, graph);
+    return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
+      const result = await client.query<FlowTemplateRecord>(`
+        INSERT INTO flow_templates (tenant_id, created_by, title, description, category, visibility, cover_asset_id, graph_json, input_schema, node_count, estimated_credits, status)
+        VALUES (NULL, $1::uuid, $2, $3, $4, 'official', $5::uuid, $6::jsonb, $7::jsonb, $8, $9, 'draft')
+        RETURNING id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
+          cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status,
+          version, NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at`,
+        [ctx.userId, input.title, input.description, input.category, input.coverAssetId ?? null, JSON.stringify(graph), JSON.stringify(input.inputSchema), graph.nodes.length, input.estimatedCredits ?? null]);
+      return mapFlowTemplateRecord(result.rows[0]!);
+    }, this.pool);
+  }
+
+  async updateDraft(ctx: SystemAdminFlowTemplateContext, templateId: string, input: SaveFlowTemplateDraftInput): Promise<FlowTemplateView> {
+    const graph = normalizeTemplateGraph(input.graph);
+    validateTemplateInputs(input.inputSchema, graph);
+    return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
+      const current = await this.getAdminTemplateForUpdate(client, templateId);
+      if (current.status === 'archived') throw new FlowTemplatesApiError(409, 'FLOW_TEMPLATE_ARCHIVED', '已下架模板不可修改');
+      const result = await client.query<FlowTemplateRecord>(`
+        UPDATE flow_templates SET title=$2, description=$3, category=$4, cover_asset_id=$5::uuid, graph_json=$6::jsonb, input_schema=$7::jsonb,
+          node_count=$8, estimated_credits=$9, status = CASE WHEN status = 'published' THEN 'draft' ELSE status END, updated_at=now()
+        WHERE id=$1::uuid
+        RETURNING id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
+          cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status,
+          version, NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at`,
+        [templateId, input.title, input.description, input.category, input.coverAssetId ?? null, JSON.stringify(graph), JSON.stringify(input.inputSchema), graph.nodes.length, input.estimatedCredits ?? null]);
+      return mapFlowTemplateRecord(result.rows[0]!);
+    }, this.pool);
+  }
+
+  async markTesting(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
+    return this.transitionStatus(ctx, templateId, 'testing');
+  }
+
+  async archive(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
+    return this.transitionStatus(ctx, templateId, 'archived');
+  }
+
+  async publish(ctx: SystemAdminFlowTemplateContext, templateId: string): Promise<FlowTemplateView> {
+    return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
+      const current = await this.getAdminTemplateForUpdate(client, templateId);
+      if (current.status !== 'testing') throw new FlowTemplatesApiError(409, 'FLOW_TEMPLATE_NOT_READY', '模板必须先通过测试');
+      const graph = normalizeTemplateGraph(current.graph);
+      validateTemplateInputs(current.inputSchema, graph);
+      if (!graph.nodes.length) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_GRAPH', '模板至少需要一个节点');
+      const nextVersion = current.version + 1;
+      await client.query(`INSERT INTO flow_template_versions (template_id, version, graph_json, input_schema, node_count, estimated_credits, created_by)
+        VALUES ($1::uuid, $2, $3::jsonb, $4::jsonb, $5, $6, $7::uuid)`, [templateId, nextVersion, JSON.stringify(graph), JSON.stringify(current.inputSchema), graph.nodes.length, current.estimatedCredits, ctx.userId]);
+      const result = await client.query<FlowTemplateRecord>(`UPDATE flow_templates SET graph_json=$2::jsonb, node_count=$3, version=$4, status='published', published_at=now(), published_by=$5::uuid, updated_at=now()
+        WHERE id=$1::uuid
+        RETURNING id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
+          cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status,
+          version, $6::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at`,
+        [templateId, JSON.stringify(graph), graph.nodes.length, nextVersion, ctx.userId, null]);
+      return mapFlowTemplateRecord(result.rows[0]!);
+    }, this.pool);
+  }
+
+  private async transitionStatus(ctx: SystemAdminFlowTemplateContext, templateId: string, status: 'testing' | 'archived'): Promise<FlowTemplateView> {
+    return withSystemAdminFlowTemplateTransaction(ctx, async (client) => {
+      await this.getAdminTemplateForUpdate(client, templateId);
+      const result = await client.query<FlowTemplateRecord>(`UPDATE flow_templates SET status=$2, updated_at=now() WHERE id=$1::uuid
+        RETURNING id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
+          cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status,
+          version, NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at`, [templateId, status]);
+      return mapFlowTemplateRecord(result.rows[0]!);
+    }, this.pool);
+  }
+
+  private async getAdminTemplateForUpdate(client: PoolClient, templateId: string): Promise<FlowTemplateView> {
+    const result = await client.query<FlowTemplateRecord>(`SELECT id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility,
+      cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status, version,
+      NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at
+      FROM flow_templates WHERE id=$1::uuid AND tenant_id IS NULL FOR UPDATE`, [templateId]);
+    if (!result.rows[0]) throw new FlowTemplatesApiError(404, 'FLOW_TEMPLATE_NOT_FOUND', '未找到对应模板');
+    return mapFlowTemplateRecord(result.rows[0]);
   }
 }
