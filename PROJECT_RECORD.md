@@ -3,6 +3,11 @@
 Last updated: 2026-08-13
 Maintainers: project team + Codex sessions
 
+## 2026-08-13 - Image-to-Video Reference Limit Repair
+
+- fixed canvas input reconciliation so an `image_to_video` video node keeps exactly one image reference when a connected upstream image coexists with stale/direct asset reference metadata. The upstream image is preferred, preventing `REFERENCE_LIMIT_EXCEEDED` before provider execution.
+- added store regressions covering direct asset cleanup and the one-image invariant. Focused store tests pass (`45` tests).
+
 ## 2026-08-13 - Text Relay Inline Image Transport Repair
 
 - production logs confirmed that Gemini, GPT, and Claude routes all reached the shared Aittco relay with one validated PNG image, then failed with the same HTTP 400. The common failure was the relay receiving tenant object-storage signed URLs that it could not fetch, not a lack of upstream multimodal capability.
