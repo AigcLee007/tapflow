@@ -594,9 +594,15 @@ describe("worker skeleton", () => {
 
   test("text image extraction preserves malformed asset declarations for validation", () => {
     const extractTextInputAssets = (__workerTestUtils as {
-      extractTextInputAssets: (outputs: Array<Record<string, unknown> | null>) => Array<{ assetId: string; kind: string | null; mimeType: string | null }>;
+      extractTextInputAssets: (
+        outputs: ReadonlyMap<string, Record<string, unknown> | null>,
+        runtimeFlow: { compiled_graph_json: { nodes: Array<{ id: string; type: string }> } },
+      ) => Array<{ assetId: string; kind: string | null; mimeType: string | null }>;
     }).extractTextInputAssets;
-    expect(extractTextInputAssets([{ assets: [{ kind: "image", mimeType: "image/png" }] }])).toEqual([
+    expect(extractTextInputAssets(
+      new Map([["image-source", { assets: [{ kind: "image", mimeType: "image/png" }] }]]),
+      { compiled_graph_json: { nodes: [{ id: "image-source", type: "image.asset" }] } },
+    )).toEqual([
       { assetId: "", kind: "image", mimeType: "image/png", durationMs: null, height: null, width: null },
     ]);
   });
