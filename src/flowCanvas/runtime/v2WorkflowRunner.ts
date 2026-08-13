@@ -1279,6 +1279,7 @@ function buildRunLaunchError(message: string): Error {
 const TEXT_IMAGE_ERROR_MESSAGES: Record<string, string> = {
   TEXT_IMAGE_ASSET_NOT_FOUND: '图片素材不存在或无权访问',
   TEXT_IMAGE_INPUT_LIMIT_EXCEEDED: '当前模型最多支持 3 张图片',
+  TEXT_IMAGE_SIZE_LIMIT_EXCEEDED: '单张图片不能超过 10 MB',
   TEXT_IMAGE_TYPE_UNSUPPORTED: '当前图片格式不受支持',
   TEXT_IMAGE_URL_HYDRATION_FAILED: '图片读取失败，请稍后重试',
   TEXT_MODEL_IMAGE_INPUT_UNSUPPORTED: '当前文本模型线路不支持图片输入，请切换支持图片的线路',

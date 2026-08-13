@@ -672,6 +672,24 @@ describe('v2WorkflowRunner', () => {
     expect(useFlowCanvasStore.getState().runError).toBe('当前模型最多支持 3 张图片');
   });
 
+  test('markBackendRunLaunchFailed distinguishes oversized text image inputs from count limits', () => {
+    useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
+      generationStatus: 'generating',
+      status: 'running',
+      title: 'Prompt',
+    });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+
+    markBackendRunLaunchFailed(nodeId, new V2HttpError({
+      code: 'TEXT_IMAGE_SIZE_LIMIT_EXCEEDED',
+      message: 'The image input is too large to send to the text provider.',
+      status: 422,
+    }));
+
+    expect(useFlowCanvasStore.getState().nodes[0]?.data.errorMessage)
+      .toBe('单张图片不能超过 10 MB');
+  });
+
   test('markBackendRunLaunchFailed maps unsupported text image routes to the menu message', () => {
     useFlowCanvasStore.getState().addNode('text', { x: 0, y: 0 }, {
       generationStatus: 'generating',

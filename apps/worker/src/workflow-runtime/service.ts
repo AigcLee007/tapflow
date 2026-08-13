@@ -3406,7 +3406,7 @@ export class WorkflowNodeExecutionService {
         });
         if (object.body.byteLength > MAX_TEXT_IMAGE_INLINE_BYTES) {
           throw new AiGatewayError({
-            code: TEXT_IMAGE_INPUT_ERROR_CODES.LIMIT_EXCEEDED,
+            code: "TEXT_IMAGE_SIZE_LIMIT_EXCEEDED",
             message: "The image input is too large to send to the text provider.",
             statusCode: 422,
           });
