@@ -9,6 +9,9 @@ import { InspectionDashboardPage } from "../account/InspectionDashboardPage";
 import { AiSettingsPage } from "../account/ai-settings/AiSettingsPage";
 import { TemplateLibraryPage } from "../account/TemplateLibraryPage";
 import { AdminPage } from "../admin/AdminPage";
+import { TemplateAdminEditorPage } from "../admin/templates/TemplateAdminEditorPage";
+import { TemplateAdminListPage } from "../admin/templates/TemplateAdminListPage";
+import { getTemplateIdFromAdminPath } from "../admin/templates/templateAdminNavigation";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
@@ -27,6 +30,7 @@ import {
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
   ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
   ADMIN_ROUTE,
+  ADMIN_TEMPLATES_ROUTE,
   ASSETS_ROUTE,
   BILLING_ROUTE,
   HOME_ROUTE,
@@ -93,6 +97,13 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
   if (pathname === ADMIN_ROUTE || pathname.startsWith(`${ADMIN_ROUTE}/`)) {
     if (!canAccessOperationsConsole(productRole)) {
       return <Redirect to={ACCOUNT_ROUTE} />;
+    }
+    if (pathname === ADMIN_TEMPLATES_ROUTE) {
+      return <TemplateAdminListPage />;
+    }
+    const templateId = getTemplateIdFromAdminPath(pathname);
+    if (templateId) {
+      return <TemplateAdminEditorPage templateId={templateId} />;
     }
     return <AdminPage />;
   }
