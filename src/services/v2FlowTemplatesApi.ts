@@ -76,6 +76,10 @@ export function recordFlowTemplateUsage(templateId: string, projectId?: string) 
   return apiPost<{ ok: true }>(`/flow-templates/${templateId}/usage`, projectId ? { projectId } : {});
 }
 
+export function instantiateFlowTemplate(templateId: string, input: { projectId?: string; inputValues: Record<string, string | number | undefined>; idempotencyKey: string }) {
+  return apiPost<{ graph: { nodes: unknown[]; edges: unknown[] }; version: number }>(`/flow-templates/${encodeURIComponent(templateId)}/instantiate`, input);
+}
+
 export function listAdminFlowTemplates(params: { category?: string; query?: string; status?: FlowTemplateStatus } = {}) {
   const search = new URLSearchParams();
   if (params.category) search.set('category', params.category);

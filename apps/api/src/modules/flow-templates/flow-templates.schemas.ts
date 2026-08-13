@@ -11,6 +11,8 @@ export const flowTemplateIdParamsSchema = z.object({
 
 export const instantiateFlowTemplateSchema = z.object({
   projectId: z.string().uuid().optional(),
+  idempotencyKey: z.string().uuid(),
+  inputValues: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
 });
 
 export const flowTemplateLifecycleStatusSchema = z.enum(['draft', 'testing', 'published', 'archived']);

@@ -8,12 +8,24 @@ export type TemplateGraphLike = {
 export type TemplateInputValues = Record<string, string | number | undefined>;
 
 const UNSAFE_ASSET_VALUE = /^(?:data:|blob:|https?:\/\/)/i;
+const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function pathSegments(fieldPath: string): string[] {
   if (!/^data\.[A-Za-z0-9_.-]+$/.test(fieldPath)) {
     throw new Error('Template inputs must target a node data field');
   }
-  return fieldPath.split('.').slice(1);
+  const segments = fieldPath.split('.').slice(1);
+  if (segments.some((segment) => FORBIDDEN_PATH_SEGMENTS.has(segment))) throw new Error('Template inputs must target a safe node data field');
+  return segments;
+}
+
+function hasOwnPath(value: unknown, segments: string[]): boolean {
+  let current = value;
+  for (const segment of segments) {
+    if (!current || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, segment)) return false;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return true;
 }
 
 function valueFor(input: FlowTemplateInputDefinition, values: TemplateInputValues): string | number | undefined {
@@ -36,7 +48,7 @@ export function validateTemplateInputDefinitions(inputs: FlowTemplateInputDefini
     ids.add(input.id);
     const node = nodes.get(input.target.nodeId);
     const segments = pathSegments(input.target.fieldPath);
-    if (!node || !node.data || !segments.reduce<unknown>((value, segment) => value && typeof value === 'object' ? (value as Record<string, unknown>)[segment] : undefined, node.data)) {
+    if (!node || !node.data || !hasOwnPath(node.data, segments)) {
       throw new Error(`Template input "${input.label}" does not target an existing node data field`);
     }
   }
@@ -52,7 +64,10 @@ export function applyTemplateInputValues(graph: TemplateGraphLike, inputs: FlowT
     const node = nodes.get(input.target.nodeId)!;
     const segments = pathSegments(input.target.fieldPath);
     let target = node.data as Record<string, unknown>;
-    for (const segment of segments.slice(0, -1)) target = target[segment] as Record<string, unknown>;
+    for (const segment of segments.slice(0, -1)) {
+      if (!Object.prototype.hasOwnProperty.call(target, segment) || !target[segment] || typeof target[segment] !== 'object') throw new Error(`Template input "${input.label}" does not target an existing node data field`);
+      target = target[segment] as Record<string, unknown>;
+    }
     target[segments.at(-1)!] = value;
   }
   return clone;

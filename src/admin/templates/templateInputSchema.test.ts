@@ -34,4 +34,12 @@ describe('template input schema', () => {
     expect(applyTemplateInputValues(graph, inputs, {}).nodes[0].data.prompt).toBe('chair');
     expect(() => applyTemplateInputValues(graph, [{ ...inputs[0], defaultValue: undefined }], {})).toThrow(/required/i);
   });
+
+  test('allows falsy values but rejects prototype-polluting paths', () => {
+    const falsyGraph = { nodes: [{ id: 'node', data: { enabled: false, count: 0, label: '' } }], edges: [] };
+    expect(() => validateTemplateInputDefinitions([{ id: 'enabled', label: 'Enabled', required: false, type: 'text', target: { nodeId: 'node', fieldPath: 'data.enabled' } }], falsyGraph)).not.toThrow();
+    for (const fieldPath of ['data.__proto__.polluted', 'data.constructor.x', 'data.prototype.x']) {
+      expect(() => validateTemplateInputDefinitions([{ id: 'unsafe', label: 'Unsafe', required: false, type: 'text', target: { nodeId: 'node', fieldPath } }], falsyGraph)).toThrow(/unsafe|data field/i);
+    }
+  });
 });

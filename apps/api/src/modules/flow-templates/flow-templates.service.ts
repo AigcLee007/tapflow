@@ -4,6 +4,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import type {
   FlowTemplateAdminListQuery,
+  InstantiateFlowTemplateInput,
   FlowTemplateListQuery,
   SaveFlowTemplateDraftInput,
 } from './flow-templates.schemas.js';
@@ -366,6 +367,42 @@ export class FlowTemplatesService {
       );
 
       return { ok: true as const };
+    }, this.pool);
+  }
+
+  async instantiate(ctx: FlowTemplateContext, templateId: string, input: InstantiateFlowTemplateInput): Promise<{ graph: Record<string, unknown>; version: number }> {
+    return withTenantTransaction(ctx, async (client) => {
+      const result = await client.query<FlowTemplateRecord>(`SELECT id::text AS id, tenant_id::text AS tenant_id, created_by::text AS created_by, title, description, category, visibility, cover_asset_id::text AS cover_asset_id, graph_json, input_schema, node_count, estimated_credits::text AS estimated_credits, status, version, NULL::text AS version_snapshot_id, published_at::text AS published_at, published_by::text AS published_by, created_at::text AS created_at, updated_at::text AS updated_at FROM flow_templates WHERE id=$1::uuid AND tenant_id IS NULL AND visibility='official' AND status='published' FOR UPDATE`, [templateId]);
+      const template = result.rows[0];
+      if (!template) throw new FlowTemplatesApiError(404, 'FLOW_TEMPLATE_NOT_FOUND', '未找到对应模板');
+      if (input.projectId) {
+        const project = await client.query(`SELECT id FROM projects WHERE id=$1::uuid AND tenant_id=$2::uuid AND deleted_at IS NULL`, [input.projectId, ctx.tenantId]);
+        if (!project.rows[0]) throw new FlowTemplatesApiError(404, 'PROJECT_NOT_FOUND', '未找到对应项目');
+      }
+      const graph = normalizeTemplateGraph(template.graph_json);
+      validateTemplateInputs(template.input_schema, graph);
+      const nodes = new Map(graph.nodes.map((node) => [String(node.id), structuredClone(node)]));
+      for (const raw of template.input_schema as Array<Record<string, unknown>>) {
+        const id = String(raw.id); const supplied = input.inputValues[id]; const value = supplied ?? raw.defaultValue;
+        if ((value === undefined || value === '') && raw.required) throw new FlowTemplatesApiError(400, 'TEMPLATE_INPUT_REQUIRED', `模板输入 ${String(raw.label)} 为必填项`);
+        if (value === undefined || value === '') continue;
+        if ((raw.type === 'text' || raw.type === 'asset' || raw.type === 'enum') && typeof value !== 'string') throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '模板输入类型不匹配');
+        if (raw.type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '模板输入类型不匹配');
+        if (raw.type === 'enum' && (!Array.isArray(raw.options) || !raw.options.includes(value))) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '枚举输入不在可选项中');
+        if (raw.type === 'number' && typeof value === 'number' && ((typeof raw.minimum === 'number' && value < raw.minimum) || (typeof raw.maximum === 'number' && value > raw.maximum))) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '数字输入超出范围');
+        if (raw.type === 'asset') {
+          const asset = await client.query(`SELECT id FROM assets WHERE id=$1::uuid AND tenant_id=$2::uuid AND deleted_at IS NULL`, [value, ctx.tenantId]);
+          if (!asset.rows[0]) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_ASSET', '素材不存在或不属于当前工作区');
+        }
+        const target = raw.target as { nodeId?: string; fieldPath?: string }; const segments = String(target?.fieldPath ?? '').split('.');
+        if (segments.shift() !== 'data' || !target.nodeId || segments.some((segment) => ['__proto__', 'constructor', 'prototype'].includes(segment))) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '模板输入字段无效');
+        const node = nodes.get(target.nodeId); let cursor = node?.data as Record<string, unknown> | undefined;
+        for (const segment of segments.slice(0, -1)) { if (!cursor || !Object.prototype.hasOwnProperty.call(cursor, segment) || !cursor[segment] || typeof cursor[segment] !== 'object') throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '模板输入字段无效'); cursor = cursor[segment] as Record<string, unknown>; }
+        if (!cursor || !Object.prototype.hasOwnProperty.call(cursor, segments.at(-1)!)) throw new FlowTemplatesApiError(400, 'INVALID_TEMPLATE_INPUT', '模板输入字段无效');
+        cursor[segments.at(-1)!] = value;
+      }
+      await client.query(`INSERT INTO flow_template_usage (tenant_id, template_id, user_id, project_id, template_version, idempotency_key) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6::uuid) ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`, [ctx.tenantId, templateId, ctx.userId, input.projectId ?? null, template.version, input.idempotencyKey]);
+      return { graph: { nodes: [...nodes.values()], edges: graph.edges }, version: template.version };
     }, this.pool);
   }
 

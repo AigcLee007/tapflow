@@ -154,6 +154,22 @@ export function registerFlowTemplateRoutes(app: FastifyInstance): void {
   );
 
   app.post(
+    '/api/v2/flow-templates/:templateId/instantiate',
+    {
+      preHandler: [requireAuth, requireTenant, requirePermission('flow:update')],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FlowTemplateIdParams>(request, flowTemplateIdParamsSchema);
+        const body = parseBody<InstantiateFlowTemplateInput>(request, instantiateFlowTemplateSchema);
+        return reply.code(201).send(await app.flowTemplatesService.instantiate(getTemplateContext(request), params.templateId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
     '/api/v2/flow-templates/:templateId/usage',
     {
       preHandler: [requireAuth, requireTenant, requirePermission('flow:update')],
