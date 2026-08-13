@@ -17,6 +17,12 @@ Maintainers: project team + Codex sessions
 
 - fixed canvas input reconciliation so an `image_to_video` video node keeps exactly one image reference when a connected upstream image coexists with stale/direct asset reference metadata. The upstream image is preferred, preventing `REFERENCE_LIMIT_EXCEEDED` before provider execution.
 - added store regressions covering direct asset cleanup and the one-image invariant. Focused store tests pass (`45` tests).
+## 2026-08-13 - Text Node Whole-Content Font Sizing
+
+- replaced the text-node H1/H2/H3 Markdown-prefix actions with node-level `一号`/`二号`/`三号`/`正文` presets; existing, newly typed, and generated text now immediately shares the selected size without changing text content.
+- kept node geometry and canvas zoom independent from font sizing; overflowing text scrolls inside the node and its wheel events do not reach the canvas.
+- preserved the existing `fontSize` draft field with a `body` fallback for old nodes; no API or database migration was required.
+- validation passed: `npx vitest --run src/flowCanvas/nodes/textFontSize.test.ts src/flowCanvas/nodes/FlowNodes.agent-metadata.test.tsx src/flowCanvas/hooks/useRemoteFlowAutosave.test.tsx --exclude '.worktrees/**' --reporter=dot` passed (3 files, 60 tests), and `npm run build` passed. Browser acceptance is blocked: `npm run dev:infra` exited 1 with `unable to get image 'postgres:17': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.`; no browser pass is claimed.
 
 ## 2026-08-13 - Text Relay Inline Image Transport Repair
 
