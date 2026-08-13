@@ -82,7 +82,7 @@ describe("PixelHubVideoAdapter", () => {
     expect(JSON.stringify(result.providerRequest)).not.toMatch(/signed\.test|secret-key/i);
   });
 
-  test("maps Gemini image-to-video main image to the singular image_url field", async () => {
+  test("maps Gemini image-to-video main image to the image_urls field", async () => {
     const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({ task_id: "task-gemini-image", status: "queued" }), { status: 200 }));
     const imageRequest: VideoGenerationRequest = {
       ...request,
@@ -93,7 +93,7 @@ describe("PixelHubVideoAdapter", () => {
     await new PixelHubVideoAdapter({ fetchImplementation }).generateVideo(geminiImageToVideoContext(), imageRequest);
 
     expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({
-      aspect_ratio: "16:9", duration: 8, image_url: "https://signed.test/image-0",
+      aspect_ratio: "16:9", duration: 8, image_urls: ["https://signed.test/image-0"],
       model: "gemini-omni-flash", prompt: request.prompt, resolution: "1080p",
     });
   });

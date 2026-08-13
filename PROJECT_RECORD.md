@@ -6528,6 +6528,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added migration `000066_user_legal_consents.sql`, API legal endpoints, focused frontend/API/database coverage, and cinematic browser acceptance checks for the drawer, consent links, and remembered-email boundary.
 - production publication remains gated on operator/legal review of both Aittco legal drafts and a real approved `LEGAL_CONTACT_URL` in `/opt/aittco/env/tapflow.staging.env`; run migration `000066` with the worker stopped before rolling out API/frontend images.
 
+## 2026-08-13 - Gemini Omni Flash Image-To-Video Reference Fix
+
+- corrected the PixelHub Gemini Omni Flash `image_to_video` provider mapping to send the main reference as `image_urls: [url]` instead of the ignored singular `image_url` field.
+- regression coverage now asserts the exact outbound request body. AI Gateway validation passed with `171` tests and a successful TypeScript build.
+
 ## 2026-08-12 - Flow Node Waiting Videos
 
 - generated three Gemini Omni Flash 4-second waiting animations for text, image, and video Flow nodes, then normalized each to a repository-static silent H.264 MP4 at `public/node-waiting/`.
