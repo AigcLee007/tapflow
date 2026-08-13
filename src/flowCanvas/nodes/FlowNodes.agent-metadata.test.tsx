@@ -651,6 +651,67 @@ describe("FlowNodes agent metadata", () => {
     });
   });
 
+  it("disables text routes without image support when an upstream image is connected", () => {
+    textCatalogMocks.current = {
+      error: null,
+      loading: false,
+      models: [{
+        defaultRoute: {
+          capabilities: { supportsImageInput: false },
+          credits: 2,
+          id: "route-text-only",
+          label: "Text route",
+          providerKey: "openai-compatible",
+          routeKey: "text.only",
+        },
+        id: "real-text-model",
+        label: "Real text model",
+        logoKey: "openai",
+        manufacturer: "GPT",
+        modelFamily: "real-text-family",
+        modelKey: "real-text-model",
+        routes: [
+          {
+            capabilities: { supportsImageInput: false },
+            credits: 2,
+            id: "route-text-only",
+            label: "Text route",
+            providerKey: "openai-compatible",
+            routeKey: "text.only",
+          },
+          {
+            capabilities: { supportsImageInput: true },
+            credits: 4,
+            id: "route-visual",
+            label: "Visual route",
+            providerKey: "openai-compatible",
+            routeKey: "text.visual",
+          },
+        ],
+      }],
+      retry: vi.fn(),
+    };
+    const image = useFlowCanvasStore.getState().addNode("image", { x: 0, y: 0 }, {
+      assetId: "asset-image",
+      thumbnailUrl: "https://cdn.test/image.png",
+      title: "Image source",
+    } as any);
+    const text = useFlowCanvasStore.getState().addNode("text", { x: 420, y: 0 }, {
+      modelId: "real-text-model",
+      routeId: "route-text-only",
+      routeKey: "text.only",
+    }, { selected: true });
+    useFlowCanvasStore.getState().onConnect({ source: image.id, sourceHandle: "out", target: text.id, targetHandle: "in" });
+
+    render(<StoreBackedTextNode nodeId={text.id} />);
+    fireEvent.click(screen.getByTitle("选择文本模型"));
+
+    const unsupported = screen.getByRole("button", { name: /Real text model.*Text route/ });
+    expect((unsupported as HTMLButtonElement).disabled).toBe(true);
+    expect(unsupported.getAttribute("title")).toBe("当前文本模型线路不支持图片输入，请切换支持图片的线路");
+    expect((screen.getByRole("button", { name: /Real text model.*Visual route/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows an empty text catalog and blocks generation before the workflow runner", () => {
     const node = useFlowCanvasStore.getState().addNode("text", { x: 0, y: 0 }, {
       generationPrompt: "写一段文案",

@@ -44,7 +44,13 @@ describe("toTextModelOptions", () => {
       model({ id: "no-routes", modelKey: "no-routes" }),
     ], {
       "real-text-model": [
-        route(),
+        route({
+          capabilities: {
+            maxImages: 3,
+            supportedImageMimeTypes: ["image/png"],
+            supportsImageInput: true,
+          },
+        }),
         route({
           estimatedCredits: null,
           minChargeCredits: 4,
@@ -75,6 +81,13 @@ describe("toTextModelOptions", () => {
       label: "真实文本模型",
       modelFamily: "real-text-family",
       modelKey: "real-text-model",
+    });
+    expect(options[0]?.routes[0]).toMatchObject({
+      capabilities: {
+        maxImages: 3,
+        supportedImageMimeTypes: ["image/png"],
+        supportsImageInput: true,
+      },
     });
     expect(options[0]?.routes).toEqual([
       expect.objectContaining({ id: "route-uuid-1", label: "线路一", routeKey: "text.real.line-1" }),

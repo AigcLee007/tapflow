@@ -3196,6 +3196,7 @@ export const TextNodeComponent = memo(function TextNode({
     () => resolveCanvasInputItems({ inputOrder: d.inputOrder, seeds: upstreamInputRefs }),
     [d.inputOrder, upstreamInputRefs],
   );
+  const hasTextImageInput = textInputItems.some((item) => item.kind === 'image');
   const { items: resolvedTextInputItems, retry: retryTextInputAsset } = useCanvasInputAssets(textInputItems);
   const runtimeNodeOutput = useFlowCanvasStore((s) => s.nodeOutputByNodeId[id]);
   const runtimeNodeStatus = useFlowCanvasStore((s) => s.nodeRunStatusByNodeId[id]);
@@ -3662,13 +3663,17 @@ export const TextNodeComponent = memo(function TextNode({
                         <span style={textModelMenuGroupLabel}>{group.manufacturer}</span>
                         {group.models.flatMap((model) => model.routes.map((route) => {
                           const active = model.modelKey === currentModelId && route.routeKey === currentRouteKey;
+                          const supportsConnectedImages = !hasTextImageInput || route.capabilities.supportsImageInput === true;
                           const logo = getTextModelLogo(model.logoKey);
                           return (
                             <button
                               key={route.id}
                               type="button"
                               className="nodrag nopan"
+                              disabled={!supportsConnectedImages}
+                              title={!supportsConnectedImages ? '当前文本模型线路不支持图片输入，请切换支持图片的线路' : undefined}
                               onClick={() => {
+                                if (!supportsConnectedImages) return;
                                 updateNodeData(id, {
                                   modelId: model.modelKey,
                                   routeId: route.id,
@@ -3679,6 +3684,8 @@ export const TextNodeComponent = memo(function TextNode({
                               style={{
                                 ...textModelMenuItem,
                                 background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                cursor: supportsConnectedImages ? 'pointer' : 'not-allowed',
+                                opacity: supportsConnectedImages ? 1 : 0.48,
                               }}
                             >
                               {logo ? (
