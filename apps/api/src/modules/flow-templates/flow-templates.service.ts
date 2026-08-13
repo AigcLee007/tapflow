@@ -20,9 +20,14 @@ type FlowTemplateRecord = {
   graph_json: Record<string, unknown>;
   id: string;
   node_count: number;
+  published_at: string | null;
+  published_by: string | null;
+  status: 'archived' | 'draft' | 'published' | 'testing';
   tenant_id: string | null;
   title: string;
   updated_at: string;
+  version: number;
+  version_id: string;
   visibility: 'official' | 'private' | 'tenant';
 };
 
@@ -36,9 +41,14 @@ export type FlowTemplateView = {
   graph: Record<string, unknown>;
   id: string;
   nodeCount: number;
+  publishedAt: string | null;
+  publishedBy: string | null;
+  status: 'archived' | 'draft' | 'published' | 'testing';
   tenantId: string | null;
   title: string;
   updatedAt: string;
+  version: number;
+  versionId: string;
   visibility: 'official' | 'private' | 'tenant';
 };
 
@@ -65,9 +75,14 @@ function mapTemplate(row: FlowTemplateRecord): FlowTemplateView {
     graph: row.graph_json,
     id: row.id,
     nodeCount: row.node_count,
+    publishedAt: row.published_at,
+    publishedBy: row.published_by,
+    status: row.status,
     tenantId: row.tenant_id,
     title: row.title,
     updatedAt: row.updated_at,
+    version: row.version,
+    versionId: row.version_id,
     visibility: row.visibility,
   };
 }
@@ -95,22 +110,28 @@ export class FlowTemplatesService {
             graph_json,
             node_count,
             estimated_credits::text AS estimated_credits,
+            status,
+            version,
+            version_id::text AS version_id,
+            published_at::text AS published_at,
+            published_by::text AS published_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM flow_templates
-          WHERE (visibility = 'official' OR tenant_id = $1::uuid)
-            AND ($2::text IS NULL OR category = $2)
+          WHERE tenant_id IS NULL
+            AND visibility = 'official'
+            AND status = 'published'
+            AND ($1::text IS NULL OR category = $1)
             AND (
-              $3::text IS NULL
-              OR title ILIKE '%' || $3 || '%'
-              OR description ILIKE '%' || $3 || '%'
+              $2::text IS NULL
+              OR title ILIKE '%' || $2 || '%'
+              OR description ILIKE '%' || $2 || '%'
             )
           ORDER BY
-            CASE WHEN visibility = 'official' THEN 0 ELSE 1 END,
             updated_at DESC,
             id ASC
         `,
-        [ctx.tenantId, query.category ?? null, query.query?.trim() || null],
+        [query.category ?? null, query.query?.trim() || null],
       );
 
       return result.rows.map(mapTemplate);
@@ -133,14 +154,21 @@ export class FlowTemplatesService {
             graph_json,
             node_count,
             estimated_credits::text AS estimated_credits,
+            status,
+            version,
+            version_id::text AS version_id,
+            published_at::text AS published_at,
+            published_by::text AS published_by,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM flow_templates
           WHERE id = $1::uuid
-            AND (visibility = 'official' OR tenant_id = $2::uuid)
+            AND tenant_id IS NULL
+            AND visibility = 'official'
+            AND status = 'published'
           LIMIT 1
         `,
-        [templateId, ctx.tenantId],
+        [templateId],
       );
 
       const row = result.rows[0];
@@ -159,10 +187,12 @@ export class FlowTemplatesService {
           SELECT id::text AS id
           FROM flow_templates
           WHERE id = $1::uuid
-            AND (visibility = 'official' OR tenant_id = $2::uuid)
+            AND tenant_id IS NULL
+            AND visibility = 'official'
+            AND status = 'published'
           LIMIT 1
         `,
-        [templateId, ctx.tenantId],
+        [templateId],
       );
 
       if (!template.rows[0]) {

@@ -8,9 +8,83 @@ import type { ApiEnv } from '../src/config/env.js';
 import { runMigrations } from '../../../packages/db/src/migrator.js';
 import { hasDatabaseEnv, withDatabase } from '../../../packages/db/test/helpers.js';
 import { currentLegalConsent } from './legal-consent.fixture.js';
+import {
+  flowTemplateInputDefinitionSchema,
+  flowTemplateLifecycleStatusSchema,
+  saveFlowTemplateDraftSchema,
+} from '../src/modules/flow-templates/flow-templates.schemas.js';
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+
+describe('flow template lifecycle schemas', () => {
+  test('accepts a draft with the supported template input definitions', () => {
+    const result = saveFlowTemplateDraftSchema.parse({
+      category: 'video',
+      graph: { edges: [], nodes: [{ id: 'image-node' }] },
+      inputSchema: [
+        { id: 'prompt', label: 'Prompt', target: { fieldPath: 'data.prompt', nodeId: 'image-node' }, type: 'text' },
+        { id: 'source', label: 'Source', target: { fieldPath: 'data.assetId', nodeId: 'image-node' }, type: 'asset' },
+        {
+          defaultValue: '16:9',
+          id: 'ratio',
+          label: 'Ratio',
+          options: ['16:9', '9:16'],
+          target: { fieldPath: 'data.ratio', nodeId: 'image-node' },
+          type: 'enum',
+        },
+        {
+          defaultValue: 4,
+          id: 'duration',
+          label: 'Duration',
+          maximum: 12,
+          minimum: 1,
+          target: { fieldPath: 'data.duration', nodeId: 'image-node' },
+          type: 'number',
+        },
+      ],
+      title: 'Product video',
+    });
+
+    expect(result.inputSchema).toHaveLength(4);
+    expect(flowTemplateLifecycleStatusSchema.parse('testing')).toBe('testing');
+  });
+
+  test('rejects duplicate input IDs and invalid type-specific defaults', () => {
+    expect(() =>
+      saveFlowTemplateDraftSchema.parse({
+        graph: { edges: [], nodes: [] },
+        inputSchema: [
+          { id: 'duplicate', label: 'First', target: { fieldPath: 'data.a', nodeId: 'a' }, type: 'text' },
+          { id: 'duplicate', label: 'Second', target: { fieldPath: 'data.b', nodeId: 'b' }, type: 'text' },
+        ],
+        title: 'Duplicate inputs',
+      }),
+    ).toThrow();
+
+    expect(() =>
+      flowTemplateInputDefinitionSchema.parse({
+        defaultValue: '1:1',
+        id: 'ratio',
+        label: 'Ratio',
+        options: ['16:9'],
+        target: { fieldPath: 'data.ratio', nodeId: 'node-a' },
+        type: 'enum',
+      }),
+    ).toThrow();
+
+    expect(() =>
+      flowTemplateInputDefinitionSchema.parse({
+        defaultValue: 16,
+        id: 'duration',
+        label: 'Duration',
+        maximum: 12,
+        target: { fieldPath: 'data.duration', nodeId: 'node-a' },
+        type: 'number',
+      }),
+    ).toThrow();
+  });
+});
 
 const testEnv: ApiEnv = {
   accessTokenTtlSeconds: 60 * 15,
@@ -87,8 +161,6 @@ describeWithDatabase('flow templates API', () => {
         const api = buildTestApp(appPool);
 
         const ownerA = await registerOwner(api, 'templates-owner-a@example.com', 'Templates Tenant A');
-        const ownerB = await registerOwner(api, 'templates-owner-b@example.com', 'Templates Tenant B');
-
         const projectA = await api.inject({
           headers: {
             authorization: `Bearer ${ownerA.accessToken}`,
@@ -102,12 +174,13 @@ describeWithDatabase('flow templates API', () => {
         expect(projectA.statusCode).toBe(201);
 
         const officialTemplateId = randomUUID();
-        const tenantTemplateId = randomUUID();
-        const privateOtherTenantTemplateId = randomUUID();
+        const draftTemplateId = randomUUID();
+        const archivedTemplateId = randomUUID();
 
         await withTenantTransaction(
           { tenantId: ownerA.currentTenant.id, userId: ownerA.user.id },
           async (client) => {
+            await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
             await client.query(
               `
                 INSERT INTO flow_templates (
@@ -118,39 +191,16 @@ describeWithDatabase('flow templates API', () => {
                   description,
                   category,
                   visibility,
+                  status,
                   graph_json,
                   node_count
                 )
                 VALUES
-                  ($1::uuid, NULL, $4::uuid, 'Official Portrait', 'Official template', 'image', 'official', '{"nodes":[],"edges":[]}'::jsonb, 0),
-                  ($2::uuid, $3::uuid, $4::uuid, 'Tenant Moodboard', 'Tenant template', 'image', 'tenant', '{"nodes":[{"id":"node-a"}],"edges":[]}'::jsonb, 1)
+                  ($1::uuid, NULL, $4::uuid, 'Official Portrait', 'Official template', 'image', 'official', 'published', '{"nodes":[],"edges":[]}'::jsonb, 0),
+                  ($2::uuid, NULL, $4::uuid, 'Draft Moodboard', 'Draft template', 'image', 'official', 'draft', '{"nodes":[{"id":"node-a"}],"edges":[]}'::jsonb, 1),
+                  ($3::uuid, NULL, $4::uuid, 'Archived Template', 'Archived template', 'image', 'official', 'archived', '{"nodes":[{"id":"node-b"}],"edges":[]}'::jsonb, 1)
               `,
-              [officialTemplateId, tenantTemplateId, ownerA.currentTenant.id, ownerA.user.id],
-            );
-          },
-          adminPool,
-        );
-
-        await withTenantTransaction(
-          { tenantId: ownerB.currentTenant.id, userId: ownerB.user.id },
-          async (client) => {
-            await client.query(
-              `
-                INSERT INTO flow_templates (
-                  id,
-                  tenant_id,
-                  created_by,
-                  title,
-                  description,
-                  category,
-                  visibility,
-                  graph_json,
-                  node_count
-                )
-                VALUES
-                  ($1::uuid, $2::uuid, $3::uuid, 'Other Tenant Private', 'Private template', 'image', 'private', '{"nodes":[{"id":"node-b"}],"edges":[]}'::jsonb, 1)
-              `,
-              [privateOtherTenantTemplateId, ownerB.currentTenant.id, ownerB.user.id],
+              [officialTemplateId, draftTemplateId, archivedTemplateId, ownerA.user.id],
             );
           },
           adminPool,
@@ -177,15 +227,10 @@ describeWithDatabase('flow templates API', () => {
               title: 'Official Portrait',
               visibility: 'official',
             }),
-            expect.objectContaining({
-              id: tenantTemplateId,
-              title: 'Tenant Moodboard',
-              visibility: 'tenant',
-            }),
           ]),
         );
         expect(
-          listResponse.json().some((item: { id: string }) => item.id === privateOtherTenantTemplateId),
+          listResponse.json().some((item: { id: string }) => item.id === draftTemplateId || item.id === archivedTemplateId),
         ).toBe(false);
 
         const detailResponse = await api.inject({
@@ -193,14 +238,14 @@ describeWithDatabase('flow templates API', () => {
             authorization: `Bearer ${ownerA.accessToken}`,
           },
           method: 'GET',
-          url: `/api/v2/flow-templates/${tenantTemplateId}`,
+          url: `/api/v2/flow-templates/${officialTemplateId}`,
         });
         expect(detailResponse.statusCode).toBe(200);
         expect(detailResponse.json()).toMatchObject({
-          id: tenantTemplateId,
+          id: officialTemplateId,
           graph: {
             edges: [],
-            nodes: [{ id: 'node-a' }],
+            nodes: [],
           },
         });
 
@@ -212,7 +257,7 @@ describeWithDatabase('flow templates API', () => {
           payload: {
             projectId: projectA.json().id,
           },
-          url: `/api/v2/flow-templates/${tenantTemplateId}/usage`,
+          url: `/api/v2/flow-templates/${officialTemplateId}/usage`,
         });
         expect(usageResponse.statusCode).toBe(201);
         expect(usageResponse.json()).toEqual({ ok: true });
@@ -232,12 +277,12 @@ describeWithDatabase('flow templates API', () => {
             FROM flow_template_usage
             WHERE template_id = $1::uuid
           `,
-          [tenantTemplateId],
+          [officialTemplateId],
         );
         expect(usageRows.rows).toEqual([
           expect.objectContaining({
             project_id: projectA.json().id,
-            template_id: tenantTemplateId,
+            template_id: officialTemplateId,
             tenant_id: ownerA.currentTenant.id,
             user_id: ownerA.user.id,
           }),
