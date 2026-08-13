@@ -59,6 +59,7 @@ import {
   createRecoverableSavepoint,
   rollbackToRecoverableSavepoint,
 } from "./recoverable-savepoint.js";
+import { compressTextImageForModel, MAX_TEXT_IMAGE_BYTES } from "./text-image-compression.js";
 
 type WorkflowRunRecord = {
   error_json: Record<string, unknown> | null;
@@ -109,7 +110,6 @@ const UNKNOWN_PROVIDER_RECONCILE_PREFIX = "timeout-unknown:";
 const UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS = 10 * 60 * 1000;
 const VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
 const VIDEO_EDITOR_FFMPEG_RENDER_ENGINE = "ffmpeg";
-const MAX_TEXT_IMAGE_INLINE_BYTES = 10 * 1024 * 1024;
 
 type TextGenerationRuntimeLike = Pick<DatabaseTextGenerationRuntime, "generateText">;
 type MediaGenerationRuntimeLike = Pick<DatabaseMediaRuntime, "generateImage" | "generateVideo" | "pollTask">;
@@ -3404,7 +3404,8 @@ export class WorkflowNodeExecutionService {
           bucket: lookup.bucket,
           key: lookup.objectKey,
         });
-        if (object.body.byteLength > MAX_TEXT_IMAGE_INLINE_BYTES) {
+        const compressed = await compressTextImageForModel({ body: object.body, mimeType: lookup.mimeType });
+        if (compressed.body.byteLength > MAX_TEXT_IMAGE_BYTES) {
           throw new AiGatewayError({
             code: "TEXT_IMAGE_SIZE_LIMIT_EXCEEDED",
             message: "The image input is too large to send to the text provider.",
@@ -3412,11 +3413,11 @@ export class WorkflowNodeExecutionService {
           });
         }
         asset.kind = lookup.kind;
-        asset.mimeType = lookup.mimeType;
+        asset.mimeType = compressed.mimeType;
         asset.width = lookup.width ?? null;
         asset.height = lookup.height ?? null;
         asset.durationMs = lookup.durationMs ?? null;
-        asset.metadata = { base64: object.body.toString("base64") };
+        asset.metadata = { base64: compressed.body.toString("base64") };
       }
     } catch (error) {
       if (error instanceof AiGatewayError && error.code.startsWith("TEXT_IMAGE_")) {

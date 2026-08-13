@@ -9,6 +9,7 @@ Maintainers: project team + Codex sessions
 - Worker text-image execution now reads the tenant-owned object directly from storage into transient memory, rejects individual images larger than 10 MiB, and supplies only Base64 bytes to the relay adapter. It does not persist bytes, data URLs, buckets, object keys, or signed URLs in drafts, node results, or call diagnostics.
 - the Aittco protocol mappings now send Gemini `inlineData`, OpenAI Responses/Chat Completion data URLs, and Claude Base64 image sources. Diagnostic redaction also removes Base64/data URL content recursively.
 - corrected an error-code collision in the inline size guard: an oversized single image previously reused the image-count error and was therefore displayed as a three-image-limit violation. It now returns `TEXT_IMAGE_SIZE_LIMIT_EXCEEDED`, mapped to the accurate 10 MiB per-image message.
+- Text Node image inputs now automatically compress oversized images in Worker memory before the relay call. Originals remain untouched in object storage; images above 5 MiB are auto-rotated, constrained to a 2048px maximum edge, and encoded as WebP with bounded quality/dimension fallbacks until the ephemeral provider payload is at most 5 MiB.
 
 ## 2026-08-13 - Text Route Image Capability Backfill
 
