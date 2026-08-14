@@ -74,6 +74,8 @@ test('group execution rejects missing generic generation prompt or route before 
     .toThrow(/model route/i);
   expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { generationPrompt: 'prompt', routeKey: 'image.default' } } as never))
     .not.toThrow();
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { routeKey: 'image.default' } } as never, true))
+    .not.toThrow();
 });
 
 test('group external outputs are scoped to the current graph checksum', async () => {

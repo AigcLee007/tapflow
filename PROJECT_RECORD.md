@@ -3,6 +3,12 @@
 Last updated: 2026-08-14
 Maintainers: project team + Codex sessions
 
+## 2026-08-14 - Template Editor Entry And Group Prompt Inputs
+
+- added a template-editor-owned empty state with direct image, video, and text node commands, so an administrator can create a real graph before saving, testing, and publishing an official template.
+- aligned group confirmation and server preflight with runtime prompt resolution: an image or video node may use an in-group text-node dependency instead of duplicating that text locally; nodes without a local or upstream text prompt remain blocked.
+- validation completed locally: focused template/group UI tests (`18` passed), focused API workflow-run tests (`4` passed; `18` database tests skipped without `DATABASE_URL`), and the frontend production build.
+
 ## 2026-08-13 - Signed Asset Attachment Download Repair
 
 - fixed S3-compatible GET URL signing so the asset service's requested `Content-Disposition: attachment` filename and response content type are included in the signed `GetObject` request. Cross-origin video download actions now receive attachment responses instead of navigating to the object-storage playback URL.

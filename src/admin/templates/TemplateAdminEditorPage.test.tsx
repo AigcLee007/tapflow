@@ -75,4 +75,13 @@ describe("TemplateAdminEditorPage", () => {
     await waitFor(() => expect(useFlowCanvasStore.getState().nodes.map((node) => node.id)).toEqual(['draft-node']));
     expect(screen.getByText(/Draft.*text/i)).toBeTruthy();
   });
+
+  test('adds an image node from the new template empty state', async () => {
+    render(<TemplateAdminEditorPage templateId="new" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加图片生成节点' }));
+
+    expect(useFlowCanvasStore.getState().nodes).toHaveLength(1);
+    expect(useFlowCanvasStore.getState().nodes[0]?.type).toBe('image');
+  });
 });

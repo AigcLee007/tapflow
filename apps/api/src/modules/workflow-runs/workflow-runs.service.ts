@@ -894,9 +894,9 @@ function outputMatchesExternalDataType(
   return assets.some((asset) => isRecord(asset) && asset.kind === dataType && typeof asset.assetId === "string" && asset.assetId.trim());
 }
 
-export function assertGroupNodeConfiguration(node: CompiledWorkflowNode): void {
+export function assertGroupNodeConfiguration(node: CompiledWorkflowNode, hasInGroupTextInput = false): void {
   const config = isRecord(node.config) ? node.config : {};
-  if (!readTrimmedString(config.generationPrompt)) {
+  if (!readTrimmedString(config.generationPrompt) && !hasInGroupTextInput) {
     throw new WorkflowRunsApiError(422, "GROUP_MISSING_GENERATION_PROMPT", `Node ${node.id} requires a generation prompt.`);
   }
   if (!readTrimmedString(config.routeId) && !resolveConfiguredRouteKey(node) && !readTrimmedString(config.modelId)) {
@@ -1040,7 +1040,11 @@ export class WorkflowRunsService {
           if (unsupported) {
             throw new WorkflowRunsApiError(422, "GROUP_NODE_UNSUPPORTED", `Node ${unsupported.id} is not executable in a group.`);
           }
-          groupNodes.forEach(assertGroupNodeConfiguration);
+          const groupNodesById = new Map(groupNodes.map((node) => [node.id, node]));
+          groupNodes.forEach((node) => assertGroupNodeConfiguration(
+            node,
+            node.dependencies.some((dependencyId) => groupNodesById.get(dependencyId)?.type === "text.generate"),
+          ));
           for (const node of groupNodes) {
             const routeKey = resolveEffectiveRouteKey(node);
             if (!routeContexts.has(routeKey)) {

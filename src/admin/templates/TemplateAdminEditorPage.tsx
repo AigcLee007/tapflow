@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Archive, ArrowLeft, CheckCircle2, Loader2, Save, Send, TestTube2 } from "lucide-react";
+import { Archive, ArrowLeft, CheckCircle2, FileText, Image, Loader2, Save, Send, TestTube2, Video } from "lucide-react";
 
 import FlowCanvasPage from "../../flowCanvas/FlowCanvasPage";
 import { useFlowCanvasStore } from "../../flowCanvas/store/flowCanvasStore";
@@ -32,6 +32,8 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
   const [loading, setLoading] = useState(templateId !== "new");
   const [pending, setPending] = useState<"archive" | "publish" | "save" | "testing" | null>(null);
   const [inputDraft, setInputDraft] = useState<InputDraft>({ id: '', label: '', targetKey: '', type: 'text', required: false, options: '' });
+  const addNode = useFlowCanvasStore((state) => state.addNode);
+  const isCanvasEmpty = useFlowCanvasStore((state) => state.nodes.length === 0);
   const status = template?.status ?? "draft";
   const inputs = ((template?.status === "published" ? template.draftInputSchema ?? template.inputSchema : template?.inputSchema) ?? []) as FlowTemplateInputDefinition[];
   const canPublish = status === "testing" || template?.draftStatus === "testing";
@@ -77,6 +79,10 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
     setTemplate((current) => current ? { ...current, inputSchema: [...inputs, next] } : current);
     setInputDraft({ id: '', label: '', targetKey: '', type: 'text', required: false, options: '' }); setError(null);
   };
+  const addTemplateNode = (kind: 'image' | 'text' | 'video') => {
+    const position = { x: 520, y: 320 };
+    addNode(kind, position, { selected: true });
+  };
   const mutate = async (action: "archive" | "publish" | "save" | "testing") => {
     setPending(action); setError(null);
     try {
@@ -117,6 +123,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
     <aside className="absolute left-4 top-[88px] z-[80] w-[300px] space-y-4 rounded border border-white/10 bg-[#18181d]/95 p-4 shadow-2xl"><div><label className="text-xs font-bold text-slate-300" htmlFor="template-title">模板名称</label><input className="mt-2 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-title" onChange={(event) => setMetadata((current) => ({ ...current, title: event.target.value }))} value={metadata.title} /></div><div><label className="text-xs font-bold text-slate-300" htmlFor="template-category">分类</label><input className="mt-2 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-category" onChange={(event) => setMetadata((current) => ({ ...current, category: event.target.value }))} value={metadata.category} /></div><div><label className="text-xs font-bold text-slate-300" htmlFor="template-description">描述</label><textarea className="mt-2 min-h-20 w-full rounded border border-white/10 bg-black/30 p-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-description" onChange={(event) => setMetadata((current) => ({ ...current, description: event.target.value }))} value={metadata.description} /></div><div><label className="text-xs font-bold text-slate-300" htmlFor="template-estimated-credits">预计积分</label><input className="mt-2 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-estimated-credits" min="0" onChange={(event) => setMetadata((current) => ({ ...current, estimatedCredits: event.target.value }))} type="number" value={metadata.estimatedCredits} /></div><div className="border-t border-white/10 pt-3 text-xs text-slate-400"><CheckCircle2 className="mr-1 inline text-cyan-200" size={13} />模板画布不会创建普通项目或 Flow。</div>{error ? <div className="rounded border border-red-300/20 bg-red-500/10 p-3 text-xs text-red-100">{error}</div> : null}</aside>
     <section className="absolute bottom-4 left-4 z-[90] w-[300px] rounded border border-white/10 bg-[#18181d]/95 p-4 shadow-2xl"><label className="mb-2 block text-xs font-bold text-slate-300" htmlFor="template-cover-asset">封面素材 ID</label><input className="mb-4 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-xs outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-cover-asset" onChange={(event) => setMetadata((current) => ({ ...current, coverAssetId: event.target.value }))} value={metadata.coverAssetId} /><TemplateInputMarkerForm disabled={!canEdit} draft={inputDraft} inputs={inputs} targets={safeTemplateInputTargets(graphFromStore())} onAdd={addInputMarker} onChange={(patch) => setInputDraft((current) => ({ ...current, ...patch }))} onRemove={(id) => setTemplate((current) => current ? { ...current, inputSchema: inputs.filter((item) => item.id !== id) } : current)} /></section>
     <FlowCanvasPage />
+    {isCanvasEmpty ? <div className="absolute inset-0 z-[85] grid place-items-center pointer-events-none"><div className="w-[360px] border border-white/10 bg-[#18181d]/95 p-5 text-center shadow-2xl"><div className="mb-4 text-sm font-bold text-white">添加起始节点</div><div className="grid grid-cols-3 gap-2"><button aria-label="添加图片生成节点" className="pointer-events-auto flex min-h-[88px] flex-col items-center justify-center gap-2 border border-cyan-300/30 bg-cyan-300/10 text-xs font-bold text-cyan-100 hover:bg-cyan-300/20" disabled={!canEdit} onClick={() => addTemplateNode('image')} type="button"><Image size={20} />图片生成</button><button aria-label="添加视频生成节点" className="pointer-events-auto flex min-h-[88px] flex-col items-center justify-center gap-2 border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-100 hover:bg-white/[0.09]" disabled={!canEdit} onClick={() => addTemplateNode('video')} type="button"><Video size={20} />视频生成</button><button aria-label="添加文本生成节点" className="pointer-events-auto flex min-h-[88px] flex-col items-center justify-center gap-2 border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-100 hover:bg-white/[0.09]" disabled={!canEdit} onClick={() => addTemplateNode('text')} type="button"><FileText size={20} />文本生成</button></div></div></div> : null}
   </div>;
 }
 

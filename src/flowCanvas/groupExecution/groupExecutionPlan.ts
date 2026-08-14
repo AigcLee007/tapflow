@@ -65,9 +65,9 @@ function readEstimatedCredits(node: FlowNode): number {
   return Number.isFinite(candidate) && candidate > 0 ? candidate : 0;
 }
 
-function validateNode(node: FlowNode): GroupExecutionIssue[] {
+function validateNode(node: FlowNode, hasInGroupTextInput: boolean): GroupExecutionIssue[] {
   const issues: GroupExecutionIssue[] = [];
-  if (!node.data.generationPrompt?.trim()) {
+  if (!node.data.generationPrompt?.trim() && !hasInGroupTextInput) {
     issues.push({
       code: 'MISSING_GENERATION_PROMPT',
       message: `Node ${node.id} requires a generation prompt.`,
@@ -131,6 +131,12 @@ export function buildGroupExecutionPlan(
   const executableNodes = directChildren.filter((node) => EXECUTABLE_KINDS.has(node.data.kind)).sort(compareNodes);
   const unsupportedNodes = directChildren.filter((node) => !EXECUTABLE_KINDS.has(node.data.kind) && !STATIC_INPUT_KINDS.has(node.data.kind) && node.type !== 'group');
   const executableIds = new Set(executableNodes.map((node) => node.id));
+  const nodeById = new Map(directChildren.map((node) => [node.id, node]));
+  const hasInGroupTextInput = (node: FlowNode) => edges.some((edge) =>
+    edge.target === node.id
+    && executableIds.has(edge.source)
+    && nodeById.get(edge.source)?.data.kind === 'text',
+  );
   const blockingIssues = [
     ...nestedGroups.map((node) => ({
       code: 'NESTED_GROUP_UNSUPPORTED' as const,
@@ -142,7 +148,7 @@ export function buildGroupExecutionPlan(
       message: `Node ${node.id} (${node.data.kind}) cannot be executed as part of a group.`,
       nodeId: node.id,
     })),
-    ...executableNodes.flatMap(validateNode),
+    ...executableNodes.flatMap((node) => validateNode(node, hasInGroupTextInput(node))),
   ];
 
   const externalDependencies = edges

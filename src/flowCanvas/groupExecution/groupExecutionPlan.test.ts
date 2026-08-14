@@ -74,6 +74,17 @@ describe('buildGroupExecutionPlan', () => {
     ]));
   });
 
+  test('allows a target without a local prompt when an in-group text node supplies it', () => {
+    const group = node('group', 'group');
+    const prompt = node('prompt', 'text', { parentId: 'group' });
+    const target = node('target', 'image', { parentId: 'group' });
+    target.data.generationPrompt = '';
+
+    const plan = buildGroupExecutionPlan([group, prompt, target], [edge('prompt', 'target')], 'group', {});
+
+    expect(plan.blockingIssues).not.toContainEqual(expect.objectContaining({ code: 'MISSING_GENERATION_PROMPT', nodeId: 'target' }));
+  });
+
   test('blocks unsupported direct children instead of treating them as free executable work', () => {
     const group = node('group', 'group');
     const audio = node('audio', 'audio', { parentId: 'group' });
