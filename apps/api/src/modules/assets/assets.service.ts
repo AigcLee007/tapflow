@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createPgPool, safeRecordAuditLog, withTenantTransaction } from "@aigc-flow/db";
+import type { AssetVideoReferenceVariantJobPayload } from "@aigc-flow/redis";
 import {
   buildAssetObjectKey,
   type PutObjectInput,
@@ -27,6 +28,15 @@ type AssetContext = {
   traceId?: string | null;
   userAgent?: string | null;
   userId: string | null;
+};
+
+export type AssetVideoReferenceVariantQueue = {
+  add(
+    name: "prepare-reference-720p",
+    payload: AssetVideoReferenceVariantJobPayload,
+    options: { jobId: string; removeOnComplete: true },
+  ): Promise<unknown>;
+  close?: () => Promise<void>;
 };
 
 type AssetRecord = {
@@ -452,7 +462,33 @@ function shouldFallbackEmptyVariantBytes(input: {
   return Boolean(input.variantKey) && input.body.byteLength === 0;
 }
 
+async function enqueueReferenceVideoVariant(input: {
+  asset: Pick<AssetView, "id" | "kind">;
+  context: Pick<AssetContext, "tenantId" | "traceId">;
+  queue?: AssetVideoReferenceVariantQueue | null;
+}): Promise<void> {
+  if (input.asset.kind !== "video" || !input.queue) return;
+
+  try {
+    await input.queue.add(
+      "prepare-reference-720p",
+      {
+        tenantId: input.context.tenantId,
+        assetId: input.asset.id,
+        traceId: input.context.traceId ?? "",
+      },
+      {
+        jobId: `${input.asset.id}:reference-720p`,
+        removeOnComplete: true,
+      },
+    );
+  } catch {
+    // Upload completion must remain successful when the idempotent job already exists.
+  }
+}
+
 export const __assetsServiceTestUtils = {
+  enqueueReferenceVideoVariant,
   loadSignedAssetCandidates,
   normalizeAssetObjectForBytesResponse,
   shouldFallbackEmptyVariantBytes,
@@ -462,13 +498,16 @@ export class AssetsService {
   readonly bucket: string;
   readonly pool: PgPool;
   readonly storageProvider: StorageProvider;
+  readonly assetVideoReferenceVariantQueue: AssetVideoReferenceVariantQueue | null;
 
   constructor(options: {
     bucket: string;
+    assetVideoReferenceVariantQueue?: AssetVideoReferenceVariantQueue | null;
     pool?: PgPool;
     storageProvider: StorageProvider;
   }) {
     this.bucket = options.bucket;
+    this.assetVideoReferenceVariantQueue = options.assetVideoReferenceVariantQueue ?? null;
     this.pool = options.pool ?? createPgPool();
     this.storageProvider = options.storageProvider;
   }
@@ -805,7 +844,7 @@ export class AssetsService {
     assetId: string,
     input: CompleteUploadInput,
   ): Promise<AssetView> {
-    return withTenantTransaction(context, async (client) => {
+    const assetView = await withTenantTransaction(context, async (client) => {
       const asset = await this.getAssetRowForUpdate(client, context.tenantId, assetId);
       if (asset.deleted_at) {
         throw new AssetsApiError(404, "ASSET_NOT_FOUND", "Asset not found");
@@ -893,6 +932,14 @@ export class AssetsService {
 
       return assetView;
     }, this.pool);
+
+    await enqueueReferenceVideoVariant({
+      asset: assetView,
+      context,
+      queue: this.assetVideoReferenceVariantQueue,
+    });
+
+    return assetView;
   }
 
   async uploadAssetBytes(

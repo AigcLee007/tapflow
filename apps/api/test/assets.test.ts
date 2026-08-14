@@ -8,6 +8,7 @@ import type { StorageProvider } from "@aigc-flow/storage";
 import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/modules/auth/password.js";
+import { __assetsServiceTestUtils } from "../src/modules/assets/assets.service.js";
 import { runMigrations } from "../../../packages/db/src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.js";
 import { currentLegalConsent } from "./legal-consent.fixture.js";
@@ -277,6 +278,50 @@ async function insertAvailableImageAssetWithVariant(
 
   return assetId;
 }
+
+describe("asset reference video variant enqueue", () => {
+  test("enqueues only video assets with a lightweight stable job", async () => {
+    const calls: Array<{ name: string; payload: unknown; options: unknown }> = [];
+    const queue = {
+      add: async (name: string, payload: unknown, options: unknown) => {
+        calls.push({ name, payload, options });
+      },
+    };
+
+    await __assetsServiceTestUtils.enqueueReferenceVideoVariant({
+      asset: { id: "video-asset", kind: "video" },
+      context: { tenantId: "tenant-1", traceId: "trace-1" },
+      queue,
+    });
+    await __assetsServiceTestUtils.enqueueReferenceVideoVariant({
+      asset: { id: "image-asset", kind: "image" },
+      context: { tenantId: "tenant-1", traceId: "trace-1" },
+      queue,
+    });
+
+    expect(calls).toEqual([
+      {
+        name: "prepare-reference-720p",
+        payload: { tenantId: "tenant-1", assetId: "video-asset", traceId: "trace-1" },
+        options: { jobId: "video-asset:reference-720p", removeOnComplete: true },
+      },
+    ]);
+  });
+
+  test("swallows duplicate queue errors so upload completion can return", async () => {
+    const queue = {
+      add: async () => {
+        throw new Error("Job already exists");
+      },
+    };
+
+    await expect(__assetsServiceTestUtils.enqueueReferenceVideoVariant({
+      asset: { id: "video-asset", kind: "video" },
+      context: { tenantId: "tenant-1", traceId: "trace-1" },
+      queue,
+    })).resolves.toBeUndefined();
+  });
+});
 
 describeWithDatabase("assets v2", () => {
   test("asset:create can create a presigned upload and a viewer cannot", async () => {
