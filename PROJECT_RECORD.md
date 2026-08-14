@@ -8,6 +8,13 @@ Maintainers: project team + Codex sessions
 - added a template-editor-owned empty state with direct image, video, and text node commands, so an administrator can create a real graph before saving, testing, and publishing an official template.
 - aligned group confirmation and server preflight with runtime prompt resolution: an image or video node may use an in-group text-node dependency instead of duplicating that text locally; nodes without a local or upstream text prompt remain blocked.
 - validation completed locally: focused template/group UI tests (`18` passed), focused API workflow-run tests (`4` passed; `18` database tests skipped without `DATABASE_URL`), and the frontend production build.
+## 2026-08-14 - Gemini Omni Flash PixelHub Request Contract Verification
+
+- controlled live calls isolated PixelHub's Gemini image-plus-video alias behavior: `image_urls` made the reference image effective, while `video_urls` was required for the source video to preserve its motion and environment. `reference_videos` completed without applying the source video.
+- added the model-specific provider contract in `docs/GEMINI_OMNI_FLASH_PIXELHUB_API.md`, including exact create/poll payloads, media URL requirements, adapter repair guidance, regression expectations, and the three-call evidence matrix. The PixelHub rollout runbook and historical integration design now point to this superseding contract.
+- repaired the PixelHub adapter so Gemini always sends images as `image_urls` and source video as `video_urls`, while Sora and Veo retain their existing aliases. The regression reproduced the old `reference_image_urls`/`reference_videos` body before the fix, then passed with the verified Gemini contract.
+- validation passed: AI Gateway Core tests (`12` files, `171` tests), AI Gateway Core TypeScript build, and the root production build. The root build retained existing non-blocking CSS-property, dynamic-import, and chunk-size warnings.
+- no credential, signed media URL, provider task ID, or generated asset was committed.
 
 ## 2026-08-13 - Signed Asset Attachment Download Repair
 

@@ -74,10 +74,13 @@ const geminiImageToVideoContext = (): ProviderCallContext => ({
 });
 
 describe("PixelHubVideoAdapter", () => {
-  test("maps Gemini input to canonical PixelHub fields without leaking URLs in summaries", async () => {
+  test("maps Gemini image and source video to image_urls and video_urls without legacy aliases", async () => {
     const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({ task_id: "task-1", status: "queued" }), { status: 200 }));
     const result = await new PixelHubVideoAdapter({ fetchImplementation }).generateVideo(context("gemini-omni-flash"), request);
-    expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({ aspect_ratio: "16:9", duration: 8, model: "gemini-omni-flash", prompt: request.prompt, reference_image_urls: ["https://signed.test/image"], reference_videos: ["https://signed.test/video"], resolution: "1080p" });
+    const body = JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({ aspect_ratio: "16:9", duration: 8, image_urls: ["https://signed.test/image"], model: "gemini-omni-flash", prompt: request.prompt, resolution: "1080p", video_urls: ["https://signed.test/video"] });
+    expect(body).not.toHaveProperty("reference_image_urls");
+    expect(body).not.toHaveProperty("reference_videos");
     expect(result).toMatchObject({ pollIntervalMs: 12000, providerTaskId: "task-1", providerTaskTimeoutMs: 1800000, status: "waiting_provider" });
     expect(JSON.stringify(result.providerRequest)).not.toMatch(/signed\.test|secret-key/i);
   });
