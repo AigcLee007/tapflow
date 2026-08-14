@@ -15,6 +15,7 @@ import { DEFAULT_QUEUE_PREFIX, resolveQueuePrefix } from "./redis.js";
 
 export const QUEUE_NAMES = {
   assetImageVariant: "asset.image-variant",
+  assetVideoReferenceVariant: "asset.video-reference-variant",
   assetIngest: "asset.ingest",
   auditFlush: "audit.flush",
   billingSettle: "billing.settle",
@@ -62,6 +63,10 @@ export type AssetImageVariantJobPayload = BaseJobPayload & {
   assetId: string;
 };
 
+export type AssetVideoReferenceVariantJobPayload = BaseJobPayload & {
+  assetId: string;
+};
+
 export type AssetIngestJobPayload = BaseJobPayload & {
   assetId: string;
 };
@@ -84,6 +89,7 @@ export type AuditFlushJobPayload = BaseJobPayload & {
 
 export type QueuePayloadMap = {
   "asset.image-variant": AssetImageVariantJobPayload;
+  "asset.video-reference-variant": AssetVideoReferenceVariantJobPayload;
   "asset.ingest": AssetIngestJobPayload;
   "audit.flush": AuditFlushJobPayload;
   "billing.settle": BillingSettleJobPayload;

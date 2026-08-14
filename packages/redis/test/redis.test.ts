@@ -10,6 +10,7 @@ import {
   resolveQueuePrefix,
   resolveRedisUrl,
   assertLightweightJobPayload,
+  type AssetVideoReferenceVariantJobPayload,
   type ProviderPollJobPayload,
 } from "../src/index.js";
 
@@ -44,6 +45,34 @@ describe("@aigc-flow/redis config", () => {
     expect(() => assertLightweightJobPayload(payload)).not.toThrow();
   });
 
+  test("permits lightweight asset video reference variant payloads", () => {
+    const payload: AssetVideoReferenceVariantJobPayload = {
+      assetId: "asset-1",
+      tenantId: "tenant-1",
+      traceId: "trace-1",
+    };
+
+    expect(() => assertLightweightJobPayload(payload)).not.toThrow();
+  });
+
+  test("rejects media body and oversized fields from asset video variant payloads", () => {
+    expect(() =>
+      assertLightweightJobPayload({
+        assetId: "asset-1",
+        body: { bytes: [1, 2, 3] },
+        tenantId: "tenant-1",
+      }),
+    ).toThrow(/must be an ID or scalar value/);
+
+    expect(() =>
+      assertLightweightJobPayload({
+        assetId: "asset-1",
+        tenantId: "tenant-1",
+        traceId: "x".repeat(513),
+      }),
+    ).toThrow(/too large/);
+  });
+
   test("resolveRedisUrl reads REDIS_URL", () => {
     process.env.REDIS_URL = "redis://example.com:6380/1";
     process.env.NODE_ENV = "test";
@@ -71,6 +100,7 @@ describe("@aigc-flow/redis config", () => {
     expect(QUEUE_NAMES.walletExpiry).toBe("billing.wallet-expiry");
     expect(QUEUE_NAMES.emailSend).toBe("email.send");
     expect(QUEUE_NAMES.auditFlush).toBe("audit.flush");
+    expect(QUEUE_NAMES.assetVideoReferenceVariant).toBe("asset.video-reference-variant");
   });
 });
 
