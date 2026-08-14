@@ -1,7 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 Maintainers: project team + Codex sessions
+
+## 2026-08-14 - Platform Template Center And Scoped Group Execution
+
+- added platform-admin-only template lifecycle management at `/admin/templates`, including draft, server validation/testing, immutable published versions, archive, and published-only creator access. Template input markers support text, asset, enum, and number values; insertion creates an independent graph copy and validates tenant-owned assets on the server.
+- added group-run confirmation and server-authoritative `runMode: group` execution. The API derives direct children from the current draft, ignores client scope/hash values, persists a normalized scope and verified same-tenant/same-Flow external-output snapshot, and limits execution to that scope.
+- group scheduling reserves and queues ready roots first, delays dependent reservations until their in-scope parents succeed, and blocks only failed-branch descendants while independent branches continue. Grouping and edge data now participate in workflow snapshots/checksums so stale grouping metadata cannot be reused.
+- validation completed locally: focused template/group frontend tests (`109` passed); workflow-core compiler tests (`11` passed); API/Worker builds. API and Worker database integration tests remain skipped because `DATABASE_URL` is not configured and Docker Desktop is unavailable locally. Run the documented local infra and database suite before staging.
 
 ## 2026-08-13 - Text Relay Inline Image Transport Repair
 

@@ -1,5 +1,24 @@
 # Codex Handoff
 
+## Current Sprint Handoff (platform-template-center)
+
+Branch:
+
+- `codex/platform-template-center`
+
+Implemented:
+
+- Platform administrators manage official templates at `/admin/templates`; regular users can browse published versions and insert configured graph copies.
+- Template lifecycle preserves immutable published versions, requires server validation before publication, validates input substitution and tenant-owned assets, and records usage idempotently.
+- Group execution always requires a confirmation dialog. The backend derives the direct-child scope from the saved draft, snapshots valid external outputs, schedules independent roots in parallel, delays dependent charges until eligible, and blocks only descendants of failed nodes.
+
+Validation status:
+
+- Frontend template/group focused suite: `109` passed.
+- Workflow-core compiler suite: `11` passed.
+- API and Worker TypeScript builds: passed.
+- Database-backed API/Worker group tests are present but skipped locally because `DATABASE_URL` is absent and Docker Desktop is not running. Before staging, start `npm run dev:infra`, set `DATABASE_URL`, run migrations, then run the API and Worker workspace suites.
+
 ## Current Sprint Handoff (provider-settings-admin-ui)
 
 Branch:
