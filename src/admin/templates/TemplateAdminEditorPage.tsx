@@ -33,7 +33,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
   const [pending, setPending] = useState<"archive" | "publish" | "save" | "testing" | null>(null);
   const [inputDraft, setInputDraft] = useState<InputDraft>({ id: '', label: '', targetKey: '', type: 'text', required: false, options: '' });
   const status = template?.status ?? "draft";
-  const inputs = (template?.inputSchema ?? []) as FlowTemplateInputDefinition[];
+  const inputs = ((template?.status === "published" ? template.draftInputSchema ?? template.inputSchema : template?.inputSchema) ?? []) as FlowTemplateInputDefinition[];
   const canPublish = status === "testing";
   const canEdit = status !== "archived";
 
@@ -48,8 +48,13 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
     setLoading(true); setError(null);
     void getAdminFlowTemplate(templateId).then((next) => {
       if (cancelled) return;
-      setTemplate(next); setMetadata({ title: next.title, description: next.description, category: next.category, estimatedCredits: next.estimatedCredits == null ? "" : String(next.estimatedCredits) });
-      const graph = next.graph ?? blankGraph;
+      setTemplate(next); setMetadata({
+        title: next.status === "published" ? next.draftTitle ?? next.title : next.title,
+        description: next.status === "published" ? next.draftDescription ?? next.description : next.description,
+        category: next.status === "published" ? next.draftCategory ?? next.category : next.category,
+        estimatedCredits: next.estimatedCredits == null ? "" : String(next.estimatedCredits),
+      });
+      const graph = (next.status === "published" ? next.draftGraph ?? next.graph : next.graph) ?? blankGraph;
       // This state-only graph load deliberately leaves backend flow/project bindings unset.
       useFlowCanvasStore.getState().loadProject({ id: `template-${next.id}`, title: next.title, nodes: graph.nodes as any[], edges: graph.edges as any[], viewport: { x: 0, y: 0, zoom: 1 }, version: next.version ?? 1 });
     }).catch((loadError) => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : "模板加载失败"); }).finally(() => { if (!cancelled) setLoading(false); });
@@ -80,7 +85,21 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
       else if (action === "testing") next = await validateAdminFlowTemplate(template.id);
       else if (action === "publish") next = await publishAdminFlowTemplate(template.id);
       else next = await archiveAdminFlowTemplate(template.id);
-      setTemplate((current) => ({ ...(current ?? {}), ...next, graph: next.graph ?? payload.graph, inputSchema: next.inputSchema ?? payload.inputSchema } as FlowTemplateGraph));
+      setTemplate((current) => ({
+        ...(current ?? {}),
+        ...next,
+        graph: next.graph ?? payload.graph,
+        inputSchema: next.inputSchema ?? payload.inputSchema,
+        ...(next.status === "published" && action === "save"
+          ? {
+              draftGraph: payload.graph,
+              draftInputSchema: payload.inputSchema,
+              draftTitle: payload.title,
+              draftDescription: payload.description,
+              draftCategory: payload.category,
+            }
+          : {}),
+      } as FlowTemplateGraph));
       if (action === "save" && !template?.id) navigateTemplateAdmin(`/admin/templates/${next.id}/editor`, true);
     } catch (mutationError) { setError(mutationError instanceof Error ? mutationError.message : "模板操作失败"); }
     finally { setPending(null); }

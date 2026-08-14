@@ -44,6 +44,13 @@ export type FlowTemplateItem = {
 export type FlowTemplateGraph = FlowTemplateItem & {
   graph: { nodes: unknown[]; edges: unknown[] };
   inputSchema?: FlowTemplateInputDefinition[];
+  /** Returned only to system administrators for a published template's next version. */
+  draftGraph?: { nodes: unknown[]; edges: unknown[] } | null;
+  draftInputSchema?: FlowTemplateInputDefinition[] | null;
+  draftTitle?: string | null;
+  draftDescription?: string | null;
+  draftCategory?: string | null;
+  draftCoverAssetId?: string | null;
 };
 
 export async function listFlowTemplates(params: { category?: string; query?: string } = {}) {

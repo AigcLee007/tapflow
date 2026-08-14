@@ -8,6 +8,7 @@ import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/modules/auth/password.js";
 import {
+  assertGroupNodeConfiguration,
   assertTextImageInputsSupportedByRuntimeGraph,
   getTextImageInputCandidates,
   WorkflowRunsService,
@@ -65,6 +66,32 @@ function createFakeNodeExecuteQueue() {
     },
   };
 }
+
+test('group execution rejects missing generic generation prompt or route before reserve', () => {
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { routeKey: 'image.default' } } as never))
+    .toThrow(/generation prompt/i);
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { generationPrompt: 'prompt' } } as never))
+    .toThrow(/model route/i);
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { generationPrompt: 'prompt', routeKey: 'image.default' } } as never))
+    .not.toThrow();
+});
+
+test('group external outputs are scoped to the current graph checksum', async () => {
+  const service = new WorkflowRunsService({
+    nodeExecuteQueue: createFakeNodeExecuteQueue().queue,
+    pool: { connect: async () => { throw new Error('not used by this unit test'); } } as never,
+  });
+  const calls: Array<{ sql: string; values?: unknown[] }> = [];
+  const client = { query: async (sql: string, values?: unknown[]) => { calls.push({ sql, values }); return { rows: [] }; } };
+  const load = (service as unknown as {
+    loadVerifiedExternalGroupDependencies: (client: typeof client, tenantId: string, flowId: string, checksum: string, dependencies: Array<{ dataType: 'image'; nodeId: string }>) => Promise<unknown>;
+  }).loadVerifiedExternalGroupDependencies;
+
+  await load.call(service, client, randomUUID(), randomUUID(), 'current-checksum', [{ dataType: 'image', nodeId: 'source' }]);
+  expect(calls[0]?.sql).toContain('JOIN flow_versions ON flow_versions.id = workflow_runs.flow_version_id');
+  expect(calls[0]?.sql).toContain('flow_versions.checksum = $3');
+  expect(calls[0]?.values?.[2]).toBe('current-checksum');
+});
 
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
   const fakeQueue = createFakeNodeExecuteQueue();

@@ -891,6 +891,16 @@ function outputMatchesExternalDataType(
   return assets.some((asset) => isRecord(asset) && asset.kind === dataType && typeof asset.assetId === "string" && asset.assetId.trim());
 }
 
+export function assertGroupNodeConfiguration(node: CompiledWorkflowNode): void {
+  const config = isRecord(node.config) ? node.config : {};
+  if (!readTrimmedString(config.generationPrompt)) {
+    throw new WorkflowRunsApiError(422, "GROUP_MISSING_GENERATION_PROMPT", `Node ${node.id} requires a generation prompt.`);
+  }
+  if (!readTrimmedString(config.routeId) && !resolveConfiguredRouteKey(node) && !readTrimmedString(config.modelId)) {
+    throw new WorkflowRunsApiError(422, "GROUP_MISSING_ROUTE", `Node ${node.id} requires a model route.`);
+  }
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "23505");
 }
@@ -1027,6 +1037,7 @@ export class WorkflowRunsService {
           if (unsupported) {
             throw new WorkflowRunsApiError(422, "GROUP_NODE_UNSUPPORTED", `Node ${unsupported.id} is not executable in a group.`);
           }
+          groupNodes.forEach(assertGroupNodeConfiguration);
         }
         const externalDependencyIds = runMode === "group"
           ? Array.from(new Set(groupNodes.flatMap((node) => node.dependencies.filter((dependencyId) => !groupNodeIds.includes(dependencyId)))))
@@ -1035,6 +1046,7 @@ export class WorkflowRunsService {
           client,
           context.tenantId,
           runtimeFlow.flow_id,
+          runtimeFlow.graph_checksum ?? "",
           externalDependencyIds.map((nodeId) => ({
             dataType: readExternalEdgeDataType(
               runtimeFlow.compiled_graph_json,
@@ -1551,6 +1563,7 @@ export class WorkflowRunsService {
     client: PoolClient,
     tenantId: string,
     flowId: string,
+    graphChecksum: string,
     dependencies: Array<{ dataType: ExternalGroupDependencySnapshot["dataType"]; nodeId: string }>,
   ): Promise<ExternalGroupDependencySnapshot[]> {
     if (dependencies.length === 0) return [];
@@ -1568,10 +1581,12 @@ export class WorkflowRunsService {
           node_runs.workflow_run_id::text AS workflow_run_id
         FROM node_runs
         JOIN workflow_runs ON workflow_runs.id = node_runs.workflow_run_id
+        JOIN flow_versions ON flow_versions.id = workflow_runs.flow_version_id
         WHERE workflow_runs.tenant_id = $1::uuid
           AND workflow_runs.flow_id = $2::uuid
+          AND flow_versions.checksum = $3
           AND workflow_runs.status = 'succeeded'
-          AND node_runs.node_id = ANY($3::text[])
+          AND node_runs.node_id = ANY($4::text[])
           AND node_runs.status = 'succeeded'
           AND node_runs.output_json IS NOT NULL
           AND node_runs.output_json <> '{}'::jsonb
@@ -1581,7 +1596,7 @@ export class WorkflowRunsService {
           AND NOT (node_runs.output_json ? 'providerFailure')
         ORDER BY node_runs.node_id, node_runs.finished_at DESC NULLS LAST, node_runs.updated_at DESC
       `,
-      [tenantId, flowId, dependencies.map((dependency) => dependency.nodeId)],
+      [tenantId, flowId, graphChecksum, dependencies.map((dependency) => dependency.nodeId)],
     );
     const typeByNodeId = new Map(dependencies.map((dependency) => [dependency.nodeId, dependency.dataType]));
     return result.rows.flatMap((row) => {

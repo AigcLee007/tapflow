@@ -60,4 +60,19 @@ describe("TemplateAdminEditorPage", () => {
     expect(screen.getByRole('menuitem', { name: /node-1.*nested.label/i })).toBeTruthy();
     expect(screen.queryByText(/__proto__/i)).toBeNull();
   });
+
+  test('loads a published template revision from its draft without exposing the live graph for editing', async () => {
+    api.getAdminFlowTemplate.mockResolvedValue({
+      id: 'template-1', title: 'Live template', description: 'live', category: 'image', status: 'published', version: 2,
+      inputSchema: [{ id: 'live', label: 'Live', required: false, type: 'text', target: { nodeId: 'live-node', fieldPath: 'data.generationPrompt' } }],
+      graph: { nodes: [{ id: 'live-node', type: 'image', position: { x: 0, y: 0 }, data: { kind: 'image', generationPrompt: 'live prompt' } }], edges: [] },
+      draftTitle: 'Draft template', draftDescription: 'draft', draftCategory: 'video',
+      draftInputSchema: [{ id: 'draft', label: 'Draft', required: false, type: 'text', target: { nodeId: 'draft-node', fieldPath: 'data.generationPrompt' } }],
+      draftGraph: { nodes: [{ id: 'draft-node', type: 'video', position: { x: 0, y: 0 }, data: { kind: 'video', generationPrompt: 'draft prompt' } }], edges: [] },
+    });
+    render(<TemplateAdminEditorPage templateId="template-1" />);
+    expect(await screen.findByDisplayValue('Draft template')).toBeTruthy();
+    await waitFor(() => expect(useFlowCanvasStore.getState().nodes.map((node) => node.id)).toEqual(['draft-node']));
+    expect(screen.getByText(/Draft.*text/i)).toBeTruthy();
+  });
 });

@@ -157,7 +157,30 @@ describe('flow template lifecycle schemas', () => {
 
     const updateSql = queries.find(({ sql }) => sql.includes('UPDATE flow_templates'))?.sql ?? '';
     expect(updateSql).toContain('draft_graph_json');
+    expect(updateSql).toContain('draft_title');
+    expect(updateSql).toContain("title = CASE WHEN status = 'published' THEN title ELSE $2 END");
     expect(updateSql).not.toMatch(/\n\s*status\s*=/);
+  });
+
+  test('rejects an asset template input whose kind is outside assetKinds', async () => {
+    const template = {
+      category: 'image', cover_asset_id: null, created_at: '2026-08-13T00:00:00.000Z', created_by: randomUUID(), description: '', estimated_credits: null,
+      graph_json: { nodes: [{ id: 'image', data: { assetId: '' } }], edges: [] }, id: randomUUID(),
+      input_schema: [{ id: 'source', label: 'Source', required: true, type: 'asset', assetKinds: ['image'], target: { nodeId: 'image', fieldPath: 'data.assetId' } }],
+      node_count: 1, published_at: '2026-08-13T00:00:00.000Z', published_by: randomUUID(), status: 'published', tenant_id: null, title: 'Asset template', updated_at: '2026-08-13T00:00:00.000Z', version: 1, version_snapshot_id: null, visibility: 'official',
+    };
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes('FROM flow_templates')) return { rows: [template] };
+        if (sql.includes('FROM assets')) return { rows: [{ kind: 'video' }] };
+        return { rows: [] };
+      }, release: () => undefined,
+    } as unknown as PoolClient;
+    const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
+
+    await expect(service.instantiate({ tenantId: randomUUID(), userId: randomUUID() }, template.id, {
+      idempotencyKey: randomUUID(), inputValues: { source: randomUUID() },
+    })).rejects.toMatchObject({ code: 'INVALID_TEMPLATE_ASSET_KIND' });
   });
 
   test('accepts a draft with the supported template input definitions', () => {
