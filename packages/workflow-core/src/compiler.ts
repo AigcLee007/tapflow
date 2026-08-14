@@ -70,6 +70,7 @@ export function compileGraph(graph: FlowGraph): CompiledWorkflow {
       dependencies: sortStrings(dependencies.get(nodeId) ?? []),
       dependents: sortStrings(dependents.get(nodeId) ?? []),
       id: node.id,
+      parentId: node.parentId,
       type: normalizeNodeType(node.type, node.data),
     };
   });

@@ -1,6 +1,7 @@
 export type FlowGraphNode = {
   data?: Record<string, unknown>;
   id: string;
+  parentId?: string;
   type: string;
 };
 
@@ -23,6 +24,7 @@ export type CompiledWorkflowNode = {
   dependencies: string[];
   dependents: string[];
   id: string;
+  parentId?: string;
   type: string;
 };
 
