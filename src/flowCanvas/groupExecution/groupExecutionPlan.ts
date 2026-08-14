@@ -67,17 +67,18 @@ function readEstimatedCredits(node: FlowNode): number {
 
 function validateNode(node: FlowNode, hasInGroupTextInput: boolean): GroupExecutionIssue[] {
   const issues: GroupExecutionIssue[] = [];
+  const label = node.data.title?.trim() || node.id;
   if (!node.data.generationPrompt?.trim() && !hasInGroupTextInput) {
     issues.push({
       code: 'MISSING_GENERATION_PROMPT',
-      message: `Node ${node.id} requires a generation prompt.`,
+      message: `${label} requires a generation prompt.`,
       nodeId: node.id,
     });
   }
   if (!node.data.routeId && !node.data.routeKey && !node.data.modelId) {
     issues.push({
       code: 'MISSING_ROUTE',
-      message: `Node ${node.id} requires a model route.`,
+      message: `${label} requires a model route.`,
       nodeId: node.id,
     });
   }

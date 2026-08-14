@@ -61,6 +61,7 @@ describe('buildGroupExecutionPlan', () => {
     const group = node('group', 'group');
     const upload = node('upload', 'upload', { parentId: 'group' });
     const missingPrompt = node('missing-prompt', 'image', { parentId: 'group' });
+    missingPrompt.data.title = 'Poster image';
     missingPrompt.data.generationPrompt = '  ';
     const missingRoute = node('missing-route', 'video', { parentId: 'group' });
     missingRoute.data.routeKey = undefined;
@@ -72,6 +73,7 @@ describe('buildGroupExecutionPlan', () => {
       expect.objectContaining({ code: 'MISSING_GENERATION_PROMPT', nodeId: 'missing-prompt' }),
       expect.objectContaining({ code: 'MISSING_ROUTE', nodeId: 'missing-route' }),
     ]));
+    expect(plan.blockingIssues.find((issue) => issue.nodeId === 'missing-prompt')?.message).toContain('Poster image');
   });
 
   test('allows a target without a local prompt when an in-group text node supplies it', () => {
