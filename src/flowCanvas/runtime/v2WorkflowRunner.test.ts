@@ -2754,6 +2754,67 @@ describe('v2WorkflowRunner', () => {
     });
   });
 
+  test('dispose invalidates a pending recovery before it can apply a snapshot or start a stream', async () => {
+    useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { title: 'Pending Recovery' });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    let resolveSnapshots: ((snapshots: any[]) => void) | undefined;
+    listFlowWorkflowRunsMock.mockReturnValue(new Promise<any[]>((resolve) => {
+      resolveSnapshots = resolve;
+    }));
+    streamWorkflowRunMock.mockReturnValue({ close: vi.fn() });
+
+    const recovery = recoverFlowTargetNodeRuns('11111111-1111-1111-1111-111111111111');
+    await Promise.resolve();
+    disposeBackendWorkflowRunStream();
+    resolveSnapshots?.([
+      {
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-08-14T05:51:06.000Z',
+            errorJson: null,
+            finishedAt: null,
+            id: 'node-run-pending-recovery',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId,
+            nodeType: 'video.generate',
+            outputJson: null,
+            providerTaskId: 'provider-task-pending-recovery',
+            startedAt: '2026-08-14T05:51:07.000Z',
+            status: 'waiting_provider',
+            tenantId: 'tenant-1',
+            updatedAt: '2026-08-14T05:51:08.000Z',
+            workflowRunId: 'run-pending-recovery',
+          },
+        ],
+        workflowRun: {
+          canceledAt: null,
+          createdAt: '2026-08-14T05:51:06.000Z',
+          createdBy: 'user-1',
+          errorJson: null,
+          finishedAt: null,
+          flowId: '11111111-1111-1111-1111-111111111111',
+          flowVersionId: 'version-1',
+          id: 'run-pending-recovery',
+          idempotencyKey: null,
+          inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+          outputJson: null,
+          startedAt: '2026-08-14T05:51:07.000Z',
+          status: 'waiting_provider',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-08-14T05:51:08.000Z',
+        },
+      },
+    ]);
+    await recovery;
+
+    expect(streamWorkflowRunMock).not.toHaveBeenCalled();
+    expect(useFlowCanvasStore.getState().nodeRunStatusByNodeId[nodeId]).toBeUndefined();
+    expect(useFlowCanvasStore.getState().runStatus).toBeNull();
+  });
+
   test('late completion from an older same-node run cannot overwrite the latest run', async () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, { title: 'Same node' });
     const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
@@ -2848,6 +2909,282 @@ describe('v2WorkflowRunner', () => {
 
     const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId);
     expect(updatedNode?.data.assetId).toBe('asset-new');
+  });
+
+  test('reconnects a waiting provider stream from the latest event sequence and applies terminal output', async () => {
+    vi.useFakeTimers();
+    try {
+      useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { title: 'Reconnect Video' });
+      const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+      const streamOptions: Array<{
+        afterSequence?: number;
+        onClose?: () => void;
+        onError?: (error: Error) => void;
+        onEvent?: (event: any) => void;
+      }> = [];
+      const buildSnapshot = (status: 'waiting_provider' | 'succeeded') => ({
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-08-14T05:51:06.000Z',
+            errorJson: null,
+            finishedAt: status === 'succeeded' ? '2026-08-14T05:53:08.000Z' : null,
+            id: 'node-run-reconnect',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId,
+            nodeType: 'video.generate',
+            outputJson: status === 'succeeded'
+              ? { assets: [{ assetId: 'asset-reconnected-video', kind: 'video', mimeType: 'video/mp4' }] }
+              : null,
+            providerTaskId: 'provider-task-reconnect',
+            startedAt: '2026-08-14T05:51:07.000Z',
+            status,
+            tenantId: 'tenant-1',
+            updatedAt: status === 'succeeded' ? '2026-08-14T05:53:08.000Z' : '2026-08-14T05:51:08.000Z',
+            workflowRunId: 'run-reconnect',
+          },
+        ],
+        workflowRun: {
+          canceledAt: null,
+          createdAt: '2026-08-14T05:51:06.000Z',
+          createdBy: 'user-1',
+          errorJson: null,
+          finishedAt: status === 'succeeded' ? '2026-08-14T05:53:08.000Z' : null,
+          flowId: '11111111-1111-1111-1111-111111111111',
+          flowVersionId: 'version-1',
+          id: 'run-reconnect',
+          idempotencyKey: null,
+          inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+          outputJson: null,
+          startedAt: '2026-08-14T05:51:07.000Z',
+          status,
+          tenantId: 'tenant-1',
+          updatedAt: status === 'succeeded' ? '2026-08-14T05:53:08.000Z' : '2026-08-14T05:51:08.000Z',
+        },
+      });
+
+      createWorkflowRunMock.mockResolvedValue({ runId: 'run-reconnect', status: 'pending' });
+      getWorkflowRunMock
+        .mockResolvedValueOnce(buildSnapshot('waiting_provider'))
+        .mockResolvedValueOnce(buildSnapshot('waiting_provider'))
+        .mockResolvedValueOnce(buildSnapshot('succeeded'));
+      streamWorkflowRunMock.mockImplementation((_runId, options) => {
+        streamOptions.push(options);
+        return { close: vi.fn() };
+      });
+
+      await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+      streamOptions[0]?.onEvent?.({
+        createdAt: '2026-08-14T05:51:08.000Z',
+        eventType: 'node.run.waiting_provider',
+        id: 'event-7',
+        nodeRunId: 'node-run-reconnect',
+        payload: { nodeId, status: 'waiting_provider' },
+        sequence: 7,
+        tenantId: 'tenant-1',
+        workflowRunId: 'run-reconnect',
+      });
+      streamOptions[0]?.onError?.(new Error('temporary transport failure'));
+      streamOptions[0]?.onClose?.();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(useFlowCanvasStore.getState().runError).toBeNull();
+      expect(useFlowCanvasStore.getState().isRunningBackendWorkflow).toBe(true);
+      expect(getWorkflowRunMock).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(streamWorkflowRunMock).toHaveBeenCalledTimes(2);
+      expect(streamWorkflowRunMock.mock.calls[1]?.[1]).toMatchObject({ afterSequence: 7 });
+
+      streamOptions[1]?.onEvent?.({
+        createdAt: '2026-08-14T05:53:08.000Z',
+        eventType: 'workflow.run.succeeded',
+        id: 'event-8',
+        nodeRunId: null,
+        payload: { status: 'succeeded' },
+        sequence: 8,
+        tenantId: 'tenant-1',
+        workflowRunId: 'run-reconnect',
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId);
+      expect(updatedNode?.data).toMatchObject({
+        assetId: 'asset-reconnected-video',
+        generationStatus: 'done',
+        status: 'success',
+      });
+    } finally {
+      disposeBackendWorkflowRunStream();
+      vi.useRealTimers();
+    }
+  });
+
+  test('dispose prevents an in-flight disconnect snapshot hydration from writing terminal output', async () => {
+    useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { title: 'Hydrating Video' });
+    const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+    let onClose: (() => void) | undefined;
+    let resolveAssetUrl: ((value: { expiresAt: string; method: string; url: string; variantKey: string }) => void) | undefined;
+    const waitingSnapshot = {
+      nodeRuns: [
+        {
+          attempt: 1,
+          costJson: {},
+          createdAt: '2026-08-14T05:51:06.000Z',
+          errorJson: null,
+          finishedAt: null,
+          id: 'node-run-hydrating',
+          inputJson: {},
+          maxAttempts: 3,
+          nodeId,
+          nodeType: 'video.generate',
+          outputJson: null,
+          providerTaskId: 'provider-task-hydrating',
+          startedAt: '2026-08-14T05:51:07.000Z',
+          status: 'waiting_provider',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-08-14T05:51:08.000Z',
+          workflowRunId: 'run-hydrating',
+        },
+      ],
+      workflowRun: {
+        canceledAt: null,
+        createdAt: '2026-08-14T05:51:06.000Z',
+        createdBy: 'user-1',
+        errorJson: null,
+        finishedAt: null,
+        flowId: '11111111-1111-1111-1111-111111111111',
+        flowVersionId: 'version-1',
+        id: 'run-hydrating',
+        idempotencyKey: null,
+        inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+        outputJson: null,
+        startedAt: '2026-08-14T05:51:07.000Z',
+        status: 'waiting_provider',
+        tenantId: 'tenant-1',
+        updatedAt: '2026-08-14T05:51:08.000Z',
+      },
+    };
+    const succeededSnapshot = {
+      nodeRuns: [
+        {
+          ...waitingSnapshot.nodeRuns[0],
+          finishedAt: '2026-08-14T05:53:08.000Z',
+          outputJson: {
+            assets: [{ assetId: 'asset-hydrating-video', kind: 'video', mimeType: 'video/mp4' }],
+          },
+          status: 'succeeded',
+          updatedAt: '2026-08-14T05:53:08.000Z',
+        },
+      ],
+      workflowRun: {
+        ...waitingSnapshot.workflowRun,
+        finishedAt: '2026-08-14T05:53:08.000Z',
+        status: 'succeeded',
+        updatedAt: '2026-08-14T05:53:08.000Z',
+      },
+    };
+
+    createWorkflowRunMock.mockResolvedValue({ runId: 'run-hydrating', status: 'pending' });
+    getWorkflowRunMock
+      .mockResolvedValueOnce(waitingSnapshot)
+      .mockResolvedValueOnce(succeededSnapshot);
+    getAssetVariantUrlMock.mockReturnValue(new Promise((resolve) => {
+      resolveAssetUrl = resolve;
+    }));
+    streamWorkflowRunMock.mockImplementation((_runId, options) => {
+      onClose = options.onClose;
+      return { close: vi.fn() };
+    });
+
+    await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+    onClose?.();
+    await vi.waitFor(() => {
+      expect(getAssetVariantUrlMock).toHaveBeenCalledWith('asset-hydrating-video', 'preview');
+    });
+    disposeBackendWorkflowRunStream();
+    resolveAssetUrl?.({
+      expiresAt: '2026-08-14T06:08:08.000Z',
+      method: 'GET',
+      url: 'https://cdn.test/asset-hydrating-video-preview.mp4',
+      variantKey: 'preview',
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await Promise.resolve();
+    }
+
+    const updatedNode = useFlowCanvasStore.getState().nodes.find((node) => node.id === nodeId);
+    expect(updatedNode?.data.assetId).toBeUndefined();
+    expect(useFlowCanvasStore.getState().runStatus).toBe('waiting_provider');
+    expect(streamWorkflowRunMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('explicit stream disposal cancels reconnect even when close invokes onClose', async () => {
+    vi.useFakeTimers();
+    try {
+      useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, { title: 'Disposed Video' });
+      const nodeId = useFlowCanvasStore.getState().nodes[0]?.id as string;
+      let onClose: (() => void) | undefined;
+      const waitingSnapshot = {
+        nodeRuns: [
+          {
+            attempt: 1,
+            costJson: {},
+            createdAt: '2026-08-14T05:51:06.000Z',
+            errorJson: null,
+            finishedAt: null,
+            id: 'node-run-dispose-reconnect',
+            inputJson: {},
+            maxAttempts: 3,
+            nodeId,
+            nodeType: 'video.generate',
+            outputJson: null,
+            providerTaskId: 'provider-task-dispose-reconnect',
+            startedAt: '2026-08-14T05:51:07.000Z',
+            status: 'waiting_provider',
+            tenantId: 'tenant-1',
+            updatedAt: '2026-08-14T05:51:08.000Z',
+            workflowRunId: 'run-dispose-reconnect',
+          },
+        ],
+        workflowRun: {
+          canceledAt: null,
+          createdAt: '2026-08-14T05:51:06.000Z',
+          createdBy: 'user-1',
+          errorJson: null,
+          finishedAt: null,
+          flowId: '11111111-1111-1111-1111-111111111111',
+          flowVersionId: 'version-1',
+          id: 'run-dispose-reconnect',
+          idempotencyKey: null,
+          inputJson: { runMode: 'target_node', targetNodeId: nodeId },
+          outputJson: null,
+          startedAt: '2026-08-14T05:51:07.000Z',
+          status: 'waiting_provider',
+          tenantId: 'tenant-1',
+          updatedAt: '2026-08-14T05:51:08.000Z',
+        },
+      };
+
+      createWorkflowRunMock.mockResolvedValue({ runId: 'run-dispose-reconnect', status: 'pending' });
+      getWorkflowRunMock.mockResolvedValue(waitingSnapshot);
+      streamWorkflowRunMock.mockImplementation((_runId, options) => {
+        onClose = options.onClose;
+        return { close: () => onClose?.() };
+      });
+
+      await runBackendWorkflow({ runMode: 'target_node', targetNodeId: nodeId });
+      disposeBackendWorkflowRunStream();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(streamWorkflowRunMock).toHaveBeenCalledTimes(1);
+      expect(getWorkflowRunMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('disposeBackendWorkflowRunStream closes the active stream', async () => {

@@ -6586,3 +6586,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - updated canvas text-node preset labels and rendered sizes while keeping the persisted preset values unchanged: `h1` is `特大` at 24px, `h2` is `大` at 20px, `h3` is `中` at 16px, and `body` is `小` at 12px.
 - fullscreen editor typography remains unchanged at 34px, 28px, 22px, and 15px respectively.
 - focused text-font-size regression coverage passed after the mapping update.
+
+## 2026-08-14 - Workflow SSE Disconnect Recovery
+
+- fixed the canvas workflow runner so an SSE EOF or transport error no longer leaves an asynchronous text, image, or video generation stuck until the page is refreshed.
+- the runner now reconciles the latest workflow snapshot after a disconnect, applies terminal output immediately, and reconnects nonterminal runs with capped exponential backoff while resuming after the latest processed event sequence.
+- recoverable transport failures no longer overwrite the workflow's business status; explicit canvas disposal cancels active streams and pending reconnect timers, and invalidates in-flight recovery requests before they can write into a remounted canvas.
+- focused runner validation passed with 42 tests, including waiting-provider reconnect, terminal video hydration, event-sequence resume, pending-recovery invalidation, in-flight snapshot hydration cancellation, and explicit-disposal coverage.
