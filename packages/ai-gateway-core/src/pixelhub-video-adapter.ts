@@ -45,11 +45,12 @@ export class PixelHubVideoAdapter implements ProviderAdapter {
     if (!model) throw new AiGatewayError({ code: "MODEL_REQUIRED", message: "PixelHub upstream model is required", statusCode: 422 });
     const urls = inputs(request); const body: Record<string, unknown> = { aspect_ratio: params.aspectRatio, duration: params.durationSeconds, model, prompt: request.prompt.trim(), resolution: params.resolution.toLowerCase() };
     if (model === "veo31-fast") { if (urls.image.length) body.image_urls = urls.image; }
+    else if (model === "gemini-omni-flash") {
+      if (urls.image.length) body.image_urls = urls.image;
+      if (urls.video.length) body.video_urls = urls.video;
+    }
     else {
-      if (urls.image.length) {
-        if (model === "gemini-omni-flash" && params.mode === "image_to_video") body.image_urls = urls.image;
-        else body.reference_image_urls = urls.image;
-      }
+      if (urls.image.length) body.reference_image_urls = urls.image;
       if (urls.video.length) body.reference_videos = urls.video;
       if (model === "sora-v3-pro") { body.generate_audio = params.generateAudio; if (urls.audio.length) body.audio_urls = urls.audio; }
     }

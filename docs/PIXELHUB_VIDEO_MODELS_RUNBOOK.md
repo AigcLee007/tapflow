@@ -39,6 +39,11 @@ Install or publish the three routes as `inactive` first. Confirm each route has 
 
 ## Canvas Smoke Matrix
 
+Gemini request aliases are model-specific. Follow
+`docs/GEMINI_OMNI_FLASH_PIXELHUB_API.md`: Gemini images use `image_urls` and
+its optional source video uses `video_urls`. Do not use `reference_videos` for
+Gemini. Sora retains its own generic reference aliases.
+
 Use a disposable project and tenant-owned assets. Confirm reserve, settle/refund, asset persistence, and the absence of signed URLs or media bytes in drafts for each model.
 
 | Product model | Supported smoke inputs |

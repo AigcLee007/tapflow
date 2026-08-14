@@ -3,6 +3,14 @@
 Last updated: 2026-08-14
 Maintainers: project team + Codex sessions
 
+## 2026-08-14 - Gemini Omni Flash PixelHub Request Contract Verification
+
+- controlled live calls isolated PixelHub's Gemini image-plus-video alias behavior: `image_urls` made the reference image effective, while `video_urls` was required for the source video to preserve its motion and environment. `reference_videos` completed without applying the source video.
+- added the model-specific provider contract in `docs/GEMINI_OMNI_FLASH_PIXELHUB_API.md`, including exact create/poll payloads, media URL requirements, adapter repair guidance, regression expectations, and the three-call evidence matrix. The PixelHub rollout runbook and historical integration design now point to this superseding contract.
+- repaired the PixelHub adapter so Gemini always sends images as `image_urls` and source video as `video_urls`, while Sora and Veo retain their existing aliases. The regression reproduced the old `reference_image_urls`/`reference_videos` body before the fix, then passed with the verified Gemini contract.
+- validation passed: AI Gateway Core tests (`12` files, `171` tests), AI Gateway Core TypeScript build, and the root production build. The root build retained existing non-blocking CSS-property, dynamic-import, and chunk-size warnings.
+- no credential, signed media URL, provider task ID, or generated asset was committed.
+
 ## 2026-08-13 - Signed Asset Attachment Download Repair
 
 - fixed S3-compatible GET URL signing so the asset service's requested `Content-Disposition: attachment` filename and response content type are included in the signed `GetObject` request. Cross-origin video download actions now receive attachment responses instead of navigating to the object-storage playback URL.

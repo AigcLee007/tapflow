@@ -4,6 +4,11 @@ Date: 2026-08-03
 Status: Approved design
 Scope: `gemini-omni-flash`, `sora-v3-pro`, and `veo31-fast` in the authenticated v2 Flow canvas
 
+Amended 2026-08-14: controlled PixelHub calls superseded the original Gemini
+field aliases in this design. Gemini images use `image_urls` and its source
+video uses `video_urls`; see `docs/GEMINI_OMNI_FLASH_PIXELHUB_API.md`. Sora and
+Veo mappings are unchanged.
+
 ## 1. Objective
 
 Integrate three PixelHub asynchronous video models into the existing v2 video generation node. Each product model must expose only the ratios, resolutions, durations, input modes, reference-media slots, audio behavior, and price that the selected upstream model supports.
@@ -152,9 +157,9 @@ veo.supportedModes = [
 | Model and mode | Required input | Maximum input | Provider mapping |
 | --- | --- | --- | --- |
 | Gemini text to video | no reference media | none | omit all reference fields |
-| Gemini image to video | exactly 1 main image | 1 image | `reference_image_urls: [url]` |
-| Gemini image reference | at least 2 images | 5 images | `reference_image_urls` |
-| Gemini all reference | exactly 1 source video | 1 video plus up to 5 images | `reference_videos` plus optional `reference_image_urls` |
+| Gemini image to video | exactly 1 main image | 1 image | `image_urls: [url]` |
+| Gemini image reference | at least 2 images | 5 images | `image_urls` |
+| Gemini all reference | exactly 1 source video | 1 video plus up to 5 images | `video_urls` plus optional `image_urls` |
 | Sora text to video | no reference media | none | omit all reference fields |
 | Sora image to video | exactly 1 main image | 1 image | `reference_image_urls: [url]` |
 | Sora image reference | at least 2 images | 9 images | `reference_image_urls` |
@@ -169,7 +174,7 @@ Gemini all-reference mode is a model-limited all-reference mode: its audio secti
 
 ### 6.3 Single-image semantic boundary
 
-TapFlow classifies a single image supplied to Gemini or Sora as the product-level `image_to_video` mode and sends one item in `reference_image_urls`. PixelHub does not expose an independent `start_frame` field for these models, so their UI slot is labelled `主参考图`; the product must not promise pixel-identical first-frame enforcement.
+TapFlow classifies a single image supplied to Gemini or Sora as the product-level `image_to_video` mode. Gemini sends one item in `image_urls`; Sora sends one item in `reference_image_urls`. PixelHub does not expose an independent `start_frame` field for these models, so their UI slot is labelled `主参考图`; the product must not promise pixel-identical first-frame enforcement.
 
 PixelHub explicitly defines Veo one-image input as the first frame and two-image input as first frame plus last frame. Veo therefore uses the stronger `首帧` and `尾帧` labels.
 
@@ -393,8 +398,8 @@ The adapter sends one canonical field per concept and never combines aliases. It
 
 - `duration`, not `seconds`;
 - `aspect_ratio`, not `size`;
-- `reference_image_urls` for Gemini/Sora images;
-- `reference_videos` for Gemini/Sora videos;
+- `image_urls` for Gemini images and `video_urls` for Gemini source video;
+- `reference_image_urls` and `reference_videos` for Sora reference media;
 - `audio_urls` for Sora audio;
 - `image_urls` for ordered Veo frame images;
 - no `start_frame`, `end_frame`, or `video_reference` fields.
@@ -410,10 +415,10 @@ Empty reference arrays are omitted. Frontend `720P`/`1080P` values are lowercase
   "aspect_ratio": "16:9",
   "resolution": "1080p",
   "duration": 8,
-  "reference_image_urls": [
+  "image_urls": [
     "https://signed.example/reference-1"
   ],
-  "reference_videos": [
+  "video_urls": [
     "https://signed.example/source-video"
   ]
 }
