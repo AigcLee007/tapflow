@@ -48,6 +48,7 @@ Keep both database URLs only in `/opt/aittco/env/tapflow.staging.env`. The runti
 - `QUEUE_PREFIX = aigc-flow:staging`
 - `WORKER_CONCURRENCY = 1`
 - `ASSET_IMAGE_VARIANT_CONCURRENCY = 2`
+- `ASSET_VIDEO_REFERENCE_VARIANT_CONCURRENCY = 1`
 - `WORKER_IMAGE_VARIANTS_MODE = sync`
 - `Redis provider = Upstash Redis`
 - `Password/TLS enabled = Yes`

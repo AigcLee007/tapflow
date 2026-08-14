@@ -25,6 +25,7 @@ import { registerWorkerQueues } from "./queues/registry.js";
 import { WorkbenchGenerationService } from "./workbench/workbench-generation.service.js";
 import { MediaAssetStore } from "./workflow-runtime/media-asset-store.js";
 import { ImageVariantProcessor } from "./workflow-runtime/image-variant-processor.js";
+import { VideoReferenceVariantProcessor } from "./workflow-runtime/video-reference-variant-processor.js";
 import { WorkflowNodeExecutionService } from "./workflow-runtime/service.js";
 
 type Closable = {
@@ -88,6 +89,7 @@ export function createWorkerRuntime(options?: {
   const nodeExecuteVideoQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecuteVideo);
   const providerPollQueue = queueFactory.createQueue(QUEUE_NAMES.providerPoll);
   const assetImageVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetImageVariant);
+  const assetVideoReferenceVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetVideoReferenceVariant);
   const WORKBENCH_GENERATE_QUEUE = "workbench.generate" as const;
   const workbenchGenerateQueue = queueFactory.createQueue(WORKBENCH_GENERATE_QUEUE);
   const walletExpiryQueue = queueFactory.createQueue(QUEUE_NAMES.walletExpiry);
@@ -135,6 +137,10 @@ export function createWorkerRuntime(options?: {
     pool,
     storageProvider,
   });
+  const videoReferenceVariantProcessor = new VideoReferenceVariantProcessor({
+    pool,
+    storageProvider,
+  });
   const workbenchGenerationService = new WorkbenchGenerationService({
     assetBucket: env.s3Bucket,
     assetStore: new MediaAssetStore({
@@ -151,6 +157,7 @@ export function createWorkerRuntime(options?: {
   const registration = registerWorkerQueues({
     concurrency: {
       assetImageVariant: env.assetImageVariantConcurrency,
+      assetVideoReferenceVariant: env.assetVideoReferenceVariantConcurrency,
       default: env.workerConcurrency,
       nodeExecuteDefault: env.defaultNodeConcurrency,
       nodeExecuteImage: env.imageNodeConcurrency,
@@ -159,6 +166,7 @@ export function createWorkerRuntime(options?: {
       providerPoll: env.providerPollConcurrency,
     },
     imageVariantProcessor,
+    videoReferenceVariantProcessor,
     logger,
     queueFactory,
     workbenchGenerationService,
@@ -185,6 +193,7 @@ export function createWorkerRuntime(options?: {
     await Promise.all(registration.queueEvents.map((queueEvents) => queueEvents.close()));
     await Promise.all([
       assetImageVariantQueue.close(),
+      assetVideoReferenceVariantQueue.close(),
       nodeExecuteQueue.close(),
       nodeExecuteDefaultQueue.close(),
       nodeExecuteImageQueue.close(),
@@ -225,6 +234,7 @@ async function main() {
       defaultNodeConcurrency: env.defaultNodeConcurrency,
       imageNodeConcurrency: env.imageNodeConcurrency,
       assetImageVariantConcurrency: env.assetImageVariantConcurrency,
+      assetVideoReferenceVariantConcurrency: env.assetVideoReferenceVariantConcurrency,
       imageVariantsMode: env.imageVariantsMode,
       providerPollConcurrency: env.providerPollConcurrency,
       s3Bucket: env.s3Bucket,
