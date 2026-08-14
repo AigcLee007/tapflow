@@ -30,6 +30,7 @@ function normalizeNode(node: FlowGraphNode) {
 
 function normalizeEdge(edge: FlowGraphEdge) {
   return {
+    data: stableValue(edge.data ?? {}),
     id: edge.id ?? null,
     source: edge.source,
     sourceHandle: edge.sourceHandle ?? null,

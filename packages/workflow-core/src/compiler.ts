@@ -52,6 +52,7 @@ export function compileGraph(graph: FlowGraph): CompiledWorkflow {
     dependents.get(edge.source)?.add(edge.target);
 
     return {
+      data: edge.data,
       source: edge.source,
       sourceHandle: edge.sourceHandle,
       target: edge.target,

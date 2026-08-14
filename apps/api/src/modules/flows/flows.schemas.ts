@@ -7,6 +7,7 @@ const graphNodeSchema = z.object({
 });
 
 const graphEdgeSchema = z.object({
+  data: z.record(z.string(), z.unknown()).optional(),
   id: z.string().min(1).optional(),
   source: z.string().min(1),
   sourceHandle: z.string().min(1).optional(),

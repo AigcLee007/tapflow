@@ -66,6 +66,16 @@ describe("@aigc-flow/workflow-core", () => {
     expect(checksumGraph(grouped)).not.toBe(checksumGraph(ungrouped));
   });
 
+  test("preserves edge data in compiled graphs and checksums", () => {
+    const imageEdge = createValidGraph();
+    imageEdge.edges[0] = { ...imageEdge.edges[0], data: { dataType: "image" } };
+    const textEdge = createValidGraph();
+    textEdge.edges[0] = { ...textEdge.edges[0], data: { dataType: "text" } };
+
+    expect(compileGraph(imageEdge).edges[0]).toMatchObject({ data: { dataType: "image" } });
+    expect(checksumGraph(imageEdge)).not.toBe(checksumGraph(textEdge));
+  });
+
   test("duplicate node id fails", () => {
     const graph = createValidGraph();
     graph.nodes.push({ id: "input", type: "duplicate" });

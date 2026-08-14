@@ -91,6 +91,7 @@ type FlowVersionRecord = {
 };
 
 type ExternalGroupDependencySnapshot = {
+  dataType: "any" | "audio" | "image" | "json" | "text" | "video";
   nodeId: string;
   nodeType: string;
   outputJson: Record<string, unknown>;
@@ -868,6 +869,28 @@ function buildGroupPlanHash(groupId: string, nodeIds: string[], workflow: Compil
   return createHash("sha256").update(JSON.stringify({ groupId, nodes })).digest("hex");
 }
 
+function readExternalEdgeDataType(
+  workflow: CompiledWorkflow,
+  sourceNodeId: string,
+  targetNodeId: string,
+): ExternalGroupDependencySnapshot["dataType"] {
+  const value = workflow.edges.find((edge) => edge.source === sourceNodeId && edge.target === targetNodeId)?.data?.dataType;
+  return value === "audio" || value === "image" || value === "json" || value === "text" || value === "video"
+    ? value
+    : "any";
+}
+
+function outputMatchesExternalDataType(
+  output: Record<string, unknown>,
+  dataType: ExternalGroupDependencySnapshot["dataType"],
+): boolean {
+  if (dataType === "text") return typeof output.text === "string" && output.text.trim().length > 0;
+  if (dataType === "json") return Object.keys(output).length > 0;
+  if (dataType === "any") return Object.keys(output).length > 0;
+  const assets = Array.isArray(output.assets) ? output.assets : [];
+  return assets.some((asset) => isRecord(asset) && asset.kind === dataType && typeof asset.assetId === "string" && asset.assetId.trim());
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "23505");
 }
@@ -1012,7 +1035,14 @@ export class WorkflowRunsService {
           client,
           context.tenantId,
           runtimeFlow.flow_id,
-          externalDependencyIds,
+          externalDependencyIds.map((nodeId) => ({
+            dataType: readExternalEdgeDataType(
+              runtimeFlow.compiled_graph_json,
+              nodeId,
+              groupNodes.find((node) => node.dependencies.includes(nodeId))?.id ?? "",
+            ),
+            nodeId,
+          })),
         );
         if (externalDependencies.length !== externalDependencyIds.length) {
           const verified = new Set(externalDependencies.map((dependency) => dependency.nodeId));
@@ -1521,9 +1551,9 @@ export class WorkflowRunsService {
     client: PoolClient,
     tenantId: string,
     flowId: string,
-    nodeIds: string[],
+    dependencies: Array<{ dataType: ExternalGroupDependencySnapshot["dataType"]; nodeId: string }>,
   ): Promise<ExternalGroupDependencySnapshot[]> {
-    if (nodeIds.length === 0) return [];
+    if (dependencies.length === 0) return [];
     const result = await client.query<{
       node_id: string;
       node_type: string;
@@ -1551,14 +1581,20 @@ export class WorkflowRunsService {
           AND NOT (node_runs.output_json ? 'providerFailure')
         ORDER BY node_runs.node_id, node_runs.finished_at DESC NULLS LAST, node_runs.updated_at DESC
       `,
-      [tenantId, flowId, nodeIds],
+      [tenantId, flowId, dependencies.map((dependency) => dependency.nodeId)],
     );
-    return result.rows.map((row) => ({
+    const typeByNodeId = new Map(dependencies.map((dependency) => [dependency.nodeId, dependency.dataType]));
+    return result.rows.flatMap((row) => {
+      const dataType = typeByNodeId.get(row.node_id) ?? "any";
+      if (!outputMatchesExternalDataType(row.output_json, dataType)) return [];
+      return [{
+        dataType,
       nodeId: row.node_id,
       nodeType: row.node_type,
       outputJson: row.output_json,
       sourceWorkflowRunId: row.workflow_run_id,
-    }));
+      }];
+    });
   }
 
   async getWorkflowRun(

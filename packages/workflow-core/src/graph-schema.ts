@@ -6,6 +6,7 @@ export type FlowGraphNode = {
 };
 
 export type FlowGraphEdge = {
+  data?: Record<string, unknown>;
   id?: string;
   source: string;
   sourceHandle?: string;
@@ -29,6 +30,7 @@ export type CompiledWorkflowNode = {
 };
 
 export type CompiledWorkflowEdge = {
+  data?: Record<string, unknown>;
   source: string;
   sourceHandle?: string;
   target: string;
