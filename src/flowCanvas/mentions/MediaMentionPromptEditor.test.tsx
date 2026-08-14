@@ -20,6 +20,7 @@ const videoCandidate: MediaMentionCandidate = {
 };
 
 const imageBinding: FlowMediaMentionBinding = { inputKey: 'asset:image', kind: 'image', label: '图片1' };
+const videoBinding: FlowMediaMentionBinding = { inputKey: 'asset:video', kind: 'video', label: '视频1' };
 
 function renderEditor(overrides: Partial<React.ComponentProps<typeof MediaMentionPromptEditor>> = {}) {
   const onChange = overrides.onChange ?? vi.fn();
@@ -182,6 +183,46 @@ describe('MediaMentionPromptEditor', () => {
 
     const thumbnail = await screen.findByRole('img', { name: '图片1' });
     expect(thumbnail.getAttribute('src')).toBe('/thumb-image.webp');
+  });
+
+  it('renders the video icon when a mention only has a playable video URL', async () => {
+    const { container } = renderEditor({
+      activeInputKeys: new Set(['asset:video']),
+      bindings: [videoBinding],
+      previewUrlsByInputKey: { 'asset:video': 'https://cdn.test/reference.mp4' },
+      value: '@视频1',
+    });
+
+    await screen.findByText('@视频1');
+    expect(screen.queryByRole('img', { name: '视频1' })).toBeNull();
+    expect(container.querySelector('svg')).not.toBeNull();
+  });
+
+  it('updates a video mention capsule when its refreshed image thumbnail arrives', async () => {
+    const { rerender } = renderEditor({
+      activeInputKeys: new Set(['asset:video']),
+      bindings: [videoBinding],
+      previewUrlsByInputKey: { 'asset:video': 'https://cdn.test/old-thumb.webp' },
+      value: '@视频1',
+    });
+
+    expect((await screen.findByRole('img', { name: '视频1' })).getAttribute('src')).toBe('https://cdn.test/old-thumb.webp');
+
+    rerender(
+      <MediaMentionPromptEditor
+        activeInputKeys={new Set(['asset:video'])}
+        bindings={[videoBinding]}
+        candidates={[videoCandidate]}
+        densityVariant="video"
+        onActivateCandidate={vi.fn()}
+        onChange={vi.fn()}
+        placeholder="生成提示词"
+        previewUrlsByInputKey={{ 'asset:video': 'https://cdn.test/fresh-thumb.webp' }}
+        value="@视频1"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole('img', { name: '视频1' }).getAttribute('src')).toBe('https://cdn.test/fresh-thumb.webp'));
   });
   beforeAll(() => {
     if (typeof Selection !== 'undefined' && typeof Selection.prototype.modify !== 'function') {

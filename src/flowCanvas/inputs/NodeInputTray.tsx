@@ -123,7 +123,7 @@ function MediaInputCard({
   const number = item.kindIndex;
   const duration = item.kind === "video" || item.kind === "audio" ? formatDuration(item.durationMs) : null;
   const badge = roleBadge(item.role);
-  const visualUrl = item.thumbnailUrl || item.previewUrl;
+  const visualUrl = item.kind === "video" ? item.thumbnailUrl : item.thumbnailUrl || item.previewUrl;
   const hoverable = item.kind === "image" || item.kind === "video";
   const canFocus = item.source === "upstream" && Boolean(onFocusSource) && !disabled;
   const canPreview = hoverable && !disabled;

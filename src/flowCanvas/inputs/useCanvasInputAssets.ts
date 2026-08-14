@@ -12,6 +12,10 @@ type ResolvedAsset = {
   title?: string;
 };
 
+const SIGNED_URL_REFRESH_SAFETY_MS = 30_000;
+const SIGNED_URL_REFRESH_MIN_DELAY_MS = 30_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 function assetRequestKey(item: CanvasInputItem): string | null {
   if (!item.assetId || (item.kind !== "image" && item.kind !== "video" && item.kind !== "audio")) return null;
   return item.assetId;
@@ -25,6 +29,8 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
   const [resolvedAssets, setResolvedAssets] = useState<Record<string, ResolvedAsset>>({});
   const activeAssetIds = useRef(new Set<string>());
   const assetGenerations = useRef<Record<string, number>>({});
+  const refreshTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const resolveAssetRef = useRef<(assetId: string) => void>(() => undefined);
   const itemsRef = useRef(items);
   const mounted = useRef(true);
   const previousAssetIds = useRef<Set<string> | null>(null);
@@ -38,6 +44,11 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
   activeAssetIds.current = new Set(assetIds);
 
   const resolveAsset = useCallback(async (assetId: string) => {
+    const existingTimer = refreshTimers.current[assetId];
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      delete refreshTimers.current[assetId];
+    }
     const generation = (assetGenerations.current[assetId] ?? 0) + 1;
     assetGenerations.current[assetId] = generation;
     const relevantItems = itemsRef.current.filter((item) => assetRequestKey(item) === assetId);
@@ -64,8 +75,8 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
     const thumbUrl = thumbResult?.status === "fulfilled" ? thumbResult.value?.url : undefined;
     const previewUrl = previewResult?.status === "fulfilled" ? previewResult.value?.url : undefined;
     const legacyPreviewUrl = metadata.asset?.previewUrl;
-    const thumbnailUrl = immediateThumbnailUrl || thumbUrl || (kind === "image" ? legacyPreviewUrl : undefined);
-    const hoverPreviewUrl = immediateHoverPreviewUrl || previewUrl || legacyPreviewUrl;
+    const thumbnailUrl = thumbUrl || immediateThumbnailUrl || (kind === "image" ? legacyPreviewUrl : undefined);
+    const hoverPreviewUrl = previewUrl || immediateHoverPreviewUrl || legacyPreviewUrl;
     const hasPreview = Boolean(thumbnailUrl || hoverPreviewUrl || (kind === "audio" && metadata.resolved));
     const variantsFailed = isVisualAsset && thumbResult?.status === "rejected" && previewResult?.status === "rejected";
     if (!mounted.current || !activeAssetIds.current.has(assetId) || assetGenerations.current[assetId] !== generation) return;
@@ -80,18 +91,46 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
         title: metadata.asset ? getDisplayTitle(metadata.asset) : undefined,
       },
     }));
+
+    const expiryTimes = [thumbResult, previewResult]
+      .flatMap((result) => result?.status === "fulfilled" ? [Date.parse(result.value.expiresAt)] : [])
+      .filter(Number.isFinite);
+    if (expiryTimes.length > 0) {
+      const refreshDelay = Math.min(
+        MAX_TIMER_DELAY_MS,
+        Math.max(
+          SIGNED_URL_REFRESH_MIN_DELAY_MS,
+          Math.min(...expiryTimes) - Date.now() - SIGNED_URL_REFRESH_SAFETY_MS,
+        ),
+      );
+      refreshTimers.current[assetId] = setTimeout(() => {
+        delete refreshTimers.current[assetId];
+        if (mounted.current && activeAssetIds.current.has(assetId)) {
+          resolveAssetRef.current(assetId);
+        }
+      }, refreshDelay);
+    }
   }, []);
+  resolveAssetRef.current = resolveAsset;
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      Object.values(refreshTimers.current).forEach(clearTimeout);
+      refreshTimers.current = {};
     };
   }, []);
 
   useEffect(() => {
     const previousIds = previousAssetIds.current;
     const addedAssetIds = previousIds ? assetIds.filter((assetId) => !previousIds.has(assetId)) : assetIds;
+    previousIds?.forEach((assetId) => {
+      if (activeAssetIds.current.has(assetId)) return;
+      const timer = refreshTimers.current[assetId];
+      if (timer) clearTimeout(timer);
+      delete refreshTimers.current[assetId];
+    });
     previousAssetIds.current = new Set(assetIds);
     addedAssetIds.forEach((assetId) => { void resolveAsset(assetId); });
   }, [assetIds, assetIdsKey, resolveAsset]);
@@ -108,13 +147,17 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
       const resolved = resolvedAssets[assetId];
       if (!resolved) return item;
       const suppliedPreviewUrl = item.previewUrl ?? item.thumbnailUrl ?? item.hoverPreviewUrl;
+      const previewUrl = resolved.previewUrl ?? suppliedPreviewUrl;
+      const thumbnailUrl = resolved.thumbnailUrl ?? item.thumbnailUrl;
+      const hoverPreviewUrl = resolved.hoverPreviewUrl ?? item.hoverPreviewUrl;
+      const hasPreview = Boolean(previewUrl || thumbnailUrl || hoverPreviewUrl);
       return {
         ...item,
         durationMs: item.durationMs ?? resolved.durationMs,
-        hoverPreviewUrl: item.hoverPreviewUrl ?? resolved.hoverPreviewUrl,
-        previewState: suppliedPreviewUrl ? "ready" : resolved.previewState,
-        previewUrl: suppliedPreviewUrl ?? resolved.previewUrl,
-        thumbnailUrl: item.thumbnailUrl ?? resolved.thumbnailUrl,
+        hoverPreviewUrl,
+        previewState: hasPreview ? "ready" : resolved.previewState,
+        previewUrl,
+        thumbnailUrl,
         title: item.title || resolved.title || item.title,
       };
     }),

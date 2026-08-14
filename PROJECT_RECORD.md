@@ -6593,3 +6593,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - the runner now reconciles the latest workflow snapshot after a disconnect, applies terminal output immediately, and reconnects nonterminal runs with capped exponential backoff while resuming after the latest processed event sequence.
 - recoverable transport failures no longer overwrite the workflow's business status; explicit canvas disposal cancels active streams and pending reconnect timers, and invalidates in-flight recovery requests before they can write into a remounted canvas.
 - focused runner validation passed with 42 tests, including waiting-provider reconnect, terminal video hydration, event-sequence resume, pending-recovery invalidation, in-flight snapshot hydration cancellation, and explicit-disposal coverage.
+
+## 2026-08-14 - Reference Thumbnail Signed-URL Recovery
+
+- canvas reference inputs now replace stale persisted preview URLs with freshly resolved `thumb` and `preview` asset variants, then refresh those signed variants before expiration while the asset remains active.
+- video playback URLs remain exclusive to `<video>` elements. Input cards, video posters, canvas reference previews, and prompt mention capsules use the refreshed image thumbnail only and fall back to the video icon when no image variant is available.
+- added regression coverage for stale signed-URL replacement, automatic pre-expiry refresh, MP4 exclusion from `<img>`, video-icon fallback, and live prompt-mention thumbnail updates. Focused frontend validation passed with 98 tests; the existing PixelHub exact-request-body suite passed with 15 tests; the node-input static smoke suite passed with 54 tests; and `npm run build` passed.
+- the interactive `npm run smoke:node-input-tray` command was attempted twice but its internal `npx.cmd` Playwright CLI invocation timed out after 60 seconds before browser assertions began. Existing build warnings for Browserslist age, generated CSS `task` properties, mixed static/dynamic imports, and large chunks remain non-blocking.
+- Gemini and Sora provider request mapping files were intentionally left unchanged because their reference-field fixes were already verified before this frontend-only task.

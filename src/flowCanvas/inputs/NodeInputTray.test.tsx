@@ -98,6 +98,19 @@ describe("NodeInputTray", () => {
     expect(screen.getByLabelText("视频预览 Clip")).not.toBeNull();
   });
 
+  it("never renders a playable video URL through an image element", () => {
+    render(<NodeInputTray items={[{
+      ...videoA,
+      hoverPreviewUrl: "https://cdn.test/clip.mp4",
+      previewUrl: "https://cdn.test/clip.mp4",
+      thumbnailUrl: undefined,
+    }]} />);
+
+    const card = screen.getByTitle("Clip");
+    expect(card.querySelector("img")).toBeNull();
+    expect(card.querySelector("svg")).not.toBeNull();
+  });
+
   it("dismisses a pointer-open asset preview with global Escape", async () => {
     render(<NodeInputTray items={[imageA]} />);
 

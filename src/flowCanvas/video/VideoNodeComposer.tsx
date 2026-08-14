@@ -243,7 +243,10 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
         ariaLabel={VIDEO_UI_COPY.videoPrompt}
         bindings={data.mediaMentionBindings ?? []}
         candidates={mentionCandidates}
-        previewUrlsByInputKey={Object.fromEntries((inputItems ?? []).map((item) => [item.inputKey, item.thumbnailUrl ?? item.previewUrl]))}
+        previewUrlsByInputKey={Object.fromEntries((inputItems ?? []).map((item) => [
+          item.inputKey,
+          item.kind === "video" ? item.thumbnailUrl : item.thumbnailUrl ?? item.previewUrl,
+        ]))}
         densityVariant="video"
         disabled={generating}
         onActivateCandidate={activateMention}

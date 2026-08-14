@@ -120,7 +120,7 @@ export function MediaHoverPreview({ id, item, open, onDismiss, trigger }: MediaH
           className="block max-h-[min(320px,calc(100vh-16px))] w-full object-contain"
           muted
           playsInline
-          poster={item.thumbnailUrl || item.previewUrl}
+          poster={item.thumbnailUrl}
           preload="metadata"
           ref={videoRef}
           src={previewUrl}

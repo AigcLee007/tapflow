@@ -7811,7 +7811,7 @@ export const VideoNodeComponent = memo(function VideoNode({
     const previews: Record<string, string | undefined> = {};
     for (const item of resolvedVideoInputItems) {
       if (item.source !== 'asset' || !item.assetId) continue;
-      previews[`asset:${item.assetId}`] = item.thumbnailUrl || item.previewUrl;
+      previews[`asset:${item.assetId}`] = item.kind === 'video' ? item.thumbnailUrl : item.thumbnailUrl || item.previewUrl;
     }
     return previews;
   }, [resolvedVideoInputItems]);

@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AssetItem } from "../../assets/assetApi";
 import type { CanvasInputItem } from "./canvasInputProjection";
@@ -84,6 +84,10 @@ describe("useCanvasInputAssets", () => {
     getAssetVariantUrl.mockReset();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("deduplicates asset resolution, fills missing display metadata, and requests both visual variants", async () => {
     getAsset.mockImplementation((assetId: string) => Promise.resolve(makeAsset({
       id: assetId,
@@ -132,6 +136,53 @@ describe("useCanvasInputAssets", () => {
     }));
     expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "thumb");
     expect(getAssetVariantUrl).toHaveBeenCalledWith("asset-video", "preview");
+  });
+
+  it("replaces stale supplied URLs with freshly resolved image variants", async () => {
+    getAsset.mockResolvedValue(makeAsset());
+    getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => ({
+      expiresAt: "2026-08-14T01:00:00.000Z",
+      method: "GET",
+      url: variant === "thumb" ? "https://cdn.test/fresh-thumb.webp" : "https://cdn.test/fresh-preview.webp",
+    }));
+
+    const { result } = renderHook(() => useCanvasInputAssets([{
+      ...imageInput,
+      hoverPreviewUrl: "https://cdn.test/expired-preview.webp?X-Amz-Signature=old",
+      previewState: "ready",
+      previewUrl: "https://cdn.test/expired-thumb.webp?X-Amz-Signature=old",
+      thumbnailUrl: "https://cdn.test/expired-thumb.webp?X-Amz-Signature=old",
+    }]));
+
+    await waitFor(() => expect(result.current.items[0]).toMatchObject({
+      hoverPreviewUrl: "https://cdn.test/fresh-preview.webp",
+      previewUrl: "https://cdn.test/fresh-thumb.webp",
+      thumbnailUrl: "https://cdn.test/fresh-thumb.webp",
+    }));
+  });
+
+  it("refreshes visual variants before their signed URLs expire", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-14T00:00:00.000Z"));
+    getAsset.mockResolvedValue(makeAsset());
+    getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => {
+      const refreshRound = Math.floor((getAssetVariantUrl.mock.calls.length - 1) / 2) + 1;
+      return {
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        method: "GET",
+        url: `https://cdn.test/${variant}-${refreshRound}.webp`,
+      };
+    });
+
+    const { result, unmount } = renderHook(() => useCanvasInputAssets([imageInput]));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.items[0].thumbnailUrl).toBe("https://cdn.test/thumb-1.webp");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+
+    expect(getAssetVariantUrl).toHaveBeenCalledTimes(4);
+    expect(result.current.items[0].thumbnailUrl).toBe("https://cdn.test/thumb-2.webp");
+    unmount();
   });
 
   it("uses a legacy video preview URL only as a hover fallback", async () => {

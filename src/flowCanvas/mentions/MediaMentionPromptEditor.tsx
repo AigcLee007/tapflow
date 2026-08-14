@@ -68,9 +68,19 @@ type PendingMentionCaret = { inputKey: string; expectedValue: string };
 const mediaKindIcon: Record<FlowMediaMentionKind, typeof Image> = { image: Image, video: Video, audio: Music2 };
 const EMPTY_PREVIEW_URLS: Readonly<Record<string, string | undefined>> = {};
 
+function isRenderableMentionThumbnail(kind: FlowMediaMentionKind, previewUrl?: string): previewUrl is string {
+  if (!previewUrl) return false;
+  if (kind !== 'video') return true;
+  const normalized = previewUrl.trim();
+  if (/^data:image\//i.test(normalized) || /[?&]variantKey=thumb(?:&|$)/i.test(normalized)) return true;
+  const pathname = normalized.split(/[?#]/, 1)[0];
+  return /(?:^|\/)thumb(?:$|\/)/i.test(pathname) || /\.(?:avif|gif|jpe?g|png|webp)$/i.test(pathname);
+}
+
 function MentionPill({ disabled, label, kind, nodeKey, previewUrl, valid }: { disabled: boolean; label: string; kind: FlowMediaMentionKind; nodeKey: NodeKey; previewUrl?: string; valid: boolean }) {
   const [editor] = useLexicalComposerContext();
   const Icon = valid ? mediaKindIcon[kind] : TriangleAlert;
+  const thumbnailUrl = isRenderableMentionThumbnail(kind, previewUrl) ? previewUrl : undefined;
   const remove = useCallback(() => {
     if (disabled) return;
     editor.update(() => {
@@ -80,7 +90,7 @@ function MentionPill({ disabled, label, kind, nodeKey, previewUrl, valid }: { di
   }, [disabled, editor, nodeKey]);
 
   return <span contentEditable={false} data-invalid={valid ? undefined : 'true'} style={pillStyle(valid)}>
-    {previewUrl ? <img alt={label} src={previewUrl} style={{ width: 16, height: 16, objectFit: 'cover', borderRadius: 4 }} /> : <Icon aria-hidden size={15} />}
+    {thumbnailUrl ? <img alt={label} src={thumbnailUrl} style={{ width: 16, height: 16, objectFit: 'cover', borderRadius: 4 }} /> : <Icon aria-hidden size={15} />}
     <span>{`@${label}`}</span>
     {valid ? <button aria-label={`${'\u5220\u9664\u5f15\u7528'} ${label}`} disabled={disabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); remove(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); remove(); } }} onMouseDown={(event) => event.preventDefault()} style={removeButtonStyle} type="button"><X size={11} /></button> : null}
   </span>;
