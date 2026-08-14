@@ -1038,6 +1038,12 @@ export class WorkflowRunsService {
             throw new WorkflowRunsApiError(422, "GROUP_NODE_UNSUPPORTED", `Node ${unsupported.id} is not executable in a group.`);
           }
           groupNodes.forEach(assertGroupNodeConfiguration);
+          for (const node of groupNodes) {
+            const routeKey = resolveEffectiveRouteKey(node);
+            if (!routeContexts.has(routeKey)) {
+              throw new WorkflowRunsApiError(422, "GROUP_ROUTE_UNAVAILABLE", `Node ${node.id} requires an active model route.`);
+            }
+          }
         }
         const externalDependencyIds = runMode === "group"
           ? Array.from(new Set(groupNodes.flatMap((node) => node.dependencies.filter((dependencyId) => !groupNodeIds.includes(dependencyId)))))

@@ -51,6 +51,7 @@ export type FlowTemplateGraph = FlowTemplateItem & {
   draftDescription?: string | null;
   draftCategory?: string | null;
   draftCoverAssetId?: string | null;
+  draftStatus?: FlowTemplateStatus | null;
 };
 
 export async function listFlowTemplates(params: { category?: string; query?: string } = {}) {

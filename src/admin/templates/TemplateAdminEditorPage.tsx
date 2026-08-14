@@ -17,10 +17,10 @@ import {
 import { TEMPLATE_ADMIN_ROUTE, navigateTemplateAdmin } from "./templateAdminNavigation";
 import { MenuSelect } from '../../components/menu/MenuSelect';
 
-type Metadata = { title: string; description: string; category: string; estimatedCredits: string };
+type Metadata = { title: string; description: string; category: string; coverAssetId: string; estimatedCredits: string };
 type InputDraft = { id: string; label: string; targetKey: string; type: FlowTemplateInputDefinition['type']; required: boolean; options: string };
 const blankGraph = { nodes: [], edges: [] };
-const blankMetadata: Metadata = { title: "", description: "", category: "general", estimatedCredits: "" };
+const blankMetadata: Metadata = { title: "", description: "", category: "general", coverAssetId: "", estimatedCredits: "" };
 
 function templateStatusLabel(status: FlowTemplateStatus) { return ({ archived: "已下架", draft: "草稿", published: "已发布", testing: "测试中" })[status]; }
 function graphFromStore() { const state = useFlowCanvasStore.getState(); return { nodes: state.nodes, edges: state.edges }; }
@@ -34,7 +34,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
   const [inputDraft, setInputDraft] = useState<InputDraft>({ id: '', label: '', targetKey: '', type: 'text', required: false, options: '' });
   const status = template?.status ?? "draft";
   const inputs = ((template?.status === "published" ? template.draftInputSchema ?? template.inputSchema : template?.inputSchema) ?? []) as FlowTemplateInputDefinition[];
-  const canPublish = status === "testing";
+  const canPublish = status === "testing" || template?.draftStatus === "testing";
   const canEdit = status !== "archived";
 
   useEffect(() => {
@@ -52,6 +52,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
         title: next.status === "published" ? next.draftTitle ?? next.title : next.title,
         description: next.status === "published" ? next.draftDescription ?? next.description : next.description,
         category: next.status === "published" ? next.draftCategory ?? next.category : next.category,
+        coverAssetId: next.status === "published" ? next.draftCoverAssetId ?? next.coverAssetId ?? "" : next.coverAssetId ?? "",
         estimatedCredits: next.estimatedCredits == null ? "" : String(next.estimatedCredits),
       });
       const graph = (next.status === "published" ? next.draftGraph ?? next.graph : next.graph) ?? blankGraph;
@@ -65,7 +66,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
     };
   }, [templateId]);
 
-  const payload = useMemo(() => ({ title: metadata.title.trim(), description: metadata.description.trim(), category: metadata.category.trim() || "general", graph: graphFromStore(), inputSchema: inputs, estimatedCredits: metadata.estimatedCredits.trim() ? Number(metadata.estimatedCredits) : null }), [inputs, metadata]);
+  const payload = useMemo(() => ({ title: metadata.title.trim(), description: metadata.description.trim(), category: metadata.category.trim() || "general", coverAssetId: metadata.coverAssetId.trim() || null, graph: graphFromStore(), inputSchema: inputs, estimatedCredits: metadata.estimatedCredits.trim() ? Number(metadata.estimatedCredits) : null }), [inputs, metadata]);
   const addInputMarker = () => {
     const [nodeId, fieldPath] = inputDraft.targetKey.split('::');
     if (!inputDraft.id.trim() || !inputDraft.label.trim() || !nodeId || !fieldPath) { setError('请完成模板输入配置。'); return; }
@@ -97,6 +98,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
               draftTitle: payload.title,
               draftDescription: payload.description,
               draftCategory: payload.category,
+              draftCoverAssetId: payload.coverAssetId,
             }
           : {}),
       } as FlowTemplateGraph));
@@ -113,7 +115,7 @@ export function TemplateAdminEditorPage({ templateId }: { templateId: string }) 
       <div className="flex flex-wrap items-center justify-end gap-2"><button aria-label="保存草稿" className="inline-flex h-9 items-center gap-2 rounded border border-white/10 px-3 text-xs font-bold hover:bg-white/10 disabled:opacity-50" disabled={!canEdit || pending !== null || !metadata.title.trim()} onClick={() => void mutate("save")} type="button">{pending === "save" ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}保存草稿</button><button aria-label="验证模板" className="inline-flex h-9 items-center gap-2 rounded border border-cyan-300/30 px-3 text-xs font-bold text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-50" disabled={!template.id || !canEdit || pending !== null} onClick={() => void mutate("testing")} type="button"><TestTube2 size={14} />验证模板</button><button aria-label="发布模板" className="inline-flex h-9 items-center gap-2 rounded bg-cyan-300 px-3 text-xs font-bold text-slate-950 hover:bg-cyan-200 disabled:opacity-50" disabled={!canPublish || pending !== null} onClick={() => void mutate("publish")} type="button"><Send size={14} />发布模板</button>{template.id ? <button aria-label="下架模板" className="grid h-9 w-9 place-items-center rounded border border-amber-300/30 text-amber-100 hover:bg-amber-300/10 disabled:opacity-50" disabled={pending !== null || status === "archived"} onClick={() => void mutate("archive")} type="button"><Archive size={14} /></button> : null}</div>
     </header>
     <aside className="absolute left-4 top-[88px] z-[80] w-[300px] space-y-4 rounded border border-white/10 bg-[#18181d]/95 p-4 shadow-2xl"><div><label className="text-xs font-bold text-slate-300" htmlFor="template-title">模板名称</label><input className="mt-2 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-title" onChange={(event) => setMetadata((current) => ({ ...current, title: event.target.value }))} value={metadata.title} /></div><div><label className="text-xs font-bold text-slate-300" htmlFor="template-category">分类</label><input className="mt-2 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-category" onChange={(event) => setMetadata((current) => ({ ...current, category: event.target.value }))} value={metadata.category} /></div><div><label className="text-xs font-bold text-slate-300" htmlFor="template-description">描述</label><textarea className="mt-2 min-h-20 w-full rounded border border-white/10 bg-black/30 p-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-description" onChange={(event) => setMetadata((current) => ({ ...current, description: event.target.value }))} value={metadata.description} /></div><div><label className="text-xs font-bold text-slate-300" htmlFor="template-estimated-credits">预计积分</label><input className="mt-2 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-estimated-credits" min="0" onChange={(event) => setMetadata((current) => ({ ...current, estimatedCredits: event.target.value }))} type="number" value={metadata.estimatedCredits} /></div><div className="border-t border-white/10 pt-3 text-xs text-slate-400"><CheckCircle2 className="mr-1 inline text-cyan-200" size={13} />模板画布不会创建普通项目或 Flow。</div>{error ? <div className="rounded border border-red-300/20 bg-red-500/10 p-3 text-xs text-red-100">{error}</div> : null}</aside>
-    <section className="absolute bottom-4 left-4 z-[90] w-[300px] rounded border border-white/10 bg-[#18181d]/95 p-4 shadow-2xl"><TemplateInputMarkerForm disabled={!canEdit} draft={inputDraft} inputs={inputs} targets={safeTemplateInputTargets(graphFromStore())} onAdd={addInputMarker} onChange={(patch) => setInputDraft((current) => ({ ...current, ...patch }))} onRemove={(id) => setTemplate((current) => current ? { ...current, inputSchema: inputs.filter((item) => item.id !== id) } : current)} /></section>
+    <section className="absolute bottom-4 left-4 z-[90] w-[300px] rounded border border-white/10 bg-[#18181d]/95 p-4 shadow-2xl"><label className="mb-2 block text-xs font-bold text-slate-300" htmlFor="template-cover-asset">封面素材 ID</label><input className="mb-4 h-9 w-full rounded border border-white/10 bg-black/30 px-3 text-xs outline-none focus:border-cyan-300/60" disabled={!canEdit} id="template-cover-asset" onChange={(event) => setMetadata((current) => ({ ...current, coverAssetId: event.target.value }))} value={metadata.coverAssetId} /><TemplateInputMarkerForm disabled={!canEdit} draft={inputDraft} inputs={inputs} targets={safeTemplateInputTargets(graphFromStore())} onAdd={addInputMarker} onChange={(patch) => setInputDraft((current) => ({ ...current, ...patch }))} onRemove={(id) => setTemplate((current) => current ? { ...current, inputSchema: inputs.filter((item) => item.id !== id) } : current)} /></section>
     <FlowCanvasPage />
   </div>;
 }
