@@ -40,13 +40,26 @@ import { flushRemoteDraftBeforeRun, shouldFlushRemoteDraftBeforeRun } from './re
 
 const RUNNER_ENABLED = String(import.meta.env.VITE_USE_V2_WORKFLOW_RUNNER ?? 'true').toLowerCase() !== 'false';
 
-const activeStreamsByRunId = new Map<string, WorkflowRunStreamHandle>();
+type ActiveRunStream = {
+  handle: WorkflowRunStreamHandle;
+  token: symbol;
+};
+
+const STREAM_RECONNECT_BASE_DELAY_MS = 500;
+const STREAM_RECONNECT_MAX_DELAY_MS = 10_000;
+
+const activeStreamsByRunId = new Map<string, ActiveRunStream>();
 const disposedRunIds = new Set<string>();
 const finalizingRunIds = new Set<string>();
+const monitoredRunIds = new Set<string>();
+const latestEventSequenceByRunId = new Map<string, number>();
+const reconnectAttemptsByRunId = new Map<string, number>();
+const reconnectTimersByRunId = new Map<string, ReturnType<typeof setTimeout>>();
 const optimisticCreditReservationsByNodeId = new Map<string, number>();
 let creditPreflightQueue: Promise<void> = Promise.resolve();
 let runtimeRoutesCache: Promise<V2RuntimeRouteItem[]> | null = null;
 let billingPricingCache: Promise<BillingPricingRow[]> | null = null;
+let runRecoveryGeneration = 0;
 
 type AssetLike = {
   assetId: string;
@@ -96,13 +109,32 @@ function isTerminalStatus(status: V2WorkflowRunStatus): boolean {
 }
 
 function closeRunStream(runId: string): void {
-  activeStreamsByRunId.get(runId)?.close();
+  const activeStream = activeStreamsByRunId.get(runId);
   activeStreamsByRunId.delete(runId);
+  activeStream?.handle.close();
+}
+
+function cancelRunReconnect(runId: string): void {
+  const timer = reconnectTimersByRunId.get(runId);
+  if (timer) {
+    clearTimeout(timer);
+    reconnectTimersByRunId.delete(runId);
+  }
+}
+
+function cleanupRunStreamTracking(runId: string): void {
+  cancelRunReconnect(runId);
+  reconnectAttemptsByRunId.delete(runId);
+  latestEventSequenceByRunId.delete(runId);
+  monitoredRunIds.delete(runId);
+  closeRunStream(runId);
 }
 
 function closeAllStreams(): void {
-  for (const runId of Array.from(activeStreamsByRunId.keys())) {
-    closeRunStream(runId);
+  runRecoveryGeneration += 1;
+  for (const runId of Array.from(monitoredRunIds)) {
+    disposedRunIds.add(runId);
+    cleanupRunStreamTracking(runId);
   }
 }
 
@@ -1069,7 +1101,13 @@ function resolveAssetRefsFromEventPayload(payload: Record<string, unknown>): Flo
     }));
 }
 
-async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promise<void> {
+async function applyWorkflowRunSnapshot(
+  snapshot: GetWorkflowRunResponse,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!isCurrent()) {
+    return;
+  }
   const scope = resolveRunScope(snapshot.workflowRun.inputJson);
   const scopedNodeRuns = filterNodeRunsForScope(snapshot.nodeRuns, scope);
   const nodeIdByNodeRunId: Record<string, string> = {};
@@ -1080,6 +1118,9 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
   const assetRefsByNodeId: Record<string, FlowRuntimeAssetRef[]> = {};
 
   for (const nodeRun of scopedNodeRuns) {
+    if (!isCurrent()) {
+      return;
+    }
     if (!shouldApplyNodeRun(nodeRun)) {
       continue;
     }
@@ -1091,10 +1132,16 @@ async function applyWorkflowRunSnapshot(snapshot: GetWorkflowRunResponse): Promi
     nodeRunStatusByNodeId[nodeRun.nodeId] = nodeRun.status;
     workflowRunIdByNodeId[nodeRun.nodeId] = nodeRun.workflowRunId;
     const assets = await resolveAssetRefs(nodeRun.outputJson);
+    if (!isCurrent()) {
+      return;
+    }
     assetRefsByNodeId[nodeRun.nodeId] = assets;
     nodeOutputByNodeId[nodeRun.nodeId] = buildNodeOutput(nodeRun.outputJson, assets);
   }
 
+  if (!isCurrent()) {
+    return;
+  }
   useFlowCanvasStore.setState((state) => ({
     currentRunId: snapshot.workflowRun.id,
     isRunningBackendWorkflow:
@@ -1258,8 +1305,36 @@ function applyRunEvent(event: V2WorkflowRunEventView): void {
   }
 }
 
+function scheduleRunStreamReconnect(runId: string): void {
+  if (
+    disposedRunIds.has(runId) ||
+    activeStreamsByRunId.has(runId) ||
+    reconnectTimersByRunId.has(runId)
+  ) {
+    return;
+  }
+
+  const attempt = reconnectAttemptsByRunId.get(runId) ?? 0;
+  const delay = Math.min(
+    STREAM_RECONNECT_BASE_DELAY_MS * (2 ** attempt),
+    STREAM_RECONNECT_MAX_DELAY_MS,
+  );
+  reconnectAttemptsByRunId.set(runId, attempt + 1);
+  const timer = setTimeout(() => {
+    reconnectTimersByRunId.delete(runId);
+    if (!disposedRunIds.has(runId)) {
+      startRunStream(runId);
+    }
+  }, delay);
+  reconnectTimersByRunId.set(runId, timer);
+}
+
 async function finalizeRun(runId: string): Promise<void> {
-  if (disposedRunIds.has(runId)) {
+  const recoveryGeneration = runRecoveryGeneration;
+  const isCurrentRun = () => (
+    recoveryGeneration === runRecoveryGeneration && !disposedRunIds.has(runId)
+  );
+  if (!isCurrentRun()) {
     return;
   }
   if (finalizingRunIds.has(runId)) {
@@ -1268,11 +1343,22 @@ async function finalizeRun(runId: string): Promise<void> {
   finalizingRunIds.add(runId);
   try {
     const snapshot = await getWorkflowRun(runId);
-    if (disposedRunIds.has(runId)) {
+    if (!isCurrentRun()) {
       return;
     }
-    await applyWorkflowRunSnapshot(snapshot);
-    activeStreamsByRunId.delete(runId);
+    await applyWorkflowRunSnapshot(snapshot, isCurrentRun);
+    if (!isCurrentRun()) {
+      return;
+    }
+    if (isTerminalStatus(snapshot.workflowRun.status)) {
+      cleanupRunStreamTracking(runId);
+    } else {
+      scheduleRunStreamReconnect(runId);
+    }
+  } catch {
+    if (isCurrentRun()) {
+      scheduleRunStreamReconnect(runId);
+    }
   } finally {
     finalizingRunIds.delete(runId);
   }
@@ -1384,34 +1470,58 @@ function assertTargetNodeRunCreated(snapshot: GetWorkflowRunResponse, targetNode
 }
 
 function startRunStream(runId: string): void {
-  if (activeStreamsByRunId.has(runId)) {
+  if (disposedRunIds.has(runId) || activeStreamsByRunId.has(runId)) {
     return;
   }
+  cancelRunReconnect(runId);
+  monitoredRunIds.add(runId);
+  const token = Symbol(runId);
+  const afterSequence = latestEventSequenceByRunId.get(runId);
   const handle = streamWorkflowRun(runId, {
+    ...(afterSequence !== undefined ? { afterSequence } : {}),
     onClose: () => {
+      const activeStream = activeStreamsByRunId.get(runId);
+      if (!activeStream || activeStream.token !== token) {
+        return;
+      }
+      activeStreamsByRunId.delete(runId);
       void finalizeRun(runId);
     },
-    onError: (error) => {
-      setRunError(error.message || '工作流运行连接中断，请刷新后重试。');
-    },
     onEvent: (event) => {
+      if (disposedRunIds.has(runId)) {
+        return;
+      }
+      const latestSequence = latestEventSequenceByRunId.get(runId);
+      if (event.sequence > 0 && latestSequence !== undefined && event.sequence <= latestSequence) {
+        return;
+      }
+      if (event.sequence > 0) {
+        latestEventSequenceByRunId.set(runId, event.sequence);
+      }
+      reconnectAttemptsByRunId.delete(runId);
       applyRunEvent(event);
     },
   });
-  activeStreamsByRunId.set(runId, handle);
+  activeStreamsByRunId.set(runId, { handle, token });
 }
 
 export async function recoverFlowTargetNodeRuns(flowId: string): Promise<void> {
   if (!RUNNER_ENABLED) {
     return;
   }
+  const recoveryGeneration = runRecoveryGeneration;
+  const isCurrentRecovery = () => recoveryGeneration === runRecoveryGeneration;
   const snapshots = await listFlowWorkflowRuns(flowId, {
     limit: 50,
     runMode: 'target_node',
   });
+  if (!isCurrentRecovery()) {
+    return;
+  }
 
   const recoveredNodeIds = new Set<string>();
   for (const snapshot of snapshots) {
+    disposedRunIds.delete(snapshot.workflowRun.id);
     const scope = resolveRunScope(snapshot.workflowRun.inputJson);
     if (scope.runMode === 'target_node' && scope.targetNodeId) {
       if (recoveredNodeIds.has(scope.targetNodeId)) {
@@ -1419,9 +1529,14 @@ export async function recoverFlowTargetNodeRuns(flowId: string): Promise<void> {
       }
       recoveredNodeIds.add(scope.targetNodeId);
     }
-    await applyWorkflowRunSnapshot(snapshot);
+    await applyWorkflowRunSnapshot(snapshot, isCurrentRecovery);
+    if (!isCurrentRecovery()) {
+      return;
+    }
     if (!isTerminalStatus(snapshot.workflowRun.status)) {
       startRunStream(snapshot.workflowRun.id);
+    } else {
+      cleanupRunStreamTracking(snapshot.workflowRun.id);
     }
   }
 }
@@ -1552,9 +1667,6 @@ export async function runBackendWorkflow(options?: {
 }
 
 export function disposeBackendWorkflowRunStream(): void {
-  for (const runId of activeStreamsByRunId.keys()) {
-    disposedRunIds.add(runId);
-  }
   closeAllStreams();
 }
 
