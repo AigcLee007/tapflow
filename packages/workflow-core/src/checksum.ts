@@ -23,6 +23,7 @@ function normalizeNode(node: FlowGraphNode) {
   return {
     data: stableValue(node.data ?? {}),
     id: node.id,
+    parentId: node.parentId ?? null,
     type: node.type,
   };
 }

@@ -55,6 +55,17 @@ describe("@aigc-flow/workflow-core", () => {
     ]);
   });
 
+  test("preserves grouping in the compiled graph and its checksum", () => {
+    const grouped = createValidGraph();
+    grouped.nodes[1] = { ...grouped.nodes[1], parentId: "group-1" };
+    const ungrouped = createValidGraph();
+
+    expect(compileGraph(grouped).nodes.find((node) => node.id === "generate")).toMatchObject({
+      parentId: "group-1",
+    });
+    expect(checksumGraph(grouped)).not.toBe(checksumGraph(ungrouped));
+  });
+
   test("duplicate node id fails", () => {
     const graph = createValidGraph();
     graph.nodes.push({ id: "input", type: "duplicate" });
