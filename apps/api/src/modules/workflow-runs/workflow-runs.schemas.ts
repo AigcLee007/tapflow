@@ -15,7 +15,7 @@ export const createWorkflowRunSchema = z.object({
 
 export const flowRunsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  runMode: z.enum(["flow", "target_node"]).optional(),
+  runMode: z.enum(["flow", "target_node", "group"]).optional(),
 });
 
 export const workflowRunEventsQuerySchema = z.object({

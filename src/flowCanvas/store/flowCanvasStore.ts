@@ -30,6 +30,7 @@ import type {
   V2WorkflowRunEventView,
   V2WorkflowRunStatus,
 } from '../../services/v2WorkflowRunsApi';
+import { buildGroupExecutionPlan, type GroupExecutionPlan } from '../groupExecution/groupExecutionPlan';
 
 type FlowNode = Node<FlowNodeData>;
 type FlowEdge = Edge<FlowEdgeData>;
@@ -137,6 +138,7 @@ interface FlowCanvasState {
   runError: string | null;
   runEvents: V2WorkflowRunEventView[];
   runStatus: V2WorkflowRunStatus | null;
+  latestGroupExecutionPlan: GroupExecutionPlan | null;
 
   onNodesChange: OnNodesChange<FlowNode>;
   onEdgesChange: OnEdgesChange<FlowEdge>;
@@ -184,6 +186,9 @@ interface FlowCanvasState {
   groupSelectedNodes: () => void;
   ungroupSelectedGroups: () => void;
   layoutSelectedGroup: (layout: 'grid' | 'horizontal') => void;
+  getSelectedGroup: () => FlowNode | null;
+  getSelectedGroupGraph: () => { groupId: string; nodes: FlowNode[]; edges: FlowEdge[] } | null;
+  buildSelectedGroupExecutionPlan: () => GroupExecutionPlan | null;
   deleteSelectedNodes: () => void;
   duplicateSelectedNodes: () => void;
   mergeTemplateGraph: (graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => void;
@@ -998,6 +1003,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
   runError: null,
   runEvents: [],
   runStatus: null,
+  latestGroupExecutionPlan: null,
 
   onNodesChange: (changes) => {
     const dirty = shouldMarkNodeChangesDirty(changes);
@@ -1008,6 +1014,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         nodes,
         graphIndex: rebuildGraphIndex ? buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId) : state.graphIndex,
+        latestGroupExecutionPlan: changes.length > 0 ? null : state.latestGroupExecutionPlan,
         selectedNodeCount: recountSelection ? countSelectedNodes(nodes) : state.selectedNodeCount,
         isDirty: dirty ? true : state.isDirty,
       };
@@ -1022,6 +1029,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         edges,
         graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        latestGroupExecutionPlan: null,
         isDirty: dirty ? true : state.isDirty,
         nodes,
       };
@@ -1633,6 +1641,26 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
     });
   },
 
+  getSelectedGroup: () => get().nodes.find((node) => node.selected && node.type === 'group') ?? null,
+
+  getSelectedGroupGraph: () => {
+    const group = get().getSelectedGroup();
+    if (!group) return null;
+    const { nodes, edges } = get();
+    return { groupId: group.id, nodes, edges };
+  },
+
+  buildSelectedGroupExecutionPlan: () => {
+    const graph = get().getSelectedGroupGraph();
+    if (!graph) {
+      set({ latestGroupExecutionPlan: null });
+      return null;
+    }
+    const plan = buildGroupExecutionPlan(graph.nodes, graph.edges, graph.groupId, get().nodeOutputByNodeId);
+    set({ latestGroupExecutionPlan: plan });
+    return plan;
+  },
+
   deleteSelectedNodes: () => {
     const selectedIds = new Set(get().nodes.filter((node) => node.selected).map((node) => node.id));
     if (selectedIds.size === 0) return;
@@ -1645,6 +1673,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         nodes: reconciledNodes,
         edges,
         graphIndex: buildGraphIndex(reconciledNodes, edges, state.nodeOutputByNodeId),
+        latestGroupExecutionPlan: null,
         selectedNodeCount: countSelectedNodes(reconciledNodes),
         activeImageTool: state.activeImageTool && selectedIds.has(state.activeImageTool.nodeId) ? null : state.activeImageTool,
         isDirty: true,
@@ -1747,6 +1776,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
         nodeOutputByNodeId,
         nodes,
         graphIndex: buildGraphIndex(nodes, state.edges, nodeOutputByNodeId),
+        latestGroupExecutionPlan: null,
         isDirty: nodesChanged ? true : state.isDirty,
       };
     });
@@ -1766,6 +1796,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         nodes,
         graphIndex: buildGraphIndex(nodes, state.edges, state.nodeOutputByNodeId),
+        latestGroupExecutionPlan: null,
         isDirty: true,
       };
     });
@@ -2041,6 +2072,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       const nodes = state.nodes.map((node) => ({ ...node, selected: selectedIds.has(node.id) }));
       return {
         edges: state.edges.map((edge) => ({ ...edge, selected: false })),
+        latestGroupExecutionPlan: null,
         nodes,
         selectedNodeCount: countSelectedNodes(nodes),
       };
@@ -2057,6 +2089,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         edges,
         graphIndex: buildGraphIndex(nodes, edges, state.nodeOutputByNodeId),
+        latestGroupExecutionPlan: null,
         isDirty: true,
         nodes,
       };
@@ -2069,6 +2102,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       return {
         nodes,
         selectedNodeCount: nodes.length,
+        latestGroupExecutionPlan: null,
         edges: state.edges.map((edge) => ({ ...edge, selected: true })),
       };
     });
@@ -2079,6 +2113,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       nodes: state.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
       selectedNodeCount: 0,
       edges: state.edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge)),
+      latestGroupExecutionPlan: null,
     }));
   },
 
@@ -2172,6 +2207,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       runError: null,
       runEvents: [],
       runStatus: null,
+      latestGroupExecutionPlan: null,
     });
   },
 
@@ -2233,6 +2269,7 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       runError: null,
       runEvents: [],
       runStatus: null,
+      latestGroupExecutionPlan: null,
     });
   },
 
@@ -2260,5 +2297,6 @@ export const useFlowCanvasStore = create<FlowCanvasState>((set, get) => ({
       runError: null,
       runEvents: [],
       runStatus: null,
+      latestGroupExecutionPlan: null,
     })),
 }));

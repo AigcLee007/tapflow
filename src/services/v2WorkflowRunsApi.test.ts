@@ -98,6 +98,17 @@ describe('v2WorkflowRunsApi', () => {
     );
   });
 
+  test('createWorkflowRun preserves the scoped group execution contract', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ runId: 'run-group', status: 'pending' }), { status: 201, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createWorkflowRun('flow-123', { runMode: 'group', groupId: 'group-42', planHash: 'plan-abc' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/flows/flow-123/runs', expect.objectContaining({
+      body: JSON.stringify({ idempotencyKey: undefined, input: { runMode: 'group', groupId: 'group-42', planHash: 'plan-abc' } }),
+    }));
+  });
+
   test('streamWorkflowRun parses SSE events and forwards Last-Event-ID', async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({

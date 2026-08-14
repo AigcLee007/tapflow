@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { LayoutTemplate, LoaderCircle, Search } from "lucide-react";
 
-import { listFlowTemplates, type FlowTemplateItem } from "../../services/v2FlowTemplatesApi";
+import { getFlowTemplate, listFlowTemplates, type FlowTemplateGraph, type FlowTemplateItem } from "../../services/v2FlowTemplatesApi";
+import { useAssetLibrary } from '../../assets/useAssetLibrary';
 import { CanvasDockEmptyState } from "./CanvasDockDrawer";
+import { TemplateInsertDialog } from './TemplateInsertDialog';
 
 const TEMPLATE_CATEGORIES = [
   { key: "", label: "全部" },
@@ -16,7 +18,7 @@ const TEMPLATE_CATEGORIES = [
 export function CanvasTemplatePanel({
   onInsertTemplate,
 }: {
-  onInsertTemplate: (templateId: string) => Promise<void>;
+  onInsertTemplate: (templateId: string, values: Record<string, string | number | undefined>) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -24,6 +26,8 @@ export function CanvasTemplatePanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [insertingId, setInsertingId] = useState<string | null>(null);
+  const [configuringTemplate, setConfiguringTemplate] = useState<FlowTemplateGraph | null>(null);
+  const assetLibrary = useAssetLibrary();
 
   useEffect(() => {
     let active = true;
@@ -152,9 +156,10 @@ export function CanvasTemplatePanel({
                     disabled={inserting}
                     onClick={() => {
                       setInsertingId(template.id);
-                      void onInsertTemplate(template.id).finally(() =>
-                        setInsertingId((current) => (current === template.id ? null : current)),
-                      );
+                      void getFlowTemplate(template.id).then((fullTemplate) => {
+                        if ((fullTemplate.inputSchema ?? []).length) setConfiguringTemplate(fullTemplate);
+                        else return onInsertTemplate(template.id, {});
+                      }).catch((reason) => setError(reason instanceof Error ? reason.message : '模板加载失败，请稍后重试。')).finally(() => setInsertingId((current) => (current === template.id ? null : current)));
                     }}
                     style={{
                       height: 28,
@@ -183,6 +188,19 @@ export function CanvasTemplatePanel({
           })}
         </div>
       ) : null}
+      <TemplateInsertDialog
+        assets={assetLibrary.assets.map((asset) => ({ id: asset.id, filename: asset.filename }))}
+        onCancel={() => setConfiguringTemplate(null)}
+        onConfirm={(values) => {
+          const selected = configuringTemplate;
+          setConfiguringTemplate(null);
+          if (!selected) return;
+          setInsertingId(selected.id);
+          void onInsertTemplate(selected.id, values).catch((reason) => setError(reason instanceof Error ? reason.message : '模板插入失败，请稍后重试。')).finally(() => setInsertingId((current) => current === selected.id ? null : current));
+        }}
+        open={Boolean(configuringTemplate)}
+        template={configuringTemplate}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   applyMembershipDiscount,
@@ -82,12 +82,20 @@ type FlowDraftRecord = {
   revision?: number;
 };
 
-type WorkflowRunMode = "flow" | "target_node";
+type WorkflowRunMode = "flow" | "target_node" | "group";
 
 type FlowVersionRecord = {
   checksum?: string;
   compiled_graph_json?: CompiledWorkflow;
   id: string;
+};
+
+type ExternalGroupDependencySnapshot = {
+  dataType: "any" | "audio" | "image" | "json" | "text" | "video";
+  nodeId: string;
+  nodeType: string;
+  outputJson: Record<string, unknown>;
+  sourceWorkflowRunId: string;
 };
 
 type CreatedRunTransactionResult = {
@@ -840,13 +848,60 @@ function isTerminalRunStatus(status: string): boolean {
 }
 
 function getRequestedRunMode(input: Record<string, unknown> | undefined): WorkflowRunMode {
-  return input?.runMode === "target_node" ? "target_node" : "flow";
+  if (input?.runMode === "target_node" || input?.runMode === "group") {
+    return input.runMode;
+  }
+  return "flow";
 }
 
 function getRequestedTargetNodeId(input: Record<string, unknown> | undefined): string | null {
   return typeof input?.targetNodeId === "string" && input.targetNodeId.trim()
     ? input.targetNodeId.trim()
     : null;
+}
+
+function getRequestedGroupId(input: Record<string, unknown> | undefined): string | null {
+  return typeof input?.groupId === "string" && input.groupId.trim() ? input.groupId.trim() : null;
+}
+
+function buildGroupPlanHash(groupId: string, nodeIds: string[], workflow: CompiledWorkflow): string {
+  const nodes = workflow.nodes
+    .filter((node) => nodeIds.includes(node.id))
+    .map((node) => ({ dependencies: node.dependencies.filter((id) => nodeIds.includes(id)), id: node.id, type: node.type }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return createHash("sha256").update(JSON.stringify({ groupId, nodes })).digest("hex");
+}
+
+function readExternalEdgeDataType(
+  workflow: CompiledWorkflow,
+  sourceNodeId: string,
+  targetNodeId: string,
+): ExternalGroupDependencySnapshot["dataType"] {
+  const value = workflow.edges.find((edge) => edge.source === sourceNodeId && edge.target === targetNodeId)?.data?.dataType;
+  return value === "audio" || value === "image" || value === "json" || value === "text" || value === "video"
+    ? value
+    : "any";
+}
+
+function outputMatchesExternalDataType(
+  output: Record<string, unknown>,
+  dataType: ExternalGroupDependencySnapshot["dataType"],
+): boolean {
+  if (dataType === "text") return typeof output.text === "string" && output.text.trim().length > 0;
+  if (dataType === "json") return Object.keys(output).length > 0;
+  if (dataType === "any") return Object.keys(output).length > 0;
+  const assets = Array.isArray(output.assets) ? output.assets : [];
+  return assets.some((asset) => isRecord(asset) && asset.kind === dataType && typeof asset.assetId === "string" && asset.assetId.trim());
+}
+
+export function assertGroupNodeConfiguration(node: CompiledWorkflowNode): void {
+  const config = isRecord(node.config) ? node.config : {};
+  if (!readTrimmedString(config.generationPrompt)) {
+    throw new WorkflowRunsApiError(422, "GROUP_MISSING_GENERATION_PROMPT", `Node ${node.id} requires a generation prompt.`);
+  }
+  if (!readTrimmedString(config.routeId) && !resolveConfiguredRouteKey(node) && !readTrimmedString(config.modelId)) {
+    throw new WorkflowRunsApiError(422, "GROUP_MISSING_ROUTE", `Node ${node.id} requires a model route.`);
+  }
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -896,6 +951,7 @@ export class WorkflowRunsService {
     const runInput = input.input ?? {};
     const runMode = getRequestedRunMode(runInput);
     const targetNodeId = getRequestedTargetNodeId(runInput);
+    const groupId = getRequestedGroupId(runInput);
     this.logCreateRunDiagnostic(
       {
         flowId,
@@ -952,6 +1008,72 @@ export class WorkflowRunsService {
           runMode === "target_node"
             ? runtimeFlow.compiled_graph_json.nodes.find((node) => node.id === targetNodeId)
             : null;
+
+        if (runMode === "group" && !groupId) {
+          throw new WorkflowRunsApiError(400, "GROUP_ID_REQUIRED", "A groupId is required to run a group.");
+        }
+        const groupNode = runMode === "group"
+          ? runtimeFlow.compiled_graph_json.nodes.find((node) => node.id === groupId)
+          : null;
+        if (runMode === "group" && (!groupNode || groupNode.type !== "group")) {
+          throw new WorkflowRunsApiError(400, "GROUP_NOT_FOUND", "The requested group was not found in the current draft.");
+        }
+        const groupNodeIds = runMode === "group"
+          ? runtimeFlow.compiled_graph_json.nodes
+            .filter((node) => node.parentId === groupId)
+            .map((node) => node.id)
+          : [];
+        if (runMode === "group" && groupNodeIds.length === 0) {
+          throw new WorkflowRunsApiError(422, "GROUP_EMPTY", "The group has no direct runnable children.");
+        }
+        const groupNodes = runMode === "group"
+          ? runtimeFlow.compiled_graph_json.nodes.filter((node) => groupNodeIds.includes(node.id))
+          : [];
+        if (runMode === "group") {
+          const nestedGroup = groupNodes.find((node) => node.type === "group");
+          if (nestedGroup) {
+            throw new WorkflowRunsApiError(422, "GROUP_NESTED_GROUP", `Nested group ${nestedGroup.id} cannot be run.`);
+          }
+          const unsupported = groupNodes.find((node) =>
+            node.type !== "text.generate" && node.type !== "image.generate" && node.type !== "video.generate",
+          );
+          if (unsupported) {
+            throw new WorkflowRunsApiError(422, "GROUP_NODE_UNSUPPORTED", `Node ${unsupported.id} is not executable in a group.`);
+          }
+          groupNodes.forEach(assertGroupNodeConfiguration);
+          for (const node of groupNodes) {
+            const routeKey = resolveEffectiveRouteKey(node);
+            if (!routeContexts.has(routeKey)) {
+              throw new WorkflowRunsApiError(422, "GROUP_ROUTE_UNAVAILABLE", `Node ${node.id} requires an active model route.`);
+            }
+          }
+        }
+        const externalDependencyIds = runMode === "group"
+          ? Array.from(new Set(groupNodes.flatMap((node) => node.dependencies.filter((dependencyId) => !groupNodeIds.includes(dependencyId)))))
+          : [];
+        const externalDependencies = await this.loadVerifiedExternalGroupDependencies(
+          client,
+          context.tenantId,
+          runtimeFlow.flow_id,
+          runtimeFlow.graph_checksum ?? "",
+          externalDependencyIds.map((nodeId) => ({
+            dataType: readExternalEdgeDataType(
+              runtimeFlow.compiled_graph_json,
+              nodeId,
+              groupNodes.find((node) => node.dependencies.includes(nodeId))?.id ?? "",
+            ),
+            nodeId,
+          })),
+        );
+        if (externalDependencies.length !== externalDependencyIds.length) {
+          const verified = new Set(externalDependencies.map((dependency) => dependency.nodeId));
+          throw new WorkflowRunsApiError(
+            422,
+            "GROUP_EXTERNAL_DEPENDENCY_INVALID",
+            "Each external group dependency must have a successful current output in this flow.",
+            { missingNodeIds: externalDependencyIds.filter((nodeId) => !verified.has(nodeId)) },
+          );
+        }
 
         if (runMode === "target_node" && !targetNode) {
           throw new WorkflowRunsApiError(400, "TARGET_NODE_NOT_FOUND", "未在当前画布中找到目标节点");
@@ -1012,6 +1134,8 @@ export class WorkflowRunsService {
         const nodesToRun =
           runMode === "target_node" && targetNode
             ? [targetNode]
+            : runMode === "group"
+              ? groupNodes
             : runtimeFlow.compiled_graph_json.nodes;
 
         for (const node of nodesToRun) {
@@ -1043,6 +1167,16 @@ export class WorkflowRunsService {
           "workflow run pricing loaded",
         );
 
+        const normalizedRunInput: Record<string, unknown> = runMode === "group"
+          ? {
+              ...runInput,
+              groupId,
+              planHash: buildGroupPlanHash(groupId!, groupNodeIds, runtimeFlow.compiled_graph_json),
+              runMode,
+              scopeNodeIds: groupNodeIds.sort(),
+              verifiedExternalDependencies: externalDependencies,
+            }
+          : runInput;
         const runId = randomUUID();
         const runInsertStartedAt = Date.now();
         const runInsert = await client.query<WorkflowRunRecord>(
@@ -1093,7 +1227,7 @@ export class WorkflowRunsService {
             context.tenantId,
             runtimeFlow.flow_id,
             runtimeFlow.current_version_id,
-          JSON.stringify(runInput),
+          JSON.stringify(normalizedRunInput),
           input.idempotencyKey ?? null,
           context.userId,
         ],
@@ -1132,7 +1266,9 @@ export class WorkflowRunsService {
           const isEntryNode =
             runMode === "target_node"
               ? node.id === targetNode?.id
-              : runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
+              : runMode === "group"
+                ? node.dependencies.every((dependencyId) => !groupNodeIds.includes(dependencyId))
+                : runtimeFlow.compiled_graph_json.entryNodeIds.includes(node.id);
           const nodeRunId = randomUUID();
           nodeRunIds.push(nodeRunId);
           const estimatedCost = this.estimateNodeReserveCents(node, routeContexts, pricingRows);
@@ -1212,7 +1348,7 @@ export class WorkflowRunsService {
             "workflow node_run row inserted",
           );
 
-          if (discountedCredits > 0) {
+          if (discountedCredits > 0 && (runMode !== "group" || isEntryNode)) {
             const reserveStartedAt = Date.now();
             let reserve;
             try {
@@ -1430,6 +1566,59 @@ export class WorkflowRunsService {
       return this.nodeExecuteQueues.default ?? this.nodeExecuteQueue;
     }
     return this.nodeExecuteQueues.legacy ?? this.nodeExecuteQueue;
+  }
+
+  private async loadVerifiedExternalGroupDependencies(
+    client: PoolClient,
+    tenantId: string,
+    flowId: string,
+    graphChecksum: string,
+    dependencies: Array<{ dataType: ExternalGroupDependencySnapshot["dataType"]; nodeId: string }>,
+  ): Promise<ExternalGroupDependencySnapshot[]> {
+    if (dependencies.length === 0) return [];
+    const result = await client.query<{
+      node_id: string;
+      node_type: string;
+      output_json: Record<string, unknown>;
+      workflow_run_id: string;
+    }>(
+      `
+        SELECT DISTINCT ON (node_runs.node_id)
+          node_runs.node_id,
+          node_runs.node_type,
+          node_runs.output_json,
+          node_runs.workflow_run_id::text AS workflow_run_id
+        FROM node_runs
+        JOIN workflow_runs ON workflow_runs.id = node_runs.workflow_run_id
+        JOIN flow_versions ON flow_versions.id = workflow_runs.flow_version_id
+        WHERE workflow_runs.tenant_id = $1::uuid
+          AND workflow_runs.flow_id = $2::uuid
+          AND flow_versions.checksum = $3
+          AND workflow_runs.status = 'succeeded'
+          AND node_runs.node_id = ANY($4::text[])
+          AND node_runs.status = 'succeeded'
+          AND node_runs.output_json IS NOT NULL
+          AND node_runs.output_json <> '{}'::jsonb
+          AND node_runs.error_json IS NULL
+          AND NOT (node_runs.output_json ? 'error')
+          AND NOT (node_runs.output_json ? 'providerError')
+          AND NOT (node_runs.output_json ? 'providerFailure')
+        ORDER BY node_runs.node_id, node_runs.finished_at DESC NULLS LAST, node_runs.updated_at DESC
+      `,
+      [tenantId, flowId, graphChecksum, dependencies.map((dependency) => dependency.nodeId)],
+    );
+    const typeByNodeId = new Map(dependencies.map((dependency) => [dependency.nodeId, dependency.dataType]));
+    return result.rows.flatMap((row) => {
+      const dataType = typeByNodeId.get(row.node_id) ?? "any";
+      if (!outputMatchesExternalDataType(row.output_json, dataType)) return [];
+      return [{
+        dataType,
+      nodeId: row.node_id,
+      nodeType: row.node_type,
+      outputJson: row.output_json,
+      sourceWorkflowRunId: row.workflow_run_id,
+      }];
+    });
   }
 
   async getWorkflowRun(

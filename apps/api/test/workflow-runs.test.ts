@@ -8,6 +8,7 @@ import type { ApiEnv } from "../src/config/env.js";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/modules/auth/password.js";
 import {
+  assertGroupNodeConfiguration,
   assertTextImageInputsSupportedByRuntimeGraph,
   getTextImageInputCandidates,
   WorkflowRunsService,
@@ -65,6 +66,32 @@ function createFakeNodeExecuteQueue() {
     },
   };
 }
+
+test('group execution rejects missing generic generation prompt or route before reserve', () => {
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { routeKey: 'image.default' } } as never))
+    .toThrow(/generation prompt/i);
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { generationPrompt: 'prompt' } } as never))
+    .toThrow(/model route/i);
+  expect(() => assertGroupNodeConfiguration({ id: 'image', type: 'image.generate', config: { generationPrompt: 'prompt', routeKey: 'image.default' } } as never))
+    .not.toThrow();
+});
+
+test('group external outputs are scoped to the current graph checksum', async () => {
+  const service = new WorkflowRunsService({
+    nodeExecuteQueue: createFakeNodeExecuteQueue().queue,
+    pool: { connect: async () => { throw new Error('not used by this unit test'); } } as never,
+  });
+  const calls: Array<{ sql: string; values?: unknown[] }> = [];
+  const client = { query: async (sql: string, values?: unknown[]) => { calls.push({ sql, values }); return { rows: [] }; } };
+  const load = (service as unknown as {
+    loadVerifiedExternalGroupDependencies: (client: typeof client, tenantId: string, flowId: string, checksum: string, dependencies: Array<{ dataType: 'image'; nodeId: string }>) => Promise<unknown>;
+  }).loadVerifiedExternalGroupDependencies;
+
+  await load.call(service, client, randomUUID(), randomUUID(), 'current-checksum', [{ dataType: 'image', nodeId: 'source' }]);
+  expect(calls[0]?.sql).toContain('JOIN flow_versions ON flow_versions.id = workflow_runs.flow_version_id');
+  expect(calls[0]?.sql).toContain('flow_versions.checksum = $3');
+  expect(calls[0]?.values?.[2]).toBe('current-checksum');
+});
 
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
   const fakeQueue = createFakeNodeExecuteQueue();
@@ -762,6 +789,181 @@ async function countBillingAndWorkflowState(
 }
 
 describeWithDatabase("workflow runs api", () => {
+  test("group runs derive direct children from the server draft and only enqueue ready roots", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-group-scope@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Group Scope");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v1",
+          providerKey: "mock-local-dev",
+          routeKey: "image.default",
+          tenantId: owner.currentTenant.id,
+          userId: ownerUserId,
+          withExactPricing: true,
+        });
+        const flow = await createDraftOnlyFlowWithImageNodes(api, owner.accessToken, ["inside", "outside"]);
+        await withTenantTransaction({ tenantId: owner.currentTenant.id, userId: ownerUserId }, async (client) => {
+          const draft = await client.query<{ graph_json: Record<string, unknown> }>(
+            "SELECT graph_json FROM flow_drafts WHERE flow_id = $1::uuid",
+            [flow.id],
+          );
+          const graph = draft.rows[0]!.graph_json;
+          graph.nodes = [
+            { id: "group", type: "group", data: {} },
+            ...(graph.nodes as Array<Record<string, unknown>>).map((node) =>
+              node.id === "inside" ? { ...node, parentId: "group" } : node,
+            ),
+          ];
+          await client.query(
+            "UPDATE flow_drafts SET graph_json = $2::jsonb WHERE flow_id = $1::uuid",
+            [flow.id, JSON.stringify(graph)],
+          );
+        }, appPool);
+
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "POST",
+          payload: { input: { runMode: "group", groupId: "group", planHash: "client-controlled" } },
+          url: `/api/v2/flows/${flow.id}/runs`,
+        });
+
+        expect(response.statusCode).toBe(201);
+        const details = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: `/api/v2/workflow-runs/${response.json().runId}`,
+        });
+        expect(details.json().workflowRun.inputJson).toMatchObject({
+          groupId: "group",
+          runMode: "group",
+          scopeNodeIds: ["inside"],
+        });
+        expect(details.json().workflowRun.inputJson.planHash).not.toBe("client-controlled");
+        expect(details.json().nodeRuns).toHaveLength(1);
+        expect(details.json().nodeRuns[0]).toMatchObject({ nodeId: "inside", status: "runnable" });
+        expect(fakeQueue.jobs).toHaveLength(1);
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("group runs reject missing external dependency outputs", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-group-external@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Group External");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v1", providerKey: "mock-local-dev", routeKey: "image.default",
+          tenantId: owner.currentTenant.id, userId: ownerUserId, withExactPricing: true,
+        });
+        const flow = await createDraftOnlyFlowWithImageNodes(api, owner.accessToken, ["inside", "outside"]);
+        await withTenantTransaction({ tenantId: owner.currentTenant.id, userId: ownerUserId }, async (client) => {
+          const result = await client.query<{ graph_json: Record<string, unknown> }>("SELECT graph_json FROM flow_drafts WHERE flow_id = $1::uuid", [flow.id]);
+          const graph = result.rows[0]!.graph_json;
+          graph.nodes = [
+            { id: "group", type: "group", data: {} },
+            ...(graph.nodes as Array<Record<string, unknown>>).map((node) => node.id === "inside" ? { ...node, parentId: "group" } : node),
+          ];
+          graph.edges = [{ source: "outside", target: "inside" }];
+          await client.query("UPDATE flow_drafts SET graph_json = $2::jsonb WHERE flow_id = $1::uuid", [flow.id, JSON.stringify(graph)]);
+        }, appPool);
+
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` }, method: "POST",
+          payload: { input: { runMode: "group", groupId: "group" } }, url: `/api/v2/flows/${flow.id}/runs`,
+        });
+        expect(response.statusCode).toBe(422);
+        expect(response.json()).toMatchObject({ error: { code: "GROUP_EXTERNAL_DEPENDENCY_INVALID" } });
+        expect(fakeQueue.jobs).toHaveLength(0);
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("group runs snapshot a verified external output without scheduling its source", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const { api, fakeQueue } = buildTestApp(appPool);
+        const ownerEmail = "workflow-group-external-success@example.com";
+        const owner = await registerOwner(api, ownerEmail, "Workflow Group External Success");
+        const ownerUserId = await lookupUserIdByEmail(appPool, ownerEmail);
+        await seedRouteAndPricing(appPool, {
+          modelKey: "mock-image-v1", providerKey: "mock-local-dev", routeKey: "image.default",
+          tenantId: owner.currentTenant.id, userId: ownerUserId, withExactPricing: true,
+        });
+        const flow = await createDraftOnlyFlowWithImageNodes(api, owner.accessToken, ["inside", "outside"]);
+        await withTenantTransaction({ tenantId: owner.currentTenant.id, userId: ownerUserId }, async (client) => {
+          const result = await client.query<{ graph_json: Record<string, unknown> }>("SELECT graph_json FROM flow_drafts WHERE flow_id = $1::uuid", [flow.id]);
+          const graph = result.rows[0]!.graph_json;
+          graph.nodes = [
+            { id: "group", type: "group", data: {} },
+            ...(graph.nodes as Array<Record<string, unknown>>).map((node) => node.id === "inside" ? { ...node, parentId: "group" } : node),
+          ];
+          graph.edges = [{ source: "outside", target: "inside" }];
+          await client.query("UPDATE flow_drafts SET graph_json = $2::jsonb WHERE flow_id = $1::uuid", [flow.id, JSON.stringify(graph)]);
+        }, appPool);
+        const historicalRun = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` }, method: "POST",
+          payload: { input: { runMode: "target_node", targetNodeId: "outside" } }, url: `/api/v2/flows/${flow.id}/runs`,
+        });
+        expect(historicalRun.statusCode).toBe(201);
+        await withTenantTransaction({ tenantId: owner.currentTenant.id, userId: ownerUserId }, async (client) => {
+          await client.query("UPDATE workflow_runs SET status = 'succeeded', finished_at = now() WHERE id = $1::uuid", [historicalRun.json().runId]);
+          await client.query(
+            "UPDATE node_runs SET status = 'succeeded', output_json = $2::jsonb, finished_at = now() WHERE workflow_run_id = $1::uuid AND node_id = 'outside'",
+            [historicalRun.json().runId, JSON.stringify({ assets: [{ assetId: "asset-history", kind: "image", mimeType: "image/png" }] })],
+          );
+        }, appPool);
+        fakeQueue.jobs.length = 0;
+
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` }, method: "POST",
+          payload: { input: { runMode: "group", groupId: "group" } }, url: `/api/v2/flows/${flow.id}/runs`,
+        });
+        expect(response.statusCode).toBe(201);
+        const details = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` }, method: "GET", url: `/api/v2/workflow-runs/${response.json().runId}`,
+        });
+        expect(details.json().workflowRun.inputJson.verifiedExternalDependencies).toEqual([
+          expect.objectContaining({ nodeId: "outside", sourceWorkflowRunId: historicalRun.json().runId }),
+        ]);
+        expect(details.json().nodeRuns).toEqual([expect.objectContaining({ nodeId: "inside" })]);
+        expect(fakeQueue.jobs).toHaveLength(1);
+        expect((fakeQueue.jobs[0]!.data as { nodeRunId: string }).nodeRunId).toBe(details.json().nodeRuns[0].id);
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("rejects four upstream images for a text target before billing or queueing", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

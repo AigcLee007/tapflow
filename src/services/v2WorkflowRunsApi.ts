@@ -70,7 +70,9 @@ export interface CreateWorkflowRunResponse {
 export type CreateWorkflowRunInput = {
   idempotencyKey?: string;
   input?: Record<string, unknown>;
-  runMode?: "flow" | "target_node";
+  runMode?: "flow" | "target_node" | "group";
+  groupId?: string;
+  planHash?: string;
   targetNodeId?: string;
 };
 
@@ -236,6 +238,8 @@ export async function createWorkflowRun(
   const runInput = {
     ...(input?.input || {}),
     ...(input?.runMode ? { runMode: input.runMode } : {}),
+    ...(input?.groupId ? { groupId: input.groupId } : {}),
+    ...(input?.planHash ? { planHash: input.planHash } : {}),
     ...(input?.targetNodeId ? { targetNodeId: input.targetNodeId } : {}),
   };
 
@@ -253,7 +257,7 @@ export async function listFlowWorkflowRuns(
   flowId: string,
   input?: {
     limit?: number;
-    runMode?: "flow" | "target_node";
+    runMode?: "flow" | "target_node" | "group";
   },
 ): Promise<ListFlowWorkflowRunsResponse> {
   const params = new URLSearchParams();

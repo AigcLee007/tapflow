@@ -63,6 +63,7 @@ import type {
 import { useFlowCanvasStore, type FlowDerivedEditCounts, type FlowUpstreamImageRef } from '../store/flowCanvasStore';
 import { prepareImageTemplateEdit, runImageEdit, type ImageEditType } from '../runtime/graphExecutor';
 import { markBackendRunLaunchFailed, runBackendWorkflow } from '../runtime/v2WorkflowRunner';
+import { GroupExecutionConfirmDialog } from '../groupExecution/GroupExecutionConfirmDialog';
 import { VideoNodeComposer } from '../video/VideoNodeComposer';
 import { resolveVideoMentionAllowedKinds } from '../mentions/videoMentionCapabilities';
 import { VideoNodeLegacyComposer } from '../video/VideoNodeLegacyComposer';
@@ -8533,11 +8534,14 @@ export const GroupNodeComponent = memo(function GroupNode({
   const updateNodeData = useFlowCanvasStore((s) => s.updateNodeData);
   const ungroupSelectedGroups = useFlowCanvasStore((s) => s.ungroupSelectedGroups);
   const layoutSelectedGroup = useFlowCanvasStore((s) => s.layoutSelectedGroup);
+  const buildSelectedGroupExecutionPlan = useFlowCanvasStore((s) => s.buildSelectedGroupExecutionPlan);
   const allNodes = useFlowCanvasStore((s) => s.nodes);
   const childNodes = allNodes.filter((node) => node.parentId === id);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [templateCopied, setTemplateCopied] = useState(false);
+  const [groupExecutionDialogOpen, setGroupExecutionDialogOpen] = useState(false);
+  const [groupExecutionPlan, setGroupExecutionPlan] = useState<ReturnType<typeof buildSelectedGroupExecutionPlan>>(null);
   const colorButtonRef = useRef<HTMLButtonElement>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
   const { showSingleNodeControls } = useNodeSelectionState(id, selected);
@@ -8563,12 +8567,9 @@ export const GroupNodeComponent = memo(function GroupNode({
 
   const groupBg = String(d.backgroundColor || 'rgba(64,64,64,0.58)');
   const executeGroup = () => {
-    const executableNodes = childNodes.filter((node) =>
-      ['text', 'image', 'video'].includes(String(node.type || node.data.kind))
-      && node.data.generationPrompt,
-    );
-    if (executableNodes.length === 0) return;
-    void runBackendWorkflow().catch(() => undefined);
+    const plan = buildSelectedGroupExecutionPlan();
+    setGroupExecutionPlan(plan);
+    setGroupExecutionDialogOpen(true);
   };
   const createTemplate = async () => {
     const template = {
@@ -8716,6 +8717,16 @@ export const GroupNodeComponent = memo(function GroupNode({
           </Tooltip>
         </FloatingToolbar>
       )}
+
+      <GroupExecutionConfirmDialog
+        open={groupExecutionDialogOpen}
+        plan={groupExecutionPlan}
+        onCancel={() => setGroupExecutionDialogOpen(false)}
+        onConfirm={() => {
+          setGroupExecutionDialogOpen(false);
+          void runBackendWorkflow({ runMode: 'group', groupId: id }).catch(() => undefined);
+        }}
+      />
 
       <div style={{ position: 'absolute', left: 2, bottom: 'calc(100% + 8px)', width: 'calc(100% - 4px)', minWidth: 0, zIndex: 20 }}>
         <EditableNodeTitle

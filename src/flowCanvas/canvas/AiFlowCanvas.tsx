@@ -58,7 +58,7 @@ import { applyCanvasAgentOps, applyServerDraftToCanvas } from '../agent/canvasAg
 import { applyAgentCanvasOps } from '../agent/canvasAgentApi';
 import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from '../agent/agentSessionEvents';
 import { getAsset, getAssetVariantUrl, listAssets } from '../../assets/assetApi';
-import { getFlowTemplate, recordFlowTemplateUsage } from '../../services/v2FlowTemplatesApi';
+import { instantiateFlowTemplate } from '../../services/v2FlowTemplatesApi';
 import { listProjectHistory } from '../../services/v2FlowHistoryApi';
 import { listFlowComments } from '../../services/v2FlowCommentsApi';
 import type { FlowNodeData, FlowStoryboardData } from '../types';
@@ -774,16 +774,15 @@ export const AiFlowCanvas: React.FC<AiFlowCanvasProps> = ({ cullingEnabled, onAg
   );
 
   const handleInsertTemplate = useCallback(
-    async (templateId: string) => {
-      const template = await getFlowTemplate(templateId);
+    async (templateId: string, inputValues: Record<string, string | number | undefined>) => {
+      const instantiated = await instantiateFlowTemplate(templateId, { projectId: backendProjectId || undefined, inputValues, idempotencyKey: crypto.randomUUID() });
       const center = getCanvasCenterFlowPosition();
       const graph = offsetTemplateGraphForInsert({
-        graph: template.graph as { edges: any[]; nodes: any[] },
+        graph: instantiated.graph as { edges: any[]; nodes: any[] },
         center,
         idPrefix: 'tpl',
       });
       mergeTemplateGraph(graph as any);
-      await recordFlowTemplateUsage(templateId, backendProjectId || undefined).catch(() => undefined);
     },
     [backendProjectId, getCanvasCenterFlowPosition, mergeTemplateGraph],
   );

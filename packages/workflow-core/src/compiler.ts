@@ -52,6 +52,7 @@ export function compileGraph(graph: FlowGraph): CompiledWorkflow {
     dependents.get(edge.source)?.add(edge.target);
 
     return {
+      data: edge.data,
       source: edge.source,
       sourceHandle: edge.sourceHandle,
       target: edge.target,
@@ -70,6 +71,7 @@ export function compileGraph(graph: FlowGraph): CompiledWorkflow {
       dependencies: sortStrings(dependencies.get(nodeId) ?? []),
       dependents: sortStrings(dependents.get(nodeId) ?? []),
       id: node.id,
+      parentId: node.parentId,
       type: normalizeNodeType(node.type, node.data),
     };
   });

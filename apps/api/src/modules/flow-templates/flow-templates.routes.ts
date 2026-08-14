@@ -4,11 +4,15 @@ import { ZodError } from 'zod';
 import { requireAuth, requirePermission, requireTenant } from '../../http/auth-middleware.js';
 import {
   type FlowTemplateIdParams,
+  type FlowTemplateAdminListQuery,
   type FlowTemplateListQuery,
   type InstantiateFlowTemplateInput,
+  type SaveFlowTemplateDraftInput,
+  flowTemplateAdminListQuerySchema,
   flowTemplateIdParamsSchema,
   flowTemplateListQuerySchema,
   instantiateFlowTemplateSchema,
+  saveFlowTemplateDraftSchema,
 } from './flow-templates.schemas.js';
 import { FlowTemplatesApiError } from './flow-templates.service.js';
 
@@ -68,6 +72,56 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
 
 export function registerFlowTemplateRoutes(app: FastifyInstance): void {
   const readHandlers = [requireAuth, requireTenant, requirePermission('flow:read')];
+  const adminHandlers = [requireAuth, requireTenant, requirePermission('admin:system')];
+
+  app.get('/api/v2/admin/flow-templates', { preHandler: adminHandlers }, async (request, reply) => {
+    try {
+      return reply.send(await app.flowTemplatesService.listAdminTemplates(
+        getTemplateContext(request) as { tenantId: string; userId: string },
+        parseQuery<FlowTemplateAdminListQuery>(request, flowTemplateAdminListQuerySchema),
+      ));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+
+  app.post('/api/v2/admin/flow-templates', { preHandler: adminHandlers }, async (request, reply) => {
+    try {
+      return reply.code(201).send(await app.flowTemplatesService.createDraft(
+        getTemplateContext(request) as { tenantId: string; userId: string },
+        parseBody<SaveFlowTemplateDraftInput>(request, saveFlowTemplateDraftSchema),
+      ));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+
+  app.get('/api/v2/admin/flow-templates/:templateId', { preHandler: adminHandlers }, async (request, reply) => {
+    try {
+      return reply.send(await app.flowTemplatesService.getAdminTemplate(
+        getTemplateContext(request) as { tenantId: string; userId: string },
+        parseParams<FlowTemplateIdParams>(request, flowTemplateIdParamsSchema).templateId,
+      ));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+
+  app.put('/api/v2/admin/flow-templates/:templateId', { preHandler: adminHandlers }, async (request, reply) => {
+    try {
+      return reply.send(await app.flowTemplatesService.updateDraft(
+        getTemplateContext(request) as { tenantId: string; userId: string },
+        parseParams<FlowTemplateIdParams>(request, flowTemplateIdParamsSchema).templateId,
+        parseBody<SaveFlowTemplateDraftInput>(request, saveFlowTemplateDraftSchema),
+      ));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+
+  for (const [suffix, action] of [
+    ['testing', 'markTesting'], ['publish', 'publish'], ['archive', 'archive'],
+  ] as const) {
+    app.post(`/api/v2/admin/flow-templates/:templateId/${suffix}`, { preHandler: adminHandlers }, async (request, reply) => {
+      try {
+        const context = getTemplateContext(request) as { tenantId: string; userId: string };
+        const templateId = parseParams<FlowTemplateIdParams>(request, flowTemplateIdParamsSchema).templateId;
+        return reply.send(await app.flowTemplatesService[action](context, templateId));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    });
+  }
 
   app.get(
     '/api/v2/flow-templates',
@@ -93,6 +147,22 @@ export function registerFlowTemplateRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<FlowTemplateIdParams>(request, flowTemplateIdParamsSchema);
         return reply.send(await app.flowTemplatesService.getTemplateGraph(getTemplateContext(request), params.templateId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    '/api/v2/flow-templates/:templateId/instantiate',
+    {
+      preHandler: [requireAuth, requireTenant, requirePermission('flow:update')],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<FlowTemplateIdParams>(request, flowTemplateIdParamsSchema);
+        const body = parseBody<InstantiateFlowTemplateInput>(request, instantiateFlowTemplateSchema);
+        return reply.code(201).send(await app.flowTemplatesService.instantiate(getTemplateContext(request), params.templateId, body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

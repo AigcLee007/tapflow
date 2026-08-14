@@ -1,10 +1,12 @@
 export type FlowGraphNode = {
   data?: Record<string, unknown>;
   id: string;
+  parentId?: string;
   type: string;
 };
 
 export type FlowGraphEdge = {
+  data?: Record<string, unknown>;
   id?: string;
   source: string;
   sourceHandle?: string;
@@ -23,10 +25,12 @@ export type CompiledWorkflowNode = {
   dependencies: string[];
   dependents: string[];
   id: string;
+  parentId?: string;
   type: string;
 };
 
 export type CompiledWorkflowEdge = {
+  data?: Record<string, unknown>;
   source: string;
   sourceHandle?: string;
   target: string;

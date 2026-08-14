@@ -105,7 +105,7 @@ type WorkflowExecutionContext = {
   userId: string | null;
 };
 
-type WorkflowRunMode = "flow" | "target_node";
+type WorkflowRunMode = "flow" | "target_node" | "group";
 const UNKNOWN_PROVIDER_RECONCILE_PREFIX = "timeout-unknown:";
 const UNKNOWN_PROVIDER_RECONCILE_WINDOW_MS = 10 * 60 * 1000;
 const VIDEO_EDITOR_EXPORT_WORKFLOW = "video_editor_export";
@@ -308,7 +308,25 @@ function isTerminalStatus(status: string): boolean {
 }
 
 function getWorkflowRunMode(workflowRun: WorkflowRunRecord): WorkflowRunMode {
-  return workflowRun.input_json?.runMode === "target_node" ? "target_node" : "flow";
+  if (workflowRun.input_json?.runMode === "target_node" || workflowRun.input_json?.runMode === "group") {
+    return workflowRun.input_json.runMode;
+  }
+  return "flow";
+}
+
+function getGroupScopeNodeIds(workflowRun: WorkflowRunRecord): Set<string> {
+  return getWorkflowRunMode(workflowRun) === "group" && Array.isArray(workflowRun.input_json?.scopeNodeIds)
+    ? new Set(workflowRun.input_json.scopeNodeIds.filter((value): value is string => typeof value === "string"))
+    : new Set();
+}
+
+function getVerifiedExternalDependencyOutputs(workflowRun: WorkflowRunRecord): ReadonlyMap<string, Record<string, unknown>> {
+  const dependencies = workflowRun.input_json?.verifiedExternalDependencies;
+  if (!Array.isArray(dependencies)) return new Map();
+  return new Map(dependencies.flatMap((value) => {
+    if (!isPlainObject(value) || typeof value.nodeId !== "string" || !isPlainObject(value.outputJson)) return [];
+    return [[value.nodeId, value.outputJson] as const];
+  }));
 }
 
 function getWorkflowRunTargetNodeId(workflowRun: WorkflowRunRecord): string | null {
@@ -1826,7 +1844,11 @@ export class WorkflowNodeExecutionService {
         };
       }
 
-      if (getWorkflowRunMode(workflowRun) !== "target_node" && !this.areDependenciesSatisfied(currentNode, nodeRuns)) {
+      if (getWorkflowRunMode(workflowRun) !== "target_node" && !this.areDependenciesSatisfied(
+        currentNode,
+        nodeRuns,
+        getGroupScopeNodeIds(workflowRun),
+      )) {
         return {
           result: this.noOpResult(QUEUE_NAMES.nodeExecute, input),
           type: "done",
@@ -1859,7 +1881,13 @@ export class WorkflowNodeExecutionService {
         "node.execute marked node running",
       );
 
-      const upstreamOutputsByNodeId = getDependencyOutputsByNodeIdFromRuntimeGraph(currentNode, nodeRuns, runtimeFlow);
+      const runtimeOutputs = getDependencyOutputsByNodeIdFromRuntimeGraph(currentNode, nodeRuns, runtimeFlow);
+      const externalOutputs = getVerifiedExternalDependencyOutputs(workflowRun);
+      const upstreamOutputsByNodeId = new Map(runtimeOutputs);
+      for (const dependencyId of currentNode.dependencies) {
+        const externalOutput = externalOutputs.get(dependencyId);
+        if (externalOutput) upstreamOutputsByNodeId.set(dependencyId, externalOutput);
+      }
       const upstreamOutputs = Array.from(upstreamOutputsByNodeId.values());
 
       return {
@@ -2519,8 +2547,9 @@ export class WorkflowNodeExecutionService {
   private areDependenciesSatisfied(
     node: CompiledWorkflowNode,
     nodeRuns: NodeRunRecord[],
+    scopeNodeIds: Set<string> = new Set(),
   ): boolean {
-    return node.dependencies.every((dependencyId) => {
+    return node.dependencies.filter((dependencyId) => scopeNodeIds.size === 0 || scopeNodeIds.has(dependencyId)).every((dependencyId) => {
       const dependencyRun = nodeRuns.find((row) => row.node_id === dependencyId);
       return dependencyRun?.status === "succeeded";
     });
@@ -4011,7 +4040,7 @@ export class WorkflowNodeExecutionService {
       client,
       currentNode,
       runtimeFlow,
-      workflowRun.id,
+      workflowRun,
       context.tenantId,
       context.traceId,
     );
@@ -4027,21 +4056,28 @@ export class WorkflowNodeExecutionService {
     client: PoolClient,
     currentNode: CompiledWorkflowNode,
     runtimeFlow: RuntimeFlowRecord,
-    workflowRunId: string,
+    workflowRun: WorkflowRunRecord,
     tenantId: string,
     traceId: string | null,
   ): Promise<NodeExecuteJobPayload[]> {
     const enqueuePayloads: NodeExecuteJobPayload[] = [];
+    const workflowRunId = workflowRun.id;
+    const groupScope = getGroupScopeNodeIds(workflowRun);
     const refreshedNodeRuns = await this.listNodeRuns(client, workflowRunId);
 
     for (const dependentId of currentNode.dependents) {
       const dependentRun = refreshedNodeRuns.find((row) => row.node_id === dependentId);
       const dependentNode = runtimeFlow.compiled_graph_json.nodes.find((row) => row.id === dependentId);
-      if (!dependentRun || !dependentNode || dependentRun.status !== "pending") {
+      if (!dependentRun || !dependentNode || dependentRun.status !== "pending" || (groupScope.size > 0 && !groupScope.has(dependentId))) {
         continue;
       }
 
-      if (this.areDependenciesSatisfied(dependentNode, refreshedNodeRuns)) {
+      if (this.areDependenciesSatisfied(dependentNode, refreshedNodeRuns, groupScope)) {
+        if (groupScope.size > 0) {
+          if (!(await this.reserveDeferredGroupNode(client, workflowRun, dependentRun, tenantId))) {
+            continue;
+          }
+        }
         await client.query(
           `
             UPDATE node_runs
@@ -4076,12 +4112,75 @@ export class WorkflowNodeExecutionService {
     return enqueuePayloads;
   }
 
+  private async reserveDeferredGroupNode(
+    client: PoolClient,
+    workflowRun: WorkflowRunRecord,
+    nodeRun: NodeRunRecord,
+    tenantId: string,
+  ): Promise<boolean> {
+    const reserveStatus = typeof nodeRun.cost_json?.reserveStatus === "string" ? nodeRun.cost_json.reserveStatus : "pending";
+    const amountCredits = typeof nodeRun.cost_json?.estimatedCents === "number"
+      ? Math.max(0, nodeRun.cost_json.estimatedCents)
+      : 0;
+    if (reserveStatus !== "pending" || amountCredits === 0) {
+      return true;
+    }
+    const owner = await client.query<{ billed_user_id: string }>(
+      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
+      [workflowRun.id],
+    );
+    const userId = owner.rows[0]?.billed_user_id;
+    if (!userId) throw new Error(`Workflow run ${workflowRun.id} has no billing owner`);
+    let reserve;
+    try {
+      reserve = await this.personalWalletService.reserveUsageWithClient(client, { tenantId, userId }, {
+        amountCredits,
+        idempotencyKey: `reserve:${tenantId}:${workflowRun.id}:${nodeRun.id}`,
+        metadata: { nodeId: nodeRun.node_id, nodeRunId: nodeRun.id, workflowRunId: workflowRun.id },
+      });
+    } catch (error) {
+      await this.failGroupNodeAndBlockDescendants(client, workflowRun, nodeRun.id, tenantId, normalizeError(error));
+      return false;
+    }
+    await client.query(
+      `UPDATE node_runs
+       SET cost_json = cost_json || $2::jsonb, updated_at = now()
+       WHERE id = $1::uuid`,
+      [nodeRun.id, JSON.stringify({ reserveLedgerId: reserve.id, reserveStatus: "reserved", reservedCents: amountCredits })],
+    );
+    return true;
+  }
+
   private async finalizeWorkflowRunIfComplete(
     client: PoolClient,
     workflowRunId: string,
     tenantId: string,
   ): Promise<void> {
+    const workflowRun = await this.lockWorkflowRun(client, workflowRunId);
     const finalNodeRuns = await this.listNodeRuns(client, workflowRunId);
+    const groupScope = getGroupScopeNodeIds(workflowRun);
+    if (groupScope.size > 0) {
+      const scopedRuns = finalNodeRuns.filter((nodeRun) => groupScope.has(nodeRun.node_id));
+      if (scopedRuns.length !== groupScope.size || !scopedRuns.every((nodeRun) =>
+        nodeRun.status === "succeeded" || nodeRun.status === "failed" || nodeRun.status === "blocked"
+      )) {
+        return;
+      }
+      const allSucceeded = scopedRuns.every((nodeRun) => nodeRun.status === "succeeded");
+      await client.query(
+        `UPDATE workflow_runs
+         SET status = $2, finished_at = now(), updated_at = now()
+         WHERE id = $1::uuid`,
+        [workflowRunId, allSucceeded ? "succeeded" : "failed"],
+      );
+      await this.appendWorkflowRunEvent(client, {
+        eventType: allSucceeded ? "workflow.run.succeeded" : "workflow.run.failed",
+        payload: { status: allSucceeded ? "succeeded" : "failed" },
+        tenantId,
+        workflowRunId,
+      });
+      return;
+    }
     if (!finalNodeRuns.every((nodeRun) => nodeRun.status === "succeeded")) {
       return;
     }
@@ -4118,6 +4217,11 @@ export class WorkflowNodeExecutionService {
       message: string;
     },
   ): Promise<void> {
+    const workflowRun = await this.lockWorkflowRun(client, workflowRunId);
+    if (getGroupScopeNodeIds(workflowRun).size > 0) {
+      await this.failGroupNodeAndBlockDescendants(client, workflowRun, nodeRunId, tenantId, normalized);
+      return;
+    }
     await this.refundOpenReservations(client, workflowRunId, tenantId);
 
     await client.query(
@@ -4157,6 +4261,79 @@ export class WorkflowNodeExecutionService {
       tenantId,
       workflowRunId,
     });
+  }
+
+  private async failGroupNodeAndBlockDescendants(
+    client: PoolClient,
+    workflowRun: WorkflowRunRecord,
+    nodeRunId: string,
+    tenantId: string,
+    normalized: { code: string; details?: unknown; message: string },
+  ): Promise<void> {
+    const scope = getGroupScopeNodeIds(workflowRun);
+    const runtimeFlow = await this.getRuntimeFlow(client, workflowRun.id);
+    const nodeRuns = await this.listNodeRuns(client, workflowRun.id);
+    const failed = nodeRuns.find((nodeRun) => nodeRun.id === nodeRunId);
+    if (!failed) throw new Error(`Node run not found: ${nodeRunId}`);
+    await this.refundNodeReservation(client, workflowRun, failed, tenantId);
+    await client.query(
+      `UPDATE node_runs SET status = 'failed', error_json = $2::jsonb, finished_at = now(), updated_at = now() WHERE id = $1::uuid`,
+      [nodeRunId, JSON.stringify(normalized)],
+    );
+    await this.appendWorkflowRunEvent(client, {
+      eventType: "node.run.failed", nodeRunId, payload: { ...normalized, nodeId: failed.node_id, status: "failed" }, tenantId, workflowRunId: workflowRun.id,
+    });
+    const blocked = new Set<string>();
+    const frontier = [failed.node_id];
+    while (frontier.length > 0) {
+      const current = frontier.pop()!;
+      const node = runtimeFlow.compiled_graph_json.nodes.find((candidate) => candidate.id === current);
+      for (const dependentId of node?.dependents ?? []) {
+        if (scope.has(dependentId) && !blocked.has(dependentId)) {
+          blocked.add(dependentId);
+          frontier.push(dependentId);
+        }
+      }
+    }
+    for (const nodeId of blocked) {
+      const nodeRun = nodeRuns.find((candidate) => candidate.node_id === nodeId);
+      if (!nodeRun || nodeRun.status === "succeeded" || nodeRun.status === "failed") continue;
+      await this.refundNodeReservation(client, workflowRun, nodeRun, tenantId);
+      await client.query(
+        `UPDATE node_runs SET status = 'blocked', error_json = $2::jsonb, finished_at = now(), updated_at = now() WHERE id = $1::uuid`,
+        [nodeRun.id, JSON.stringify({ code: "UPSTREAM_GROUP_NODE_FAILED", message: `Blocked by failed group node ${failed.node_id}` })],
+      );
+      await this.appendWorkflowRunEvent(client, {
+        eventType: "node.run.blocked", nodeRunId: nodeRun.id,
+        payload: { nodeId, nodeType: nodeRun.node_type, status: "blocked" }, tenantId, workflowRunId: workflowRun.id,
+      });
+    }
+    await this.finalizeWorkflowRunIfComplete(client, workflowRun.id, tenantId);
+  }
+
+  private async refundNodeReservation(
+    client: PoolClient,
+    workflowRun: WorkflowRunRecord,
+    nodeRun: NodeRunRecord,
+    tenantId: string,
+  ): Promise<void> {
+    const reserveLedgerId = this.getReserveLedgerId(nodeRun);
+    if (!reserveLedgerId || nodeRun.cost_json?.reserveStatus !== "reserved") return;
+    const owner = await client.query<{ billed_user_id: string }>(
+      "SELECT billed_user_id::text AS billed_user_id FROM workflow_runs WHERE id = $1::uuid",
+      [workflowRun.id],
+    );
+    const userId = owner.rows[0]?.billed_user_id;
+    if (!userId) throw new Error(`Workflow run ${workflowRun.id} has no billing owner`);
+    const refund = await this.personalWalletService.refundUsageWithClient(client, { tenantId, userId }, {
+      idempotencyKey: `refund:${tenantId}:${workflowRun.id}:${nodeRun.id}`,
+      reserveLedgerId,
+      metadata: { nodeId: nodeRun.node_id, nodeRunId: nodeRun.id, workflowRunId: workflowRun.id },
+    });
+    await client.query(
+      "UPDATE node_runs SET cost_json = cost_json || $2::jsonb WHERE id = $1::uuid",
+      [nodeRun.id, JSON.stringify({ refundLedgerId: refund.id, reserveStatus: "refunded" })],
+    );
   }
 
   private async refundOpenReservations(

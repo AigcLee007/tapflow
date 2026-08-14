@@ -23,12 +23,14 @@ function normalizeNode(node: FlowGraphNode) {
   return {
     data: stableValue(node.data ?? {}),
     id: node.id,
+    parentId: node.parentId ?? null,
     type: node.type,
   };
 }
 
 function normalizeEdge(edge: FlowGraphEdge) {
   return {
+    data: stableValue(edge.data ?? {}),
     id: edge.id ?? null,
     source: edge.source,
     sourceHandle: edge.sourceHandle ?? null,
