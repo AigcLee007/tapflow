@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from "vitest";
 import {
   DEFAULT_QUEUE_PREFIX,
   QUEUE_NAMES,
+  buildAssetVideoReferenceVariantJobId,
   RedisLockManager,
   RedisRateLimiter,
   closeRedisConnection,
@@ -101,6 +102,14 @@ describe("@aigc-flow/redis config", () => {
     expect(QUEUE_NAMES.emailSend).toBe("email.send");
     expect(QUEUE_NAMES.auditFlush).toBe("audit.flush");
     expect(QUEUE_NAMES.assetVideoReferenceVariant).toBe("asset.video-reference-variant");
+  });
+
+  test("builds a BullMQ-safe reference video variant job ID", () => {
+    const jobId = buildAssetVideoReferenceVariantJobId("  asset-1:legacy  ");
+
+    expect(jobId).toBe("reference-720p-asset-1-legacy");
+    expect(jobId).not.toContain(":");
+    expect(jobId).toMatch(/^[A-Za-z0-9-]+$/);
   });
 });
 

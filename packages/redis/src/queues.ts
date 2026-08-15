@@ -30,6 +30,12 @@ export const QUEUE_NAMES = {
   workflowStart: "workflow.start",
 } as const;
 
+export function buildAssetVideoReferenceVariantJobId(assetId: string): string {
+  const normalizedAssetId = assetId.trim().replace(/[^A-Za-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!normalizedAssetId) throw new Error("ASSET_VIDEO_REFERENCE_VARIANT_ASSET_ID_REQUIRED");
+  return `reference-720p-${normalizedAssetId}`;
+}
+
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 export type BaseJobPayload = {

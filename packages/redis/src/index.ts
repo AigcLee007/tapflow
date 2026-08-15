@@ -9,6 +9,7 @@ export {
 } from "./redis.js";
 export {
   QUEUE_NAMES,
+  buildAssetVideoReferenceVariantJobId,
   DEFAULT_QUEUE_JOB_OPTIONS,
   assertLightweightJobPayload,
   createQueueFactory,
