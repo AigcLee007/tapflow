@@ -3,6 +3,13 @@
 Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
 
+## 2026-08-15 - Reference Video Queue Job ID Recovery
+
+- fixed the production root cause that kept oversized reference videos permanently pending: BullMQ rejects custom Job IDs containing `:`, while both the API uploader and Worker reconciler used `<assetId>:reference-720p`.
+- API and Worker now use one shared `reference-720p-<assetId>` Job ID helper. API enqueue failures remain durable and observable through structured logs, while Worker reconciliation logs per-asset failures and continues processing the batch.
+- no database migration is required. Existing `pending` assets will be re-enqueued by the Worker reconciler after deployment; FFmpeg will only run after a valid BullMQ job is accepted.
+- focused Redis, API asset, and Worker reconciler tests passed before final workspace verification.
+
 ## 2026-08-15 - Reference Video Processing Status Refresh
 
 - fixed the canvas input asset projection so the newest server-polled reference-video variant status takes precedence over the persisted node snapshot. A high-resolution reference video now moves from `pending` to `ready` in the canvas when background preparation completes, restoring generation without requiring users to re-upload or refresh manually.
