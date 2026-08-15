@@ -19,8 +19,11 @@ export type CanvasInputSeed = {
   thumbnailUrl?: string;
   hoverPreviewUrl?: string;
   durationMs?: number;
+  height?: number;
+  referenceVideoVariantStatus?: "failed" | "pending" | "ready";
   sourceRevision?: string;
   previewState: CanvasInputPreviewState;
+  width?: number;
 };
 
 export type CanvasInputItem = CanvasInputSeed & {

@@ -5,15 +5,19 @@ import type { CanvasInputItem, CanvasInputPreviewState } from "./canvasInputProj
 
 type ResolvedAsset = {
   durationMs?: number;
+  height?: number;
   hoverPreviewUrl?: string;
   previewState: CanvasInputPreviewState;
   previewUrl?: string;
+  referenceVideoVariantStatus?: "failed" | "pending" | "ready";
   thumbnailUrl?: string;
   title?: string;
+  width?: number;
 };
 
 const SIGNED_URL_REFRESH_SAFETY_MS = 30_000;
 const SIGNED_URL_REFRESH_MIN_DELAY_MS = 30_000;
+const REFERENCE_VIDEO_STATUS_POLL_INTERVAL_MS = 2_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function assetRequestKey(item: CanvasInputItem): string | null {
@@ -23,6 +27,11 @@ function assetRequestKey(item: CanvasInputItem): string | null {
 
 function getDisplayTitle(asset: AssetItem): string | undefined {
   return asset.title || asset.originalFilename || undefined;
+}
+
+function readReferenceVideoVariantStatus(asset: AssetItem | undefined): ResolvedAsset["referenceVideoVariantStatus"] {
+  const value = asset?.metadata?.referenceVideoVariantStatus;
+  return value === "failed" || value === "pending" || value === "ready" ? value : undefined;
 }
 
 export function useCanvasInputAssets(items: CanvasInputItem[]) {
@@ -84,25 +93,37 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
       ...current,
       [assetId]: {
         durationMs: metadata.asset?.durationMs ?? undefined,
+        height: metadata.asset?.height ?? undefined,
         hoverPreviewUrl,
         previewState: hasPreview ? "ready" : !metadata.resolved && (!isVisualAsset || variantsFailed) ? "error" : "unavailable",
         previewUrl: thumbnailUrl || hoverPreviewUrl,
+        referenceVideoVariantStatus: readReferenceVideoVariantStatus(metadata.asset),
         thumbnailUrl,
         title: metadata.asset ? getDisplayTitle(metadata.asset) : undefined,
+        width: metadata.asset?.width ?? undefined,
       },
     }));
 
     const expiryTimes = [thumbResult, previewResult]
-      .flatMap((result) => result?.status === "fulfilled" ? [Date.parse(result.value.expiresAt)] : [])
+      .flatMap((result) => result?.status === "fulfilled" && result.value?.expiresAt
+        ? [Date.parse(result.value.expiresAt)]
+        : [])
       .filter(Number.isFinite);
-    if (expiryTimes.length > 0) {
-      const refreshDelay = Math.min(
+    const signedUrlRefreshDelay = expiryTimes.length > 0
+      ? Math.min(
         MAX_TIMER_DELAY_MS,
         Math.max(
           SIGNED_URL_REFRESH_MIN_DELAY_MS,
           Math.min(...expiryTimes) - Date.now() - SIGNED_URL_REFRESH_SAFETY_MS,
         ),
-      );
+      )
+      : null;
+    const referenceVideoStatusPoll = metadata.asset?.kind === "video"
+      && readReferenceVideoVariantStatus(metadata.asset) === "pending";
+    const refreshDelay = referenceVideoStatusPoll
+      ? Math.min(signedUrlRefreshDelay ?? MAX_TIMER_DELAY_MS, REFERENCE_VIDEO_STATUS_POLL_INTERVAL_MS)
+      : signedUrlRefreshDelay;
+    if (refreshDelay !== null) {
       refreshTimers.current[assetId] = setTimeout(() => {
         delete refreshTimers.current[assetId];
         if (mounted.current && activeAssetIds.current.has(assetId)) {
@@ -154,11 +175,14 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
       return {
         ...item,
         durationMs: item.durationMs ?? resolved.durationMs,
+        height: item.height ?? resolved.height,
         hoverPreviewUrl,
         previewState: hasPreview ? "ready" : resolved.previewState,
         previewUrl,
+        referenceVideoVariantStatus: item.referenceVideoVariantStatus ?? resolved.referenceVideoVariantStatus,
         thumbnailUrl,
         title: item.title || resolved.title || item.title,
+        width: item.width ?? resolved.width,
       };
     }),
     retry,

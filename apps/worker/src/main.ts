@@ -25,6 +25,8 @@ import { registerWorkerQueues } from "./queues/registry.js";
 import { WorkbenchGenerationService } from "./workbench/workbench-generation.service.js";
 import { MediaAssetStore } from "./workflow-runtime/media-asset-store.js";
 import { ImageVariantProcessor } from "./workflow-runtime/image-variant-processor.js";
+import { VideoReferenceVariantProcessor } from "./workflow-runtime/video-reference-variant-processor.js";
+import { ReferenceVideoVariantReconciler } from "./workflow-runtime/reference-video-variant-reconciler.js";
 import { WorkflowNodeExecutionService } from "./workflow-runtime/service.js";
 
 type Closable = {
@@ -51,7 +53,20 @@ export type WorkerRuntime = {
   shutdown: () => Promise<void>;
 };
 
+export const WORKER_RUNTIME_QUEUE_NAMES = [
+  QUEUE_NAMES.assetImageVariant,
+  QUEUE_NAMES.assetVideoReferenceVariant,
+  QUEUE_NAMES.nodeExecute,
+  QUEUE_NAMES.nodeExecuteDefault,
+  QUEUE_NAMES.nodeExecuteImage,
+  QUEUE_NAMES.nodeExecuteVideo,
+  QUEUE_NAMES.providerPoll,
+  "workbench.generate",
+  QUEUE_NAMES.walletExpiry,
+] as const;
+
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+const REFERENCE_VIDEO_VARIANT_RECONCILE_INTERVAL_MS = 60_000;
 
 export function createWorkerRuntime(options?: {
   env?: WorkerEnv;
@@ -88,6 +103,7 @@ export function createWorkerRuntime(options?: {
   const nodeExecuteVideoQueue = queueFactory.createQueue(QUEUE_NAMES.nodeExecuteVideo);
   const providerPollQueue = queueFactory.createQueue(QUEUE_NAMES.providerPoll);
   const assetImageVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetImageVariant);
+  const assetVideoReferenceVariantQueue = queueFactory.createQueue(QUEUE_NAMES.assetVideoReferenceVariant);
   const WORKBENCH_GENERATE_QUEUE = "workbench.generate" as const;
   const workbenchGenerateQueue = queueFactory.createQueue(WORKBENCH_GENERATE_QUEUE);
   const walletExpiryQueue = queueFactory.createQueue(QUEUE_NAMES.walletExpiry);
@@ -130,11 +146,29 @@ export function createWorkerRuntime(options?: {
         credentialVault,
         pool,
       }),
+      videoReferenceVariantQueue: assetVideoReferenceVariantQueue,
     });
   const imageVariantProcessor = new ImageVariantProcessor({
     pool,
     storageProvider,
   });
+  const videoReferenceVariantProcessor = new VideoReferenceVariantProcessor({
+    pool,
+    storageProvider,
+  });
+  const referenceVideoVariantReconciler = new ReferenceVideoVariantReconciler({
+    pool,
+    queue: assetVideoReferenceVariantQueue,
+  });
+  const referenceVideoVariantReconcileTimer = setInterval(() => {
+    void referenceVideoVariantReconciler.reconcile().catch((error) => {
+      logger.error(
+        { err: error instanceof Error ? error.message : String(error), queueName: QUEUE_NAMES.assetVideoReferenceVariant },
+        "reference video variant reconciliation failed",
+      );
+    });
+  }, REFERENCE_VIDEO_VARIANT_RECONCILE_INTERVAL_MS);
+  referenceVideoVariantReconcileTimer.unref?.();
   const workbenchGenerationService = new WorkbenchGenerationService({
     assetBucket: env.s3Bucket,
     assetStore: new MediaAssetStore({
@@ -151,6 +185,7 @@ export function createWorkerRuntime(options?: {
   const registration = registerWorkerQueues({
     concurrency: {
       assetImageVariant: env.assetImageVariantConcurrency,
+      assetVideoReferenceVariant: env.assetVideoReferenceVariantConcurrency,
       default: env.workerConcurrency,
       nodeExecuteDefault: env.defaultNodeConcurrency,
       nodeExecuteImage: env.imageNodeConcurrency,
@@ -159,6 +194,7 @@ export function createWorkerRuntime(options?: {
       providerPoll: env.providerPollConcurrency,
     },
     imageVariantProcessor,
+    videoReferenceVariantProcessor,
     logger,
     queueFactory,
     workbenchGenerationService,
@@ -173,6 +209,7 @@ export function createWorkerRuntime(options?: {
     }
 
     shuttingDown = true;
+    clearInterval(referenceVideoVariantReconcileTimer);
     logger.info(
       {
         queueCount: registration.queueNames.length,
@@ -185,6 +222,7 @@ export function createWorkerRuntime(options?: {
     await Promise.all(registration.queueEvents.map((queueEvents) => queueEvents.close()));
     await Promise.all([
       assetImageVariantQueue.close(),
+      assetVideoReferenceVariantQueue.close(),
       nodeExecuteQueue.close(),
       nodeExecuteDefaultQueue.close(),
       nodeExecuteImageQueue.close(),
@@ -225,6 +263,7 @@ async function main() {
       defaultNodeConcurrency: env.defaultNodeConcurrency,
       imageNodeConcurrency: env.imageNodeConcurrency,
       assetImageVariantConcurrency: env.assetImageVariantConcurrency,
+      assetVideoReferenceVariantConcurrency: env.assetVideoReferenceVariantConcurrency,
       imageVariantsMode: env.imageVariantsMode,
       providerPollConcurrency: env.providerPollConcurrency,
       s3Bucket: env.s3Bucket,

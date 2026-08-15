@@ -4,6 +4,7 @@ import { QUEUE_NAMES, type QueueName } from "@aigc-flow/redis";
 
 import { getWorkerErrorFields, type WorkerLogger } from "../logger.js";
 import { processAssetImageVariantJob } from "../processors/asset-image-variant.processor.js";
+import { processAssetVideoReferenceVariantJob } from "../processors/asset-video-reference-variant.processor.js";
 import { processAssetIngestJob } from "../processors/asset-ingest.processor.js";
 import { processBillingSettleJob } from "../processors/billing-settle.processor.js";
 import { processWalletExpiryJob } from "../processors/wallet-expiry.processor.js";
@@ -13,6 +14,7 @@ import { processWorkbenchGenerateJob } from "../processors/workbench-generate.pr
 import { processWorkflowStartJob } from "../processors/workflow-start.processor.js";
 import type { WorkbenchGenerationService } from "../workbench/workbench-generation.service.js";
 import type { ImageVariantProcessor } from "../workflow-runtime/image-variant-processor.js";
+import type { VideoReferenceVariantProcessor } from "../workflow-runtime/video-reference-variant-processor.js";
 import type { WorkflowNodeExecutionService } from "../workflow-runtime/service.js";
 
 type Closable = {
@@ -36,6 +38,7 @@ export const WORKER_QUEUE_NAMES = [
   QUEUE_NAMES.nodeExecuteVideo,
   QUEUE_NAMES.providerPoll,
   QUEUE_NAMES.assetImageVariant,
+  QUEUE_NAMES.assetVideoReferenceVariant,
   QUEUE_NAMES.assetIngest,
   QUEUE_NAMES.billingSettle,
   QUEUE_NAMES.walletExpiry,
@@ -44,6 +47,7 @@ export const WORKER_QUEUE_NAMES = [
 
 export type WorkerQueueConcurrency = {
   assetImageVariant: number;
+  assetVideoReferenceVariant: number;
   default: number;
   nodeExecuteDefault: number;
   nodeExecuteImage: number;
@@ -70,6 +74,9 @@ function resolveQueueConcurrency(queueName: QueueName, concurrency: WorkerQueueC
   }
   if (queueName === QUEUE_NAMES.assetImageVariant) {
     return concurrency.assetImageVariant;
+  }
+  if (queueName === QUEUE_NAMES.assetVideoReferenceVariant) {
+    return concurrency.assetVideoReferenceVariant;
   }
   return concurrency.default;
 }
@@ -108,6 +115,7 @@ function withWorkerErrorLogging(
 export function registerWorkerQueues(options: {
   concurrency: WorkerQueueConcurrency;
   imageVariantProcessor?: ImageVariantProcessor;
+  videoReferenceVariantProcessor?: VideoReferenceVariantProcessor;
   logger: WorkerLogger;
   queueFactory: QueueFactoryLike;
   workbenchGenerationService?: WorkbenchGenerationService;
@@ -143,6 +151,15 @@ export function registerWorkerQueues(options: {
               }
               return processAssetImageVariantJob(job as never, options.logger, {
                 imageVariantProcessor: options.imageVariantProcessor,
+              });
+            }
+        : queueName === QUEUE_NAMES.assetVideoReferenceVariant
+          ? (job: unknown) => {
+              if (!options.videoReferenceVariantProcessor) {
+                throw new Error("videoReferenceVariantProcessor is required for asset video reference variant jobs");
+              }
+              return processAssetVideoReferenceVariantJob(job as never, options.logger, {
+                videoReferenceVariantProcessor: options.videoReferenceVariantProcessor,
               });
             }
         : queueName === QUEUE_NAMES.assetIngest

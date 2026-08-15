@@ -344,4 +344,35 @@ describe("MediaAssetStore", () => {
       },
     ]);
   });
+
+  test("marks workflow video outputs pending and defers their H3 reference variant job", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+    };
+    const storageProvider = new MemoryStorageProvider();
+    const store = new MediaAssetStore({
+      assetBucket: "test-bucket",
+      storageProvider,
+    });
+
+    const result = await store.persistOutputs(client as never, {
+      kind: "video",
+      nodeRunId: "00000000-0000-4000-8000-000000000032",
+      outputs: [{ base64: Buffer.from("video-output").toString("base64"), mimeType: "video/mp4" }],
+      projectId: "00000000-0000-4000-8000-000000000033",
+      tenantId: "00000000-0000-4000-8000-000000000034",
+      workflowRunId: "00000000-0000-4000-8000-000000000035",
+    });
+
+    const assetInsertCall = (client.query as ReturnType<typeof vi.fn>).mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO assets"),
+    );
+    expect(JSON.parse(String(assetInsertCall?.[1]?.[15]))).toMatchObject({ referenceVideoVariantStatus: "pending" });
+    expect(result.deferredReferenceVideoVariantJobs).toEqual([
+      {
+        assetId: result.refs[0]?.assetId,
+        tenantId: "00000000-0000-4000-8000-000000000034",
+      },
+    ]);
+  });
 });

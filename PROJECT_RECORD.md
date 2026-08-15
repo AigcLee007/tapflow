@@ -1,7 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
+
+## 2026-08-15 - Automatic H3video Reference Video 720p Variants
+
+- video uploads and workflow-produced videos now keep their original object and enqueue the ID-only `asset.video-reference-variant` job after persistence. The Worker probes the source and, only when needed, creates the internal `reference-720p` H.264/AAC MP4 variant in an asset-local `variants/` object path, with orientation-safe `1280x720` or `720x1280` bounds. A periodic Worker reconciliation scan requeues pending and legacy unmarked video assets after process/Redis failures; failed assets remain failed until re-uploaded. `ASSET_VIDEO_REFERENCE_VARIANT_CONCURRENCY` defaults to `1` and is included in the staging environment template and Compose service environment.
+- H3video route `video.pixellelabs.h3video-2k` now uses the prepared variant only for oversized `reference_video` and `source_video` assets. Pending or failed preparation stops before the provider call with stable `REFERENCE_VIDEO_VARIANT_PROCESSING` or `REFERENCE_VIDEO_VARIANT_FAILED` errors, preventing an incompatible original from reaching the provider. Originals and signed URLs remain outside persisted flow drafts.
+- canvas video inputs read metadata for all video-upload paths, poll a pending asset's processing state, and disable H3video generation with `参考视频处理中，请稍后再生成` or `参考视频处理失败，请重新上传`. Compliant videos remain immediately usable and no compression selector was added.
+- focused validation completed: Redis queue contract tests, API asset enqueue tests, Worker variant helper/processor tests, Worker H3 selection tests, asset metadata tests, and canvas variant-preflight tests. API, Redis, AI Gateway Core, Worker, and frontend builds passed in focused validation; database integration tests remain environment-dependent when `DATABASE_URL` is absent. The root `npm test` was attempted for 124 seconds; it encountered five pre-existing multipart-image edit failures in `packages/ai-gateway-core/test/runtime.test.ts` and then timed out, while the changed API/Worker/frontend suites had already passed. Local S3/FFmpeg smoke verification remains blocked by unavailable infrastructure.
 
 ## 2026-08-14 - Template Editor Entry And Group Prompt Inputs
 

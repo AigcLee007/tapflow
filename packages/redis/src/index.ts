@@ -15,6 +15,7 @@ export {
   resolveNodeExecuteQueueName,
   type AnyJobPayload,
   type AssetImageVariantJobPayload,
+  type AssetVideoReferenceVariantJobPayload,
   type AssetIngestJobPayload,
   type AuditFlushJobPayload,
   type BaseJobPayload,

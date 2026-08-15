@@ -45,6 +45,7 @@ import type { ProcessorResult } from "../processors/shared.js";
 import {
   type AssetRef,
   type DeferredVariantJob,
+  type DeferredReferenceVideoVariantJob,
   type FetchLike,
   type MediaVariantQueue,
   MediaAssetStore,
@@ -60,6 +61,7 @@ import {
   rollbackToRecoverableSavepoint,
 } from "./recoverable-savepoint.js";
 import { compressTextImageForModel, MAX_TEXT_IMAGE_BYTES } from "./text-image-compression.js";
+import { isReferenceVideoSizeCompliant } from "./video-reference-variant.js";
 
 type WorkflowRunRecord = {
   error_json: Record<string, unknown> | null;
@@ -132,6 +134,7 @@ type ProviderPollQueueLike = {
 
 type RuntimeExecutionResult = {
   auditLogs: AuditLogInput[];
+  deferredReferenceVideoVariantJobs?: DeferredReferenceVideoVariantJob[];
   deferredVariantJobs: DeferredVariantJob[];
   errorToThrow?: Error;
   nodeEnqueuePayloads: NodeExecuteJobPayload[];
@@ -155,10 +158,32 @@ type AssetStorageLookup = {
   durationMs?: number | null;
   height?: number | null;
   kind: string;
+  metadata?: Record<string, unknown> | null;
   mimeType: string;
   objectKey: string;
   width?: number | null;
 };
+
+type ReferenceVideoVariantSelection = "failed" | "original" | "processing" | "variant";
+
+function resolveReferenceVideoVariantSelection(input: {
+  height?: number | null;
+  kind?: string | null;
+  role?: string | null;
+  routeKey?: string | null;
+  status?: unknown;
+  variantExists: boolean;
+  width?: number | null;
+}): ReferenceVideoVariantSelection {
+  const isH3Reference = input.routeKey === "video.pixellelabs.h3video-2k"
+    && input.kind === "video"
+    && (input.role === "reference_video" || input.role === "source_video");
+  if (!isH3Reference) return "original";
+  if (isReferenceVideoSizeCompliant(Number(input.width) || 0, Number(input.height) || 0)) return "original";
+  if (input.status === "failed") return "failed";
+  if (input.variantExists && input.status === "ready") return "variant";
+  return "processing";
+}
 
 type VideoEditorRenderRouteCapability = {
   renderEngine: "ffmpeg" | null;
@@ -174,12 +199,14 @@ type SerializableAssetRef = Omit<AssetRef, "timing">;
 
 type PersistedMediaOutput = {
   assetTimings: Array<Record<string, number | string>>;
+  deferredReferenceVideoVariantJobs: DeferredReferenceVideoVariantJob[];
   deferredVariantJobs: DeferredVariantJob[];
   outputJson: Record<string, unknown>;
 };
 
 type NodeExecutionOutcome =
   | {
+      deferredReferenceVideoVariantJobs?: DeferredReferenceVideoVariantJob[];
       deferredVariantJobs?: DeferredVariantJob[];
       usageRecord?: UsageRecordInput;
       outputJson: Record<string, unknown>;
@@ -1076,6 +1103,7 @@ export const __workerTestUtils = {
   normalizeMediaOutputs,
   readVideoEditorRenderEngine,
   resolveImageRequestRouteKey,
+  resolveReferenceVideoVariantSelection,
   resolveTextRequestRouteKey,
 };
 
@@ -1629,6 +1657,7 @@ export class WorkflowNodeExecutionService {
   readonly billingService: BillingService;
   readonly personalWalletService: PersonalWalletService;
   readonly imageVariantQueue: MediaVariantQueue | null;
+  readonly videoReferenceVariantQueue: MediaVariantQueue | null;
   readonly mediaGenerationRuntime: MediaGenerationRuntimeLike;
   readonly nodeExecuteQueues: NodeExecuteQueueMapLike;
   readonly nodeExecuteQueue: NodeExecuteQueueLike;
@@ -1644,6 +1673,7 @@ export class WorkflowNodeExecutionService {
     personalWalletService?: PersonalWalletService;
     fetchFn?: FetchLike;
     imageVariantQueue?: MediaVariantQueue | null;
+    videoReferenceVariantQueue?: MediaVariantQueue | null;
     imageVariantsMode?: "async" | "sync";
     mediaGenerationRuntime: MediaGenerationRuntimeLike;
     nodeExecuteQueue: NodeExecuteQueueLike;
@@ -1667,6 +1697,7 @@ export class WorkflowNodeExecutionService {
     });
     this.personalWalletService = options.personalWalletService ?? new PersonalWalletService({ pool: options.pool });
     this.imageVariantQueue = options.imageVariantQueue ?? null;
+    this.videoReferenceVariantQueue = options.videoReferenceVariantQueue ?? null;
     this.mediaGenerationRuntime = options.mediaGenerationRuntime;
     this.nodeExecuteQueue = options.nodeExecuteQueue;
     this.nodeExecuteQueues = {
@@ -1761,6 +1792,14 @@ export class WorkflowNodeExecutionService {
       }
       assertLightweightJobPayload(job);
       await this.imageVariantQueue.add("asset.image-variants.create", job);
+    }
+
+    for (const job of execution.deferredReferenceVideoVariantJobs ?? []) {
+      if (!this.videoReferenceVariantQueue) {
+        throw new Error("videoReferenceVariantQueue is required when deferred reference video variant jobs are present");
+      }
+      assertLightweightJobPayload(job);
+      await this.videoReferenceVariantQueue.add("prepare-reference-720p", job);
     }
   }
 
@@ -2046,6 +2085,7 @@ export class WorkflowNodeExecutionService {
         resolvedOutcome.type === "succeeded" ? resolvedOutcome.usageRecord : undefined,
         logger,
         resolvedOutcome.type === "succeeded" ? (resolvedOutcome.deferredVariantJobs ?? []) : [],
+        resolvedOutcome.type === "succeeded" ? (resolvedOutcome.deferredReferenceVideoVariantJobs ?? []) : [],
       );
 
       logger.info(
@@ -2059,6 +2099,7 @@ export class WorkflowNodeExecutionService {
 
       return {
         auditLogs: successResult.auditLogs,
+        deferredReferenceVideoVariantJobs: successResult.deferredReferenceVideoVariantJobs,
         deferredVariantJobs: successResult.deferredVariantJobs,
         nodeEnqueuePayloads: successResult.nodeEnqueuePayloads,
         pollEnqueuePayloads: [],
@@ -2690,7 +2731,7 @@ export class WorkflowNodeExecutionService {
         node.id,
       );
       const request = buildImageRequest(upstreamOutputsByNodeId, nodeConfig);
-      await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
+      await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? [], request.routeKey);
       if (request.routeKey === "image.mouxihub.nano-banana-pro.t3") {
         const metadata = isPlainObject(request.metadata) ? request.metadata : {};
         const referenceImages = Array.isArray(metadata.referenceImages) ? metadata.referenceImages : [];
@@ -2779,7 +2820,7 @@ export class WorkflowNodeExecutionService {
           workflowRun,
         };
       }
-      await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? []);
+      await this.hydrateInputAssetUrls(workflowRun.tenant_id, request.inputAssets ?? [], request.routeKey);
       const providerStartedAt = Date.now();
       logger.info(
         {
@@ -2942,6 +2983,7 @@ export class WorkflowNodeExecutionService {
     );
 
     return {
+      deferredReferenceVideoVariantJobs: persistedMedia.deferredReferenceVideoVariantJobs,
       deferredVariantJobs: persistedMedia.deferredVariantJobs,
       usageRecord: this.buildUsageRecord({
         billableCents: this.getReservedCents(nodeRun),
@@ -3113,6 +3155,7 @@ export class WorkflowNodeExecutionService {
 
     return {
       assetTimings,
+      deferredReferenceVideoVariantJobs: persistedAssets.deferredReferenceVideoVariantJobs,
       deferredVariantJobs: persistedAssets.deferredVariantJobs,
       outputJson: {
         assets: serializableAssets,
@@ -3341,6 +3384,7 @@ export class WorkflowNodeExecutionService {
   private async hydrateInputAssetUrls(
     tenantId: string,
     inputAssets: AssetReferenceInput[],
+    routeKey?: string | null,
   ): Promise<void> {
     await this.hydrateTemporaryReferenceUploads(tenantId, inputAssets);
     const missingUrlAssets = inputAssets.filter((asset) => {
@@ -3357,6 +3401,13 @@ export class WorkflowNodeExecutionService {
       async (client) => this.loadAssetStorageLookups(client, tenantId, assetIds),
       this.pool,
     );
+    const variantLookups = routeKey === "video.pixellelabs.h3video-2k"
+      ? await withTenantTransaction(
+        { tenantId, userId: null },
+        async (client) => this.loadReferenceVideoVariantLookups(client, tenantId, assetIds),
+        this.pool,
+      )
+      : new Map<string, AssetStorageLookup>();
 
     for (const asset of missingUrlAssets) {
       const lookup = lookups.get(asset.assetId);
@@ -3374,21 +3425,50 @@ export class WorkflowNodeExecutionService {
           statusCode: 422,
         });
       }
-      const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
-        bucket: lookup.bucket,
-        expiresInSeconds: 15 * 60,
-        key: lookup.objectKey,
-        responseContentType: lookup.mimeType,
+      const videoReference = isPlainObject(asset.metadata?.videoReference) ? asset.metadata.videoReference : null;
+      const role = videoReference && typeof videoReference.role === "string" ? videoReference.role : null;
+      const variant = variantLookups.get(asset.assetId);
+      const variantSelection = resolveReferenceVideoVariantSelection({
+        height: asset.height ?? lookup.height,
+        kind: asset.kind ?? lookup.kind,
+        role,
+        routeKey,
+        status: lookup.metadata && typeof lookup.metadata.referenceVideoVariantStatus === "string"
+          ? lookup.metadata.referenceVideoVariantStatus
+          : undefined,
+        variantExists: Boolean(variant),
+        width: asset.width ?? lookup.width,
       });
-      asset.kind = lookup.kind;
-      asset.mimeType = asset.mimeType ?? lookup.mimeType;
-      asset.width = asset.width ?? lookup.width ?? null;
-      asset.height = asset.height ?? lookup.height ?? null;
-      asset.durationMs = asset.durationMs ?? lookup.durationMs ?? null;
+      if (variantSelection === "processing") {
+        throw new AiGatewayError({
+          code: "REFERENCE_VIDEO_VARIANT_PROCESSING",
+          message: "The reference video is still being prepared for H3video.",
+          statusCode: 422,
+        });
+      }
+      if (variantSelection === "failed") {
+        throw new AiGatewayError({
+          code: "REFERENCE_VIDEO_VARIANT_FAILED",
+          message: "The reference video could not be prepared for H3video.",
+          statusCode: 422,
+        });
+      }
+      const selectedLookup = variantSelection === "variant" && variant ? variant : lookup;
+      const signed = await this.assetStore.storageProvider.createPresignedGetUrl({
+        bucket: selectedLookup.bucket,
+        expiresInSeconds: 15 * 60,
+        key: selectedLookup.objectKey,
+        responseContentType: selectedLookup.mimeType,
+      });
+      asset.kind = selectedLookup.kind;
+      asset.mimeType = asset.mimeType ?? selectedLookup.mimeType;
+      asset.width = asset.width ?? selectedLookup.width ?? null;
+      asset.height = asset.height ?? selectedLookup.height ?? null;
+      asset.durationMs = asset.durationMs ?? selectedLookup.durationMs ?? null;
       asset.metadata = {
         ...(isPlainObject(asset.metadata) ? asset.metadata : {}),
-        bucket: lookup.bucket,
-        objectKey: lookup.objectKey,
+        bucket: selectedLookup.bucket,
+        objectKey: selectedLookup.objectKey,
         signedUrl: signed.url,
         url: signed.url,
       };
@@ -3586,20 +3666,22 @@ export class WorkflowNodeExecutionService {
       height: number | null;
       id: string;
       kind: string;
+      metadata: Record<string, unknown> | null;
       mime_type: string;
       object_key: string;
       width: number | null;
     }>(
       `
-        SELECT
-          id::text AS id,
-          kind,
-          mime_type,
-          bucket,
-          object_key,
-          width,
-          height,
-          duration_ms
+      SELECT
+        id::text AS id,
+        kind,
+        mime_type,
+        bucket,
+        object_key,
+        width,
+        height,
+        duration_ms,
+        metadata
         FROM assets
         WHERE tenant_id = $1::uuid
           AND id = ANY($2::uuid[])
@@ -3616,11 +3698,45 @@ export class WorkflowNodeExecutionService {
         durationMs: row.duration_ms,
         height: row.height,
         kind: row.kind,
+        metadata: row.metadata,
         mimeType: row.mime_type,
         objectKey: row.object_key,
         width: row.width,
       },
     ]));
+  }
+
+  private async loadReferenceVideoVariantLookups(
+    client: PoolClient,
+    tenantId: string,
+    assetIds: string[],
+  ): Promise<Map<string, AssetStorageLookup>> {
+    if (assetIds.length === 0) return new Map();
+    const result = await client.query<{
+      asset_id: string;
+      bucket: string;
+      height: number | null;
+      mime_type: string;
+      object_key: string;
+      width: number | null;
+    }>(
+      `
+        SELECT asset_id::text AS asset_id, bucket, object_key, mime_type, width, height
+        FROM asset_variants
+        WHERE tenant_id = $1::uuid
+          AND asset_id = ANY($2::uuid[])
+          AND variant_key = 'reference-720p'
+      `,
+      [tenantId, assetIds],
+    );
+    return new Map(result.rows.map((row) => [row.asset_id, {
+      bucket: row.bucket,
+      height: row.height,
+      kind: "video",
+      mimeType: row.mime_type,
+      objectKey: row.object_key,
+      width: row.width,
+    }]));
   }
 
   private async loadVideoEditorRenderRouteCapability(
@@ -3950,8 +4066,10 @@ export class WorkflowNodeExecutionService {
     usageRecord?: UsageRecordInput,
     logger?: WorkerLogger,
     deferredVariantJobs: DeferredVariantJob[] = [],
+    deferredReferenceVideoVariantJobs: DeferredReferenceVideoVariantJob[] = [],
   ): Promise<{
     auditLogs: AuditLogInput[];
+    deferredReferenceVideoVariantJobs: DeferredReferenceVideoVariantJob[];
     deferredVariantJobs: DeferredVariantJob[];
     nodeEnqueuePayloads: NodeExecuteJobPayload[];
   }> {
@@ -4047,6 +4165,7 @@ export class WorkflowNodeExecutionService {
     await this.finalizeWorkflowRunIfComplete(client, workflowRun.id, context.tenantId);
     return {
       auditLogs,
+      deferredReferenceVideoVariantJobs,
       deferredVariantJobs,
       nodeEnqueuePayloads: enqueuePayloads,
     };

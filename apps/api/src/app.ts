@@ -50,7 +50,7 @@ import {
 } from "./modules/auth/auth-email-sender.js";
 import { AuthService } from "./modules/auth/auth.service.js";
 import { registerAssetRoutes } from "./modules/assets/assets.routes.js";
-import { AssetsService } from "./modules/assets/assets.service.js";
+import { AssetsService, type AssetVideoReferenceVariantQueue } from "./modules/assets/assets.service.js";
 import { registerBillingRoutes } from "./modules/billing/billing.routes.js";
 import { BillingApiService } from "./modules/billing/billing.service.js";
 import { registerPaymentRoutes } from "./modules/payments/payments.routes.js";
@@ -171,6 +171,7 @@ export function buildApp(options?: {
   pool?: PgPool;
   queueHealthService?: QueueHealthService;
   storageProvider?: StorageProvider;
+  assetVideoReferenceVariantQueue?: AssetVideoReferenceVariantQueue | null;
   workflowRunsService?: WorkflowRunsService;
   agentExecutorService?: AgentExecutorService;
 }) {
@@ -213,6 +214,11 @@ export function buildApp(options?: {
     env,
     pool,
   });
+  const assetVideoReferenceVariantQueue = options?.assetVideoReferenceVariantQueue
+    ?? appQueueFactory?.createQueue(QUEUE_NAMES.assetVideoReferenceVariant)
+    ?? null;
+  const ownedAssetVideoReferenceVariantQueue = !options?.assetVideoReferenceVariantQueue
+    && Boolean(appQueueFactory);
   const adminService = new AdminApiService({ pool });
   const aiGatewayService = new AiGatewayAdminService({
     credentialVault,
@@ -233,6 +239,7 @@ export function buildApp(options?: {
     pool,
   });
   const assetsService = new AssetsService({
+    assetVideoReferenceVariantQueue,
     bucket: env.s3Bucket,
     pool,
     storageProvider,
@@ -420,6 +427,10 @@ export function buildApp(options?: {
         nodeExecuteVideoQueue?.close(),
         workbenchGenerateQueue?.close(),
       ]);
+    }
+
+    if (ownedAssetVideoReferenceVariantQueue) {
+      await assetVideoReferenceVariantQueue?.close?.();
     }
 
     if (ownedQueueHealthService) {
