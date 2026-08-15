@@ -18,7 +18,7 @@ import type { ApiEnv } from "../../api/src/config/env.js";
 import { buildApp } from "../../api/src/app.js";
 import { WorkflowRunsService } from "../../api/src/modules/workflow-runs/workflow-runs.service.js";
 import { getWorkerEnv } from "../src/config/env.js";
-import { createWorkerRuntime } from "../src/main.js";
+import { createWorkerRuntime, WORKER_RUNTIME_QUEUE_NAMES } from "../src/main.js";
 import { getWorkerErrorFields, type WorkerLogger } from "../src/logger.js";
 import { processNodeExecuteJob } from "../src/processors/node-execute.processor.js";
 import { processProviderPollJob } from "../src/processors/provider-poll.processor.js";
@@ -30,6 +30,56 @@ import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
+
+describe("H3video reference video variant selection", () => {
+  test("blocks oversized references while the 720p variant is pending", () => {
+    expect(__workerTestUtils.resolveReferenceVideoVariantSelection({
+      height: 1080,
+      kind: "video",
+      role: "reference_video",
+      routeKey: "video.pixellelabs.h3video-2k",
+      status: "pending",
+      variantExists: false,
+      width: 1920,
+    })).toBe("processing");
+  });
+
+  test("uses the prepared variant for oversized references", () => {
+    expect(__workerTestUtils.resolveReferenceVideoVariantSelection({
+      height: 1080,
+      kind: "video",
+      role: "source_video",
+      routeKey: "video.pixellelabs.h3video-2k",
+      status: "ready",
+      variantExists: true,
+      width: 1920,
+    })).toBe("variant");
+  });
+
+  test("keeps compliant references on the original object", () => {
+    expect(__workerTestUtils.resolveReferenceVideoVariantSelection({
+      height: 720,
+      kind: "video",
+      role: "reference_video",
+      routeKey: "video.pixellelabs.h3video-2k",
+      status: "ready",
+      variantExists: false,
+      width: 1280,
+    })).toBe("original");
+  });
+
+  test("reports failed variant processing without falling back", () => {
+    expect(__workerTestUtils.resolveReferenceVideoVariantSelection({
+      height: 1080,
+      kind: "video",
+      role: "reference_video",
+      routeKey: "video.pixellelabs.h3video-2k",
+      status: "failed",
+      variantExists: false,
+      width: 1920,
+    })).toBe("failed");
+  });
+});
 
 async function createPngBuffer(width: number, height: number): Promise<Buffer> {
   return sharp({
@@ -2010,7 +2060,7 @@ describe("worker skeleton", () => {
 
     expect(workerClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
     expect(eventsClose).toHaveBeenCalledTimes(WORKER_QUEUE_NAMES.length);
-    expect(queueClose).toHaveBeenCalledTimes(8);
+    expect(queueClose).toHaveBeenCalledTimes(WORKER_RUNTIME_QUEUE_NAMES.length);
   });
 });
 

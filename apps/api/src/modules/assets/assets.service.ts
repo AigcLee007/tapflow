@@ -462,6 +462,18 @@ function shouldFallbackEmptyVariantBytes(input: {
   return Boolean(input.variantKey) && input.body.byteLength === 0;
 }
 
+function prepareReferenceVideoVariantMetadata(
+  metadata: Record<string, string>,
+  kind: string,
+): Record<string, string> {
+  if (kind !== "video") return metadata;
+  const { referenceVideoVariantError: _error, ...existing } = metadata;
+  return {
+    ...existing,
+    referenceVideoVariantStatus: "pending",
+  };
+}
+
 async function enqueueReferenceVideoVariant(input: {
   asset: Pick<AssetView, "id" | "kind">;
   context: Pick<AssetContext, "tenantId" | "traceId">;
@@ -491,6 +503,7 @@ export const __assetsServiceTestUtils = {
   enqueueReferenceVideoVariant,
   loadSignedAssetCandidates,
   normalizeAssetObjectForBytesResponse,
+  prepareReferenceVideoVariantMetadata,
   shouldFallbackEmptyVariantBytes,
 };
 
@@ -865,6 +878,7 @@ export class AssetsService {
             width = COALESCE($5::int, width),
             height = COALESCE($6::int, height),
             duration_ms = COALESCE($7::int, duration_ms),
+            metadata = $8::jsonb,
             status = 'available',
             updated_at = now()
           WHERE id = $1::uuid
@@ -903,6 +917,7 @@ export class AssetsService {
           input.width ?? null,
           input.height ?? null,
           input.durationMs ?? null,
+          JSON.stringify(prepareReferenceVideoVariantMetadata(asset.metadata ?? {}, asset.kind)),
         ],
       );
 

@@ -237,7 +237,7 @@ import {
   resolvePanoramaAspectRatio,
 } from '../panorama/panoramaUtils';
 import { NodeInputTray } from '../inputs/NodeInputTray';
-import { buildCanvasInputSignature, resolveCanvasInputItems, type CanvasInputSeed } from '../inputs/canvasInputProjection';
+import { buildCanvasInputSignature, resolveCanvasInputItems, type CanvasInputItem, type CanvasInputSeed } from '../inputs/canvasInputProjection';
 import { useCanvasInputAssets } from '../inputs/useCanvasInputAssets';
 
 type FlowNode = Node<FlowNodeData>;
@@ -7942,6 +7942,10 @@ export const VideoNodeComponent = memo(function VideoNode({
   const hasUpstreamTextPrompt = resolvedVideoInputItems.some(
     (item) => item.kind === "text" && Boolean(item.textExcerpt?.trim()),
   );
+  const referenceVideoVariantBlocker = getReferenceVideoVariantBlocker({
+    inputItems: resolvedVideoInputItems,
+    routeKey: videoCatalog.models.find((model) => model.id === d.modelId)?.routeKey,
+  });
 
   const handleGenerate = () => {
     if (isGenerating) return;
@@ -7956,7 +7960,8 @@ export const VideoNodeComponent = memo(function VideoNode({
           ? option.blocker
           : normalized.requiresUserCorrection
             ? 'VIDEO_MODE_INPUT_REQUIRED'
-            : getVideoGenerationBlocker(option, corrected.params, String(d.generationPrompt || ''), hasUpstreamTextPrompt);
+            : referenceVideoVariantBlocker
+              ?? getVideoGenerationBlocker(option, corrected.params, String(d.generationPrompt || ''), hasUpstreamTextPrompt);
     if (blocker) {
       const errorMessage = videoGenerationBlockerMessage(blocker);
       updateNodeData(id, {
@@ -8181,6 +8186,7 @@ export const VideoNodeComponent = memo(function VideoNode({
               catalog={videoCatalog}
               data={d}
               generating={isGenerating}
+              generationBlockerMessage={referenceVideoVariantBlocker ? videoGenerationBlockerMessage(referenceVideoVariantBlocker) : null}
               inputsUpdated={videoInputsUpdated}
               inputItems={resolvedVideoInputItems}
               mentionCandidates={videoMentionCandidates}
@@ -8206,14 +8212,42 @@ export const VideoNodeComponent = memo(function VideoNode({
               selected={showNodeEditor}
             />
           </NodeEditorSurface>
-        : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
+        : <VideoNodeLegacyComposer data={d} effectivePosterUrl={effectivePosterUrl} generating={isGenerating || Boolean(referenceVideoVariantBlocker)} nodeId={id} onGenerate={handleGenerate} onUpdate={(patch) => updateNodeData(id, patch)} runtimeVideoAssets={runtimeVideoAssets} />
       )}
 
     </div>
   );
 });
 
-function videoGenerationBlockerMessage(blocker: string) {
+function isReferenceVideoSizeCompliant(width: unknown, height: unknown): boolean {
+  const normalizedWidth = Number(width);
+  const normalizedHeight = Number(height);
+  if (!Number.isFinite(normalizedWidth) || !Number.isFinite(normalizedHeight) || normalizedWidth <= 0 || normalizedHeight <= 0) {
+    return false;
+  }
+  return normalizedWidth >= normalizedHeight
+    ? normalizedWidth <= 1280 && normalizedHeight <= 720
+    : normalizedWidth <= 720 && normalizedHeight <= 1280;
+}
+
+export function getReferenceVideoVariantBlocker(input: {
+  inputItems: Array<Pick<CanvasInputItem, 'height' | 'kind' | 'referenceVideoVariantStatus' | 'role' | 'width'>>;
+  routeKey: string | null | undefined;
+}): 'REFERENCE_VIDEO_VARIANT_FAILED' | 'REFERENCE_VIDEO_VARIANT_PROCESSING' | null {
+  if (input.routeKey !== 'video.pixellelabs.h3video-2k') return null;
+  const unreadyReference = input.inputItems.find((item) => item.kind === 'video'
+    && (item.role === 'reference_video' || item.role === 'source_video')
+    && !isReferenceVideoSizeCompliant(item.width, item.height)
+    && (item.referenceVideoVariantStatus === undefined
+      || item.referenceVideoVariantStatus === 'pending'
+      || item.referenceVideoVariantStatus === 'failed'));
+  if (!unreadyReference) return null;
+  return unreadyReference.referenceVideoVariantStatus === 'failed'
+    ? 'REFERENCE_VIDEO_VARIANT_FAILED'
+    : 'REFERENCE_VIDEO_VARIANT_PROCESSING';
+}
+
+export function videoGenerationBlockerMessage(blocker: string) {
   switch (blocker) {
     case 'CATALOG_LOADING': return '视频模型目录加载中，请稍后重试';
     case 'NO_VIDEO_GENERATION_ROUTE': return '当前视频模型未接入可用生成线路';
@@ -8221,6 +8255,8 @@ function videoGenerationBlockerMessage(blocker: string) {
     case 'VIDEO_PROMPT_REQUIRED': return '请先填写视频提示词';
     case 'VIDEO_PROMPT_TOO_LONG': return '视频提示词超过当前模型的长度限制';
     case 'HUMAN_REVIEW_REQUIRED': return '请先完成真人验证后再生成';
+    case 'REFERENCE_VIDEO_VARIANT_PROCESSING': return '参考视频处理中，请稍后再生成';
+    case 'REFERENCE_VIDEO_VARIANT_FAILED': return '参考视频处理失败，请重新上传';
     default: return `当前视频参数未被模型支持（${blocker}）`;
   }
 }

@@ -280,6 +280,13 @@ async function insertAvailableImageAssetWithVariant(
 }
 
 describe("asset reference video variant enqueue", () => {
+  test("marks a completed video upload pending before its variant job starts", () => {
+    expect(__assetsServiceTestUtils.prepareReferenceVideoVariantMetadata({ existing: "value" }, "video"))
+      .toEqual({ existing: "value", referenceVideoVariantStatus: "pending" });
+    expect(__assetsServiceTestUtils.prepareReferenceVideoVariantMetadata({ existing: "value" }, "image"))
+      .toEqual({ existing: "value" });
+  });
+
   test("enqueues only video assets with a lightweight stable job", async () => {
     const calls: Array<{ name: string; payload: unknown; options: unknown }> = [];
     const queue = {

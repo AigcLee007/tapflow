@@ -2,7 +2,7 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ImageNodeComponent, TextNodeComponent, VideoNodeComponent } from "./FlowNodes";
+import { ImageNodeComponent, TextNodeComponent, VideoNodeComponent, getReferenceVideoVariantBlocker, videoGenerationBlockerMessage } from "./FlowNodes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 
 const assetApiMocks = vi.hoisted(() => ({
@@ -46,6 +46,38 @@ const createVideoCatalogModel = (overrides: Record<string, unknown> = {}) => ({
   pricing: { billingBasis: "duration_second", exact: true, minChargeCredits: 1, unit: "video_generation", unitCredits: 1 },
   routeKey: "video.default-route",
   ...overrides,
+});
+
+describe("reference video variant preflight", () => {
+  it("blocks a pending oversized H3video reference", () => {
+    expect(getReferenceVideoVariantBlocker({
+      inputItems: [{ height: 1080, kind: "video", referenceVideoVariantStatus: "pending", role: "reference_video", width: 1920 }],
+      routeKey: "video.pixellelabs.h3video-2k",
+    })).toBe("REFERENCE_VIDEO_VARIANT_PROCESSING");
+    expect(videoGenerationBlockerMessage("REFERENCE_VIDEO_VARIANT_PROCESSING")).toBe("参考视频处理中，请稍后再生成");
+  });
+
+  it("shows an upload retry message for a failed oversized H3video reference", () => {
+    expect(getReferenceVideoVariantBlocker({
+      inputItems: [{ height: 1080, kind: "video", referenceVideoVariantStatus: "failed", role: "source_video", width: 1920 }],
+      routeKey: "video.pixellelabs.h3video-2k",
+    })).toBe("REFERENCE_VIDEO_VARIANT_FAILED");
+    expect(videoGenerationBlockerMessage("REFERENCE_VIDEO_VARIANT_FAILED")).toBe("参考视频处理失败，请重新上传");
+  });
+
+  it("blocks an oversized legacy reference until reconciliation supplies its status", () => {
+    expect(getReferenceVideoVariantBlocker({
+      inputItems: [{ height: 1080, kind: "video", role: "reference_video", width: 1920 }],
+      routeKey: "video.pixellelabs.h3video-2k",
+    })).toBe("REFERENCE_VIDEO_VARIANT_PROCESSING");
+  });
+
+  it("does not block a compliant H3video reference", () => {
+    expect(getReferenceVideoVariantBlocker({
+      inputItems: [{ height: 720, kind: "video", referenceVideoVariantStatus: "pending", role: "reference_video", width: 1280 }],
+      routeKey: "video.pixellelabs.h3video-2k",
+    })).toBeNull();
+  });
 });
 
 const createVideoNodeData = (overrides: Record<string, unknown> = {}) => ({
@@ -409,6 +441,44 @@ describe("FlowNodes agent metadata", () => {
     });
     const preview = document.querySelector('[aria-label="节点输入"] img');
     expect(preview?.getAttribute('src')).toBe('https://cdn.test/direct-video-thumb.webp');
+  });
+
+  it('disables H3video generation while an oversized reference video is processing', async () => {
+    assetApiMocks.getAsset.mockResolvedValue({
+      height: 1080,
+      id: 'asset-h3-reference',
+      kind: 'video',
+      metadata: { referenceVideoVariantStatus: 'pending' },
+      title: 'High resolution clip',
+      width: 1920,
+    });
+    assetApiMocks.getAssetVariantUrl.mockResolvedValue({
+      expiresAt: '2026-08-15T12:00:00.000Z',
+      method: 'GET',
+      url: 'https://cdn.test/h3-reference.mp4',
+    });
+    const model = createVideoCatalogModel({ routeKey: 'video.pixellelabs.h3video-2k' });
+    videoCatalogMocks.current = { error: null, loading: false, models: [model], retry: vi.fn() };
+    const node = useFlowCanvasStore.getState().addNode('video', { x: 0, y: 0 }, createVideoNodeData({
+      generationPrompt: 'A cinematic train ride',
+      modelId: model.id,
+      params: {
+        videoGeneration: {
+          aspectRatio: '16:9', count: 1, durationSeconds: 4, generateAudio: false,
+          mode: 'video_to_video', resolution: '720P', schemaVersion: 2,
+          referenceInputs: [{
+            mediaKind: 'video', order: 0, referenceKey: 'asset:asset-h3-reference', role: 'reference_video',
+            source: { id: 'asset-h3-reference', kind: 'asset' },
+          }],
+        },
+      },
+    }) as any, { selected: true });
+
+    render(<StoreBackedVideoNode nodeId={node.id} />);
+
+    expect(await screen.findByText('参考视频处理中，请稍后再生成')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(workflowRunnerMocks.runBackendWorkflow).not.toHaveBeenCalled();
   });
 
   it("keeps one stable image-to-video reference when a legacy draft has multiple image edges", async () => {

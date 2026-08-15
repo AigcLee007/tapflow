@@ -282,3 +282,35 @@ describe("readImageDimensions", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob://portrait");
   });
 });
+
+describe("readVideoMetadata", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reads video dimensions and duration without retaining the object URL", async () => {
+    class FakeVideo {
+      duration = 4.5;
+      onerror: null | (() => void) = null;
+      onloadedmetadata: null | (() => void) = null;
+      videoHeight = 1920;
+      videoWidth = 1080;
+
+      removeAttribute = vi.fn();
+
+      set src(_value: string) {
+        queueMicrotask(() => this.onloadedmetadata?.());
+      }
+    }
+
+    const createObjectURL = vi.fn(() => "blob://portrait-video");
+    const revokeObjectURL = vi.fn();
+    stubUrlObjectApi(createObjectURL, revokeObjectURL);
+    vi.spyOn(document, "createElement").mockReturnValue(new FakeVideo() as unknown as HTMLElement);
+
+    const { readVideoMetadata } = await import("./assetApi");
+    const file = new File(["video"], "portrait.mp4", { type: "video/mp4" });
+    await expect(readVideoMetadata(file)).resolves.toEqual({ durationMs: 4500, height: 1920, width: 1080 });
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob://portrait-video");
+  });
+});

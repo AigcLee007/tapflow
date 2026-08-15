@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { buildAssetObjectKey, type StorageProvider } from "@aigc-flow/storage";
+import type { StorageProvider } from "@aigc-flow/storage";
 import type { Pool } from "pg";
 
 import {
@@ -72,6 +72,7 @@ export class VideoReferenceVariantProcessor {
       await writeFile(inputPath, original.body);
       const sourceSize = await probeReferenceVideo(inputPath);
       if (isReferenceVideoSizeCompliant(sourceSize.width, sourceSize.height)) {
+        await this.updateDimensions(input, sourceSize);
         await this.updateStatus(input, "ready");
         return { assetId: input.assetId, height: sourceSize.height, status: "ready", transcoded: false, variantCount: 0, width: sourceSize.width };
       }
@@ -79,11 +80,7 @@ export class VideoReferenceVariantProcessor {
       const target = resolveReferenceVideoTargetSize(sourceSize.width, sourceSize.height);
       await transcodeReferenceVideo(inputPath, outputPath, { target });
       const body = await readFile(outputPath);
-      const objectKey = buildAssetObjectKey({
-        assetId: input.assetId,
-        filename: `${REFERENCE_VARIANT_KEY}.mp4`,
-        tenantId: input.tenantId,
-      });
+      const objectKey = `tenants/${asset.tenant_id}/assets/${asset.id}/variants/${REFERENCE_VARIANT_KEY}.mp4`;
       await this.storageProvider.putObject({
         body,
         bucket: asset.bucket,
@@ -130,6 +127,20 @@ export class VideoReferenceVariantProcessor {
         referenceVideoVariantStatus: status,
         ...(error ? { referenceVideoVariantError: error } : {}),
       })],
+    );
+  }
+
+  private async updateDimensions(
+    input: VideoReferenceVariantProcessorInput,
+    size: ReferenceVideoSize,
+  ): Promise<void> {
+    await this.pool.query(
+      `
+        UPDATE assets
+        SET width = $3::int, height = $4::int, updated_at = now()
+        WHERE id = $1::uuid AND tenant_id = $2::uuid AND deleted_at IS NULL
+      `,
+      [input.assetId, input.tenantId, size.width, size.height],
     );
   }
 

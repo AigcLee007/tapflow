@@ -51,7 +51,13 @@ export type DeferredVariantJob = {
   tenantId: string;
 };
 
+export type DeferredReferenceVideoVariantJob = {
+  assetId: string;
+  tenantId: string;
+};
+
 export type PersistOutputsResult = {
+  deferredReferenceVideoVariantJobs: DeferredReferenceVideoVariantJob[];
   deferredVariantJobs: DeferredVariantJob[];
   refs: AssetRef[];
 };
@@ -296,6 +302,7 @@ export class MediaAssetStore {
     logContext?: AssetPersistenceLogContext,
   ): Promise<PersistOutputsResult> {
     const assetRefs: AssetRef[] = [];
+    const deferredReferenceVideoVariantJobs: DeferredReferenceVideoVariantJob[] = [];
     const deferredVariantJobs: DeferredVariantJob[] = [];
 
     for (let index = 0; index < input.outputs.length; index += 1) {
@@ -451,6 +458,7 @@ export class MediaAssetStore {
             measuredWidth: measuredDimensions.width,
             providerHeight: output.height ?? null,
             providerWidth: output.width ?? null,
+            ...(input.kind === "video" ? { referenceVideoVariantStatus: "pending" } : {}),
             source: "workflow-runner",
           }),
         ],
@@ -479,6 +487,11 @@ export class MediaAssetStore {
           throw new Error("variantQueue is required when MediaAssetStore variantMode is async");
         }
         deferredVariantJobs.push({
+          assetId,
+          tenantId: input.tenantId,
+        });
+      } else if (input.kind === "video") {
+        deferredReferenceVideoVariantJobs.push({
           assetId,
           tenantId: input.tenantId,
         });
@@ -644,6 +657,7 @@ export class MediaAssetStore {
     }
 
     return {
+      deferredReferenceVideoVariantJobs,
       deferredVariantJobs,
       refs: assetRefs,
     };

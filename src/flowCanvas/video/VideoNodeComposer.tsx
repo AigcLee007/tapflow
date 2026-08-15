@@ -33,6 +33,7 @@ type Props = {
   catalog?: ReturnType<typeof useVideoGenerationCatalog>;
   data: FlowNodeData;
   generating: boolean;
+  generationBlockerMessage?: string | null;
   inputsUpdated?: boolean;
   inputItems?: CanvasInputItem[];
   mentionCandidates?: MediaMentionCandidate[];
@@ -54,7 +55,7 @@ type Props = {
   selected: boolean;
 };
 
-export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, inputItems, inputsUpdated = false, mentionCandidates = [], nodeId, onActivateMentionCandidate, onMentionEditorReady, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onRemoveAllText, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
+export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverride, data, generating, generationBlockerMessage = null, inputItems, inputsUpdated = false, mentionCandidates = [], nodeId, onActivateMentionCandidate, onMentionEditorReady, onConnectCanvasReference = () => undefined, onFocusInput, onGenerate, onRemoveInput, onRemoveAllText, onReorderInputs, onRetryInputPreview, onUpdate, onUploadReference = async () => { throw new Error("REFERENCE_UPLOAD_UNAVAILABLE"); }, referencePreviewUrlsBySource, selected }: Props) {
   const loadedCatalog = useVideoGenerationCatalog();
   const catalog = catalogOverride ?? loadedCatalog;
   const [modelOpen, setModelOpen] = useState(false);
@@ -211,7 +212,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
       ? VIDEO_UI_COPY.modelCatalogError
       : option?.label ?? VIDEO_UI_COPY.chooseModel;
   const selectedModeEnabled = selectedModeAvailability?.enabled ?? true;
-  const generationDisabled = generating || !selectedModelUsable || !selectedModeEnabled || catalog.loading || Boolean(catalog.error);
+  const generationDisabled = generating || !selectedModelUsable || !selectedModeEnabled || catalog.loading || Boolean(catalog.error) || Boolean(generationBlockerMessage);
   const handleModeChange = (mode: VideoGenerationParamsV1["mode"]) => {
     setModeNotice(null);
     setParams({
@@ -236,6 +237,7 @@ export function VideoNodeComposer({ allowMediaAdd = true, catalog: catalogOverri
     {modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{modeNotice}</div> : null}
     {!selectedModeEnabled && !modeNotice ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{VIDEO_UI_COPY.unsupportedByCurrentModel}</div> : null}
     {inputsUpdated ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">输入已更新</div> : null}
+    {generationBlockerMessage ? <div className="mt-2 text-xs font-bold text-amber-300" role="status">{generationBlockerMessage}</div> : null}
 
     <div className="mt-2">
       <MediaMentionPromptEditor

@@ -208,12 +208,19 @@ export async function uploadAssetFile(input: {
   const file = input.file;
   const kind = input.kind ?? kindFromMimeType(file.type);
   const dimensions = kind === 'image' ? await readImageDimensions(file).catch(() => null) : null;
+  const videoMetadata = kind === 'video'
+    && (input.durationMs === undefined || input.height === undefined || input.width === undefined)
+    ? await readVideoMetadata(file).catch(() => null)
+    : null;
+  const durationMs = input.durationMs ?? videoMetadata?.durationMs;
+  const height = input.height ?? videoMetadata?.height;
+  const width = input.width ?? videoMetadata?.width;
   const metadata =
     kind === 'video'
       ? {
-          ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
-          ...(input.height !== undefined ? { height: input.height } : {}),
-          ...(input.width !== undefined ? { width: input.width } : {}),
+          ...(durationMs !== undefined ? { durationMs } : {}),
+          ...(height !== undefined ? { height } : {}),
+          ...(width !== undefined ? { width } : {}),
         }
       : dimensions
         ? { height: dimensions.height, width: dimensions.width }
@@ -284,6 +291,33 @@ export function readImageDimensions(file: File): Promise<{ height: number; width
       reject(error instanceof Error ? error : new Error('Unable to load image'));
     };
     image.src = objectUrl;
+  });
+}
+
+export function readVideoMetadata(file: File): Promise<{ durationMs: number; height: number; width: number }> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    const cleanup = () => {
+      video.removeAttribute('src');
+      URL.revokeObjectURL(objectUrl);
+    };
+    video.onloadedmetadata = () => {
+      const durationMs = Math.round(Number(video.duration) * 1000);
+      const height = Number(video.videoHeight);
+      const width = Number(video.videoWidth);
+      cleanup();
+      if (Number.isFinite(durationMs) && durationMs >= 0 && height > 0 && width > 0) {
+        resolve({ durationMs, height, width });
+        return;
+      }
+      reject(new Error('Unable to read video metadata'));
+    };
+    video.onerror = () => {
+      cleanup();
+      reject(new Error('Unable to load video'));
+    };
+    video.src = objectUrl;
   });
 }
 
