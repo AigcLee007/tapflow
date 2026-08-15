@@ -365,6 +365,47 @@ describe("AiSettingsPage", () => {
 
     const disableButton = await screen.findByRole("button", { name: "停用线路" });
     expect(disableButton.hasAttribute("disabled")).toBe(false);
+    expect(
+      screen.getByText("当前是系统线路，参数只能查看和测试；你仍可以启停线路。需要修改参数时，请先复制成租户线路。"),
+    ).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(disableButton);
+    });
+
+    expect(updateAdminRouteMock).toHaveBeenCalledWith("admin-route-1", {
+      status: "inactive",
+    });
+  });
+
+  test("allows disabling the only default route", async () => {
+    updateAdminRouteMock.mockResolvedValue({
+      id: "admin-route-1",
+      routeKey: "image.test.line1",
+      routeLabel: "线路一",
+      providerId: "provider-1",
+      modelId: "model-1",
+      credentialId: null,
+      modality: "image",
+      status: "inactive",
+      baseUrlOverride: null,
+      requestConfig: {},
+      pricing: {},
+      tenantId: "tenant-1",
+      connectionId: "connection-1",
+    });
+
+    render(
+      <AuthContext.Provider value={createAuthState()}>
+        <AiSettingsPage />
+      </AuthContext.Provider>,
+    );
+
+    const disableButton = await screen.findByRole("button", { name: "停用线路" });
+    expect(disableButton.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "设为默认线路" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByText("当前是默认线路。停用后如果没有其他可用线路，该模型会从前台隐藏。"),
+    ).toBeTruthy();
 
     await act(async () => {
       fireEvent.click(disableButton);

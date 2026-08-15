@@ -356,10 +356,10 @@ export function AiSettingsPage() {
   const selectedRouteEditHint = useMemo(() => {
     if (!selectedAdminRoute) return "请选择一条线路后再管理。";
     if (!isSelectedRouteTenantEditable) {
-      return "当前是系统线路，只能查看和测试。需要修改参数时，请先复制成租户线路。";
+      return "当前是系统线路，参数只能查看和测试；你仍可以启停线路。需要修改参数时，请先复制成租户线路。";
     }
     if (isSelectedRouteDefault) {
-      return "当前是默认线路。你可以直接修改参数；如果要停用，请先把别的线路设为默认。";
+      return "当前是默认线路。停用后如果没有其他可用线路，该模型会从前台隐藏。";
     }
     return "当前是租户线路，可以直接修改、停用或删除。";
   }, [isSelectedRouteDefault, isSelectedRouteTenantEditable, selectedAdminRoute]);
@@ -1639,8 +1639,7 @@ export function AiSettingsPage() {
                             className={buttonClass}
                             disabled={
                               !canManage ||
-                              actionRouteId === selectedAdminRoute.id ||
-                              isSelectedRouteDefault
+                              actionRouteId === selectedAdminRoute.id
                             }
                             onClick={() => void handleDisableRoute()}
                             type="button"

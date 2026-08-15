@@ -3,6 +3,12 @@
 Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
 
+## 2026-08-15 - Sole Default AI Route Emergency Disable
+
+- Model Center now allows a `super_admin` to disable a broken AI route even when it is the product model's only/default route. The existing API update flow clears the route's default state and the catalog default key while preserving route, audit, billing, and workflow history.
+- creator-facing model catalog queries already require at least one matching active route, so a model with no available route is automatically hidden until an administrator enables a route again; restored routes must still be tested and explicitly set as default.
+- added a focused Model Center regression for the default-route status action. Focused frontend tests passed (`6` tests), AI model catalog / AI Gateway service tests passed (`24` tests; `5` database-dependent tests skipped), and the production frontend build passed. The full API suite was also run (`327` passed, `121` skipped) but remains red from unrelated existing syntax failures in `admin.test.ts` / `queues.test.ts` and two reference-video asset queue assertions.
+
 ## 2026-08-15 - Reference Video Queue Job ID Recovery
 
 - fixed the production root cause that kept oversized reference videos permanently pending: BullMQ rejects custom Job IDs containing `:`, while both the API uploader and Worker reconciler used `<assetId>:reference-720p`.
