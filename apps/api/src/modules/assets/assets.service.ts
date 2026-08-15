@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { createPgPool, safeRecordAuditLog, withTenantTransaction } from "@aigc-flow/db";
-import type { AssetVideoReferenceVariantJobPayload } from "@aigc-flow/redis";
+import {
+  buildAssetVideoReferenceVariantJobId,
+  QUEUE_NAMES,
+  type AssetVideoReferenceVariantJobPayload,
+} from "@aigc-flow/redis";
 import {
   buildAssetObjectKey,
   type PutObjectInput,
@@ -21,8 +25,13 @@ import type {
 
 type PgPool = Pool;
 
+export type AssetQueueLogger = {
+  error: (bindings: Record<string, unknown>, message: string) => void;
+};
+
 type AssetContext = {
   ipHash?: string | null;
+  logger?: AssetQueueLogger;
   requestId?: string | null;
   tenantId: string;
   traceId?: string | null;
@@ -476,7 +485,7 @@ function prepareReferenceVideoVariantMetadata(
 
 async function enqueueReferenceVideoVariant(input: {
   asset: Pick<AssetView, "id" | "kind">;
-  context: Pick<AssetContext, "tenantId" | "traceId">;
+  context: Pick<AssetContext, "logger" | "tenantId" | "traceId">;
   queue?: AssetVideoReferenceVariantQueue | null;
 }): Promise<void> {
   if (input.asset.kind !== "video" || !input.queue) return;
@@ -490,12 +499,21 @@ async function enqueueReferenceVideoVariant(input: {
         traceId: input.context.traceId ?? "",
       },
       {
-        jobId: `${input.asset.id}:reference-720p`,
+        jobId: buildAssetVideoReferenceVariantJobId(input.asset.id),
         removeOnComplete: true,
       },
     );
-  } catch {
-    // Upload completion must remain successful when the idempotent job already exists.
+  } catch (error) {
+    input.context.logger?.error(
+      {
+        assetId: input.asset.id,
+        err: error,
+        queueName: QUEUE_NAMES.assetVideoReferenceVariant,
+        tenantId: input.context.tenantId,
+        traceId: input.context.traceId ?? null,
+      },
+      "failed to enqueue asset video reference variant job",
+    );
   }
 }
 

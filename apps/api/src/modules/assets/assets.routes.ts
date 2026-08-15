@@ -69,6 +69,7 @@ function getAssetContext(request: FastifyRequest) {
 
   return {
     ipHash: request.ctx.ipHash,
+    logger: request.log,
     requestId: request.ctx.requestId,
     tenantId: request.ctx.tenantId,
     traceId: request.ctx.traceId,

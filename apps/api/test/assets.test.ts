@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, test } from "vitest";
+import { afterAll, describe, expect, test, vi } from "vitest";
 import sharp from "sharp";
 
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
@@ -310,23 +310,33 @@ describe("asset reference video variant enqueue", () => {
       {
         name: "prepare-reference-720p",
         payload: { tenantId: "tenant-1", assetId: "video-asset", traceId: "trace-1" },
-        options: { jobId: "video-asset:reference-720p", removeOnComplete: true },
+        options: { jobId: "reference-720p-video-asset", removeOnComplete: true },
       },
     ]);
   });
 
-  test("swallows duplicate queue errors so upload completion can return", async () => {
+  test("logs unexpected queue errors so upload completion can be recovered", async () => {
+    const logger = { error: vi.fn() };
     const queue = {
       add: async () => {
-        throw new Error("Job already exists");
+        throw new Error("Redis unavailable");
       },
     };
 
     await expect(__assetsServiceTestUtils.enqueueReferenceVideoVariant({
       asset: { id: "video-asset", kind: "video" },
-      context: { tenantId: "tenant-1", traceId: "trace-1" },
+      context: { logger, tenantId: "tenant-1", traceId: "trace-1" },
       queue,
     })).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetId: "video-asset",
+        queueName: "asset.video-reference-variant",
+        tenantId: "tenant-1",
+        traceId: "trace-1",
+      }),
+      "failed to enqueue asset video reference variant job",
+    );
   });
 });
 
