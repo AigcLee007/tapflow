@@ -157,6 +157,7 @@ export function createWorkerRuntime(options?: {
     storageProvider,
   });
   const referenceVideoVariantReconciler = new ReferenceVideoVariantReconciler({
+    logger,
     pool,
     queue: assetVideoReferenceVariantQueue,
   });

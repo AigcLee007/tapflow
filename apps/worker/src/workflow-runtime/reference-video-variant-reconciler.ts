@@ -1,5 +1,11 @@
 import type { Pool } from "pg";
 
+import { buildAssetVideoReferenceVariantJobId, QUEUE_NAMES } from "@aigc-flow/redis";
+
+type ReconcilerLogger = {
+  error: (bindings: Record<string, unknown>, message: string) => void;
+};
+
 type ReferenceVideoVariantQueue = {
   add(
     name: "prepare-reference-720p",
@@ -15,11 +21,13 @@ type Candidate = {
 
 export class ReferenceVideoVariantReconciler {
   readonly batchSize: number;
+  readonly logger: ReconcilerLogger;
   readonly pool: Pool;
   readonly queue: ReferenceVideoVariantQueue;
 
-  constructor(options: { batchSize?: number; pool: Pool; queue: ReferenceVideoVariantQueue }) {
+  constructor(options: { batchSize?: number; logger?: ReconcilerLogger; pool: Pool; queue: ReferenceVideoVariantQueue }) {
     this.batchSize = Math.max(1, options.batchSize ?? 50);
+    this.logger = options.logger ?? { error: () => undefined };
     this.pool = options.pool;
     this.queue = options.queue;
   }
@@ -56,12 +64,24 @@ export class ReferenceVideoVariantReconciler {
       );
       if (marked.rowCount === 0) continue;
 
-      await this.queue.add(
-        "prepare-reference-720p",
-        { assetId: candidate.asset_id, tenantId: candidate.tenant_id },
-        { jobId: `${candidate.asset_id}:reference-720p`, removeOnComplete: true },
-      );
-      queued += 1;
+      try {
+        await this.queue.add(
+          "prepare-reference-720p",
+          { assetId: candidate.asset_id, tenantId: candidate.tenant_id },
+          { jobId: buildAssetVideoReferenceVariantJobId(candidate.asset_id), removeOnComplete: true },
+        );
+        queued += 1;
+      } catch (error) {
+        this.logger.error(
+          {
+            assetId: candidate.asset_id,
+            err: error,
+            queueName: QUEUE_NAMES.assetVideoReferenceVariant,
+            tenantId: candidate.tenant_id,
+          },
+          "reference video variant reconciliation failed",
+        );
+      }
     }
 
     return queued;
