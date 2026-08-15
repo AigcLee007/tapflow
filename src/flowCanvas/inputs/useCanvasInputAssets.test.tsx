@@ -157,6 +157,24 @@ describe("useCanvasInputAssets", () => {
     }));
   });
 
+  it("prefers a polled ready reference video status over a pending input snapshot", async () => {
+    getAsset.mockResolvedValue(makeAsset({
+      height: 1080,
+      id: "asset-video",
+      kind: "video",
+      metadata: { referenceVideoVariantStatus: "ready" },
+      width: 1920,
+    }));
+    getAssetVariantUrl.mockResolvedValue({ expiresAt: "2026-08-08T00:00:00.000Z", method: "GET", url: "https://cdn.test/clip.mp4" });
+
+    const { result } = renderHook(() => useCanvasInputAssets([{
+      ...videoInput,
+      referenceVideoVariantStatus: "pending",
+    }]));
+
+    await waitFor(() => expect(result.current.items[0].referenceVideoVariantStatus).toBe("ready"));
+  });
+
   it("replaces stale supplied URLs with freshly resolved image variants", async () => {
     getAsset.mockResolvedValue(makeAsset());
     getAssetVariantUrl.mockImplementation(async (_assetId: string, variant: string) => ({

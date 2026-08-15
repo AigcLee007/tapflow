@@ -179,7 +179,7 @@ export function useCanvasInputAssets(items: CanvasInputItem[]) {
         hoverPreviewUrl,
         previewState: hasPreview ? "ready" : resolved.previewState,
         previewUrl,
-        referenceVideoVariantStatus: item.referenceVideoVariantStatus ?? resolved.referenceVideoVariantStatus,
+        referenceVideoVariantStatus: resolved.referenceVideoVariantStatus ?? item.referenceVideoVariantStatus,
         thumbnailUrl,
         title: item.title || resolved.title || item.title,
         width: item.width ?? resolved.width,

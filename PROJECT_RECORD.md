@@ -3,6 +3,12 @@
 Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
 
+## 2026-08-15 - Reference Video Processing Status Refresh
+
+- fixed the canvas input asset projection so the newest server-polled reference-video variant status takes precedence over the persisted node snapshot. A high-resolution reference video now moves from `pending` to `ready` in the canvas when background preparation completes, restoring generation without requiring users to re-upload or refresh manually.
+- the persisted status remains a fallback only when asset metadata cannot be resolved; `failed` continues to reach the existing re-upload guidance.
+- added a hook regression for the `pending` snapshot to polled `ready` transition. Focused frontend tests and production build validation are required before deployment.
+
 ## 2026-08-15 - Automatic H3video Reference Video 720p Variants
 
 - video uploads and workflow-produced videos now keep their original object and enqueue the ID-only `asset.video-reference-variant` job after persistence. The Worker probes the source and, only when needed, creates the internal `reference-720p` H.264/AAC MP4 variant in an asset-local `variants/` object path, with orientation-safe `1280x720` or `720x1280` bounds. A periodic Worker reconciliation scan requeues pending and legacy unmarked video assets after process/Redis failures; failed assets remain failed until re-uploaded. `ASSET_VIDEO_REFERENCE_VARIANT_CONCURRENCY` defaults to `1` and is included in the staging environment template and Compose service environment.
