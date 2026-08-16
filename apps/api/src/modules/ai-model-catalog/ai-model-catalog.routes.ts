@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { performance } from "node:perf_hooks";
 import { ZodError } from "zod";
 
 import {
@@ -89,7 +90,11 @@ export function registerAiModelCatalogRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const query = modelCatalogBundleQuerySchema.parse(request.query) as ModelCatalogBundleQuery;
-        return reply.send(await app.aiModelCatalogService.listBundle(getTenantContext(request), query));
+        const startedAt = performance.now();
+        const result = await app.aiModelCatalogService.listBundleWithDiagnostics(getTenantContext(request), query);
+        reply.header("X-AI-Catalog-Cache", result.cacheStatus);
+        reply.header("Server-Timing", `ai_catalog;dur=${(performance.now() - startedAt).toFixed(1)}`);
+        return reply.send(result.bundle);
       } catch (error) {
         return handleRouteError(error, request, reply);
       }

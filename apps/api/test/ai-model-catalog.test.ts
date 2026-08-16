@@ -121,6 +121,8 @@ describeWithDatabase("ai model catalog API", () => {
         });
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual(expect.objectContaining({ models: expect.any(Array), routesByModelKey: expect.any(Object) }));
+        expect(response.headers["x-ai-catalog-cache"]).toMatch(/^(MISS|BYPASS)$/);
+        expect(response.headers["server-timing"]).toMatch(/^ai_catalog;dur=\d+\.\d$/);
         await api.close();
       } finally {
         await appPool.end();

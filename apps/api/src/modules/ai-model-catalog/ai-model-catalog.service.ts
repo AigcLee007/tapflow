@@ -112,6 +112,11 @@ export type ModelCatalogBundleView = {
   routesByModelKey: Record<string, ModelCatalogRouteView[]>;
 };
 
+export type ModelCatalogBundleDiagnostics = {
+  bundle: ModelCatalogBundleView;
+  cacheStatus: "BYPASS" | "HIT" | "MISS";
+};
+
 export type ModelCatalogRouteView = {
   capabilities: {
     aspectRatios?: string[];
@@ -180,16 +185,35 @@ export class AiModelCatalogService {
     context: TenantContext,
     query: ModelCatalogBundleQuery,
   ): Promise<ModelCatalogBundleView> {
+    return (await this.listBundleWithDiagnostics(context, query)).bundle;
+  }
+
+  async listBundleWithDiagnostics(
+    context: TenantContext,
+    query: ModelCatalogBundleQuery,
+  ): Promise<ModelCatalogBundleDiagnostics> {
     const cacheContext: AiModelCatalogCacheBundleContext = {
       environment: query.environment,
       modality: query.modality,
       tenantId: context.tenantId,
     };
     const cacheSnapshot = await this.createCacheSnapshot(cacheContext);
+    if (cacheSnapshot === null) {
+      return { bundle: await this.queryBundle(context, query), cacheStatus: "BYPASS" };
+    }
     const cachedBundle = await this.readCachedBundle(cacheContext, cacheSnapshot);
-    if (cachedBundle) return cachedBundle;
+    if (cachedBundle) return { bundle: cachedBundle, cacheStatus: "HIT" };
 
-    const bundle = await withTenantTransaction(context, async (client) => {
+    const bundle = await this.queryBundle(context, query);
+    await this.writeCachedBundle(cacheContext, bundle, cacheSnapshot);
+    return { bundle, cacheStatus: this.cache ? "MISS" : "BYPASS" };
+  }
+
+  private async queryBundle(
+    context: TenantContext,
+    query: ModelCatalogBundleQuery,
+  ): Promise<ModelCatalogBundleView> {
+    return withTenantTransaction(context, async (client) => {
       const models = (await queryCatalogModels(client, context, {
         modality: query.modality,
         environment: query.environment,
@@ -201,8 +225,6 @@ export class AiModelCatalogService {
       }));
       return { models, routesByModelKey };
     }, this.pool);
-    await this.writeCachedBundle(cacheContext, bundle, cacheSnapshot);
-    return bundle;
   }
 
   private async createCacheSnapshot(context: AiModelCatalogCacheBundleContext): Promise<string | null | undefined> {

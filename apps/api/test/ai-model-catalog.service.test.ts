@@ -32,6 +32,22 @@ describe("AiModelCatalogService route list", () => {
     expect(cache.set).not.toHaveBeenCalled();
   });
 
+  test("reports a cache hit with the cached bundle", async () => {
+    const cachedBundle = { models: [], routesByModelKey: {} };
+    const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
+      get: vi.fn(async () => cachedBundle),
+      set: vi.fn(async () => undefined),
+    };
+    const pool = { connect: vi.fn() };
+    const service = new AiModelCatalogService({ pool, cache } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listBundleWithDiagnostics(
+      { tenantId: "tenant-1", userId: "user-1" },
+      { modality: "image", environment: "production" },
+    )).resolves.toEqual({ bundle: cachedBundle, cacheStatus: "HIT" });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
   test("writes a database bundle after a cache miss", async () => {
     const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
       get: vi.fn(async () => null),

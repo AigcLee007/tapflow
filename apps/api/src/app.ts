@@ -36,6 +36,7 @@ import { AgentWorkflowLauncher } from "./modules/agent/agent-workflow-launcher.j
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import { registerAiModelCatalogRoutes } from "./modules/ai-model-catalog/ai-model-catalog.routes.js";
+import { RedisAiModelCatalogCache, type AiModelCatalogCache } from "./modules/ai-model-catalog/ai-model-catalog.cache.js";
 import { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
 import { registerAiModelConfigurationRoutes } from "./modules/ai-model-configurations/ai-model-configurations.routes.js";
 import { AiModelConfigurationsService } from "./modules/ai-model-configurations/ai-model-configurations.service.js";
@@ -174,6 +175,7 @@ export function buildApp(options?: {
   assetVideoReferenceVariantQueue?: AssetVideoReferenceVariantQueue | null;
   workflowRunsService?: WorkflowRunsService;
   agentExecutorService?: AgentExecutorService;
+  aiModelCatalogCache?: AiModelCatalogCache;
 }) {
   const env = options?.env ?? getApiEnv();
   const ownedPool = !options?.pool;
@@ -191,6 +193,17 @@ export function buildApp(options?: {
         prefix: env.queuePrefix,
       })
     : null;
+  const ownedAiModelCatalogCache = !options?.aiModelCatalogCache;
+  const aiModelCatalogRedisConnection = ownedAiModelCatalogCache
+    ? createRedisConnection({
+        connectTimeout: 1_000,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        redisUrl: env.redisUrl,
+      })
+    : null;
+  const aiModelCatalogCache = options?.aiModelCatalogCache
+    ?? new RedisAiModelCatalogCache(aiModelCatalogRedisConnection!);
   const storageProvider =
     options?.storageProvider ??
     new S3StorageProvider({
@@ -224,7 +237,10 @@ export function buildApp(options?: {
     credentialVault,
     pool,
   });
-  const aiModelCatalogService = new AiModelCatalogService({ pool });
+  const aiModelCatalogService = new AiModelCatalogService({
+    cache: aiModelCatalogCache,
+    pool,
+  });
   const aiModelConfigurationsService = new AiModelConfigurationsService({
     credentialVault,
     pluginRegistry: builtinAiPluginRegistry,
@@ -354,6 +370,7 @@ export function buildApp(options?: {
   app.decorate("adminService", adminService);
   app.decorate("agentService", agentService);
   app.decorate("aiGatewayService", aiGatewayService);
+  app.decorate("aiModelCatalogCache", aiModelCatalogCache);
   app.decorate("aiModelCatalogService", aiModelCatalogService);
   app.decorate("aiModelConfigurationsService", aiModelConfigurationsService);
   app.decorate("aiPluginService", aiPluginService);
@@ -439,6 +456,10 @@ export function buildApp(options?: {
 
     if (!ownedQueueHealthService && appRedisConnection) {
       await closeRedisConnection(appRedisConnection);
+    }
+
+    if (ownedAiModelCatalogCache && aiModelCatalogRedisConnection) {
+      await closeRedisConnection(aiModelCatalogRedisConnection);
     }
   });
 
