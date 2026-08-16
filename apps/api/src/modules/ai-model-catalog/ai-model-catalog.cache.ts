@@ -37,7 +37,12 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
       const key = await this.buildCacheKey(context);
       const serialized = await this.redis.get(key);
       if (!serialized) return null;
-      return JSON.parse(serialized) as ModelCatalogBundleView;
+      const parsed: unknown = JSON.parse(serialized);
+      if (!isModelCatalogBundle(parsed)) {
+        this.logError(new Error("invalid cached model catalog bundle"), "ai model catalog cache payload invalid");
+        return null;
+      }
+      return parsed;
     } catch (error) {
       this.logError(error, "ai model catalog cache read failed");
       return null;
@@ -104,4 +109,13 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
 function normalizeVersion(value: string | null): number {
   const version = Number.parseInt(value ?? "", 10);
   return Number.isSafeInteger(version) && version >= 0 ? version : 0;
+}
+
+function isModelCatalogBundle(value: unknown): value is ModelCatalogBundleView {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return Array.isArray(candidate.models)
+    && Boolean(candidate.routesByModelKey)
+    && typeof candidate.routesByModelKey === "object"
+    && !Array.isArray(candidate.routesByModelKey);
 }

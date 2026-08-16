@@ -88,4 +88,21 @@ describe("RedisAiModelCatalogCache", () => {
     await expect(cache.invalidateTenant(context.tenantId)).resolves.toBeUndefined();
     expect(logger.error).toHaveBeenCalled();
   });
+
+  test("treats malformed cached payloads as misses", async () => {
+    const logger = { error: vi.fn() };
+    const redis = createRedis({
+      get: vi.fn()
+        .mockResolvedValueOnce("0")
+        .mockResolvedValueOnce("0")
+        .mockResolvedValueOnce(JSON.stringify({ models: "invalid", routesByModelKey: {} })),
+    });
+    const cache = new RedisAiModelCatalogCache(redis, logger);
+
+    await expect(cache.get(context)).resolves.toBeNull();
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: expect.any(Error) },
+      "ai model catalog cache payload invalid",
+    );
+  });
 });
