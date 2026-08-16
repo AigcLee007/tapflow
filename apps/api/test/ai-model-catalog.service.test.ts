@@ -105,6 +105,7 @@ describe("AiModelCatalogService route list", () => {
     expect(routeSql).toContain("model.status = 'active'");
     expect(routeSql).toContain("route_install.status = 'published'");
     expect(routeSql).toContain("pricing.pricing_fallback_level");
+    expect(routeSql).toContain("COALESCE(model.model_key, $7::text, route.model_family)");
     expect(routeSql).toContain("route.route_key ASC");
     const routeCall = client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_routes AS route"));
     expect(routeCall?.[1]).toEqual([
@@ -114,7 +115,56 @@ describe("AiModelCatalogService route list", () => {
       "model-a",
       null,
       "model-a",
+      "model-a",
     ]);
+  });
+
+  test("keeps catalog model-key pricing fallback for model-id-less routes", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return { rows: [{
+            id: "catalog-1",
+            model_id: null,
+            model_key: "catalog-model",
+            modality: "image",
+            model_family: "shared-family",
+          }] };
+        }
+        return { rows: [{
+          estimated_credits: "4.5",
+          min_charge_credits: "1",
+          modality: "image",
+          model_capabilities: {},
+          model_family: "shared-family",
+          model_key: null,
+          pricing_metadata: null,
+          pricing_fallback_level: 1,
+          pricing_unit: "image_generation",
+          provider_key: "provider",
+          provider_name: "Provider",
+          request_config: {},
+          route_id: "route-1",
+          route_key: "route-1",
+          route_label: "Route 1",
+        }] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    const routes = await service.listRoutesForModel({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, "catalog-model", {});
+
+    expect(routes[0]?.pricing).toEqual({
+      billingBasis: null,
+      exact: true,
+      minChargeCredits: 1,
+      unit: "image_generation",
+      unitCredits: 4.5,
+    });
+    const routeSql = client.query.mock.calls.map(([sql]) => String(sql)).find((sql) => sql.includes("FROM ai_routes AS route"));
+    expect(routeSql).toContain("COALESCE(model.model_key, $7::text, route.model_family)");
   });
 
   test("preserves established safe image catalog capabilities while excluding unknown values", async () => {

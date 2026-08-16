@@ -222,6 +222,7 @@ export class AiModelCatalogService {
         modelFamily: selectedModel.model_family,
         modelId: selectedModel.model_id,
         modelKey: selectedModel.model_key,
+        pricingModelKey: selectedModel.model_key,
         environment: query.environment,
       });
       return rows.map(mapModelCatalogRoute);
@@ -243,6 +244,7 @@ type CatalogRouteQueryOptions = {
   modelFamily?: string | null;
   modelId?: string | null;
   modelKey?: string | null;
+  pricingModelKey?: string | null;
 };
 
 async function queryCatalogModels(
@@ -345,8 +347,8 @@ async function queryCatalogRoutes(
       LEFT JOIN LATERAL (
         SELECT mp.min_charge_credits, mp.unit_credits, mp.unit, mp.metadata,
           CASE
-            WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = route.route_key THEN 1
-            WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = 'default' THEN 2
+            WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, $7::text, route.model_family) AND mp.route = route.route_key THEN 1
+            WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, $7::text, route.model_family) AND mp.route = 'default' THEN 2
             WHEN mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default' THEN 3
             ELSE 4
           END AS pricing_fallback_level
@@ -359,8 +361,8 @@ async function queryCatalogRoutes(
             ELSE route.modality || '_generation'
           END
           AND (
-            (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = route.route_key)
-            OR (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = 'default')
+            (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, $7::text, route.model_family) AND mp.route = route.route_key)
+            OR (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, $7::text, route.model_family) AND mp.route = 'default')
             OR (mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default')
             OR (mp.provider = 'default' AND mp.model = 'default' AND mp.route = 'default')
           )
@@ -396,6 +398,7 @@ async function queryCatalogRoutes(
       options.modelFamily ?? null,
       options.modelId ?? null,
       options.modelKey ?? null,
+      options.pricingModelKey ?? null,
     ],
   );
   return result.rows;
