@@ -32,7 +32,16 @@ describe("AiModelCatalogService route list", () => {
     await expect(service.listBundle({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, { modality: "image", environment: "production" })).resolves.toEqual({
       models: [expect.objectContaining({ modelKey: "model-a" }), expect.objectContaining({ modelKey: "model-b" })],
       routesByModelKey: {
-        "model-a": [expect.objectContaining({ routeKey: "route-a", pricing: expect.objectContaining({ unitCredits: 1 }) }), expect.objectContaining({ routeKey: "route-a-2" })],
+        "model-a": [expect.objectContaining({
+          routeKey: "route-a",
+          pricing: {
+            billingBasis: null,
+            exact: true,
+            minChargeCredits: 1,
+            unit: "image_generation",
+            unitCredits: 1,
+          },
+        }), expect.objectContaining({ routeKey: "route-a-2" })],
         "model-b": [expect.objectContaining({ routeKey: "route-b" })],
       },
     });
@@ -40,6 +49,72 @@ describe("AiModelCatalogService route list", () => {
     const sqlText = client.query.mock.calls.map(([sql]) => String(sql)).join("\n");
     expect(sqlText).toContain("route_install.status = 'published'");
     expect(sqlText).toContain("available_install.status = 'published'");
+    expect(sqlText).toContain("available_provider.status = 'active'");
+    expect(sqlText).toContain("available_model.status = 'active'");
+    expect(sqlText).toContain("route.environment = $3::text");
+  });
+
+  test("shares catalog visibility filters for model lists", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await service.listModels({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, {
+      modality: "image",
+      environment: "staging",
+    });
+
+    const [sql, params] = client.query.mock.calls.find(([candidate]) => String(candidate).includes("FROM ai_model_catalog AS catalog")) ?? [];
+    expect(String(sql)).toContain("route.environment = $4::text");
+    expect(String(sql)).toContain("available_provider.status = 'active'");
+    expect(String(sql)).toContain("available_model.status = 'active'");
+    expect(String(sql)).toContain("available_install.status = 'published'");
+    expect(params).toEqual(["11111111-1111-1111-1111-111111111111", "image", null, "staging"]);
+  });
+
+  test("shares route visibility and stable ordering filters", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return { rows: [{
+            id: "catalog-1",
+            model_id: null,
+            model_key: "model-a",
+            modality: "image",
+            model_family: "model-a",
+          }] };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await service.listRoutesForModel({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, "model-a", {
+      environment: "staging",
+    });
+
+    const routeSql = client.query.mock.calls.map(([sql]) => String(sql)).find((sql) => sql.includes("FROM ai_routes AS route"));
+    expect(routeSql).toContain("route.environment = $3::text");
+    expect(routeSql).toContain("route.status = 'active'");
+    expect(routeSql).toContain("provider.status = 'active'");
+    expect(routeSql).toContain("model.status = 'active'");
+    expect(routeSql).toContain("route_install.status = 'published'");
+    expect(routeSql).toContain("pricing.pricing_fallback_level");
+    expect(routeSql).toContain("route.route_key ASC");
+    const routeCall = client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_routes AS route"));
+    expect(routeCall?.[1]).toEqual([
+      "11111111-1111-1111-1111-111111111111",
+      "image",
+      "staging",
+      "model-a",
+      null,
+      "model-a",
+    ]);
   });
 
   test("preserves established safe image catalog capabilities while excluding unknown values", async () => {
