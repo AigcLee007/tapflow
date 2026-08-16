@@ -37,6 +37,9 @@ describe("AiModelCatalogService route list", () => {
       },
     });
     expect(client.query.mock.calls.filter(([sql]) => typeof sql === "string" && sql.includes("FROM ai_model_catalog AS catalog") || typeof sql === "string" && sql.includes("FROM ai_routes AS route")).length).toBe(2);
+    const sqlText = client.query.mock.calls.map(([sql]) => String(sql)).join("\n");
+    expect(sqlText).toContain("route_install.status = 'published'");
+    expect(sqlText).toContain("available_install.status = 'published'");
   });
 
   test("preserves established safe image catalog capabilities while excluding unknown values", async () => {

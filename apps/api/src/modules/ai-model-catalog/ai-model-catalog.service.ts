@@ -202,6 +202,7 @@ export class AiModelCatalogService {
               SELECT 1 FROM ai_routes AS available_route
               JOIN ai_providers AS available_provider ON available_provider.id = available_route.provider_id
               LEFT JOIN ai_models AS available_model ON available_model.id = available_route.model_id
+              LEFT JOIN tenant_ai_plugin_installs AS available_install ON available_install.id = available_route.plugin_install_id
               WHERE (available_route.tenant_id = catalog.tenant_id OR available_route.tenant_id IS NULL)
                 AND available_route.status = 'active'
                 AND available_route.modality = catalog.modality
@@ -209,6 +210,7 @@ export class AiModelCatalogService {
                 AND available_route.environment = $3::text
                 AND available_provider.status = 'active'
                 AND (available_route.model_id IS NULL OR available_model.status = 'active')
+                AND (available_route.plugin_install_id IS NULL OR available_install.status = 'published')
             )
           ORDER BY catalog.model_family ASC,
             CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
@@ -237,6 +239,7 @@ export class AiModelCatalogService {
           FROM ai_routes AS route
           JOIN ai_providers AS provider ON provider.id = route.provider_id
           LEFT JOIN ai_models AS model ON model.id = route.model_id
+          LEFT JOIN tenant_ai_plugin_installs AS route_install ON route_install.id = route.plugin_install_id
           LEFT JOIN LATERAL (
             SELECT mp.min_charge_credits, mp.unit_credits, mp.unit, mp.metadata,
               CASE
@@ -261,6 +264,7 @@ export class AiModelCatalogService {
             AND route.environment = $3::text
             AND provider.status = 'active'
             AND (route.model_id IS NULL OR model.status = 'active')
+            AND (route.plugin_install_id IS NULL OR route_install.status = 'published')
           ORDER BY route.route_key ASC,
             CASE WHEN route.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
             route.priority ASC, route.weight DESC, route.updated_at DESC, route.id ASC
