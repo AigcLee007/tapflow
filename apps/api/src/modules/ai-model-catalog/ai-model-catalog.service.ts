@@ -181,6 +181,7 @@ export class AiModelCatalogService {
       const models = (await queryCatalogModels(client, context, {
         modality: query.modality,
         environment: query.environment,
+        tenantFirst: true,
       })).map(mapModelCatalogItem);
       const routesByModelKey = groupRoutesByModelKey(await queryCatalogRoutes(client, context, {
         modality: query.modality,
@@ -198,6 +199,7 @@ export class AiModelCatalogService {
       const rows = await queryCatalogModels(client, context, {
         modality: query.modality,
         environment: query.environment,
+        tenantFirst: false,
       });
       return rows.map(mapModelCatalogItem);
     }, this.pool);
@@ -212,6 +214,8 @@ export class AiModelCatalogService {
       const selectedModel = (await queryCatalogModels(client, context, {
         modelKey: modelKey.trim(),
         environment: query.environment,
+        requireAvailableRoute: false,
+        tenantFirst: true,
       }))[0];
       if (!selectedModel) {
         throw new AiModelCatalogApiError(404, "MODEL_NOT_FOUND", "Model catalog entry not found");
@@ -236,6 +240,8 @@ type CatalogModelQueryOptions = {
   environment?: string | null;
   modality?: string | null;
   modelKey?: string | null;
+  requireAvailableRoute?: boolean;
+  tenantFirst?: boolean;
 };
 
 type CatalogRouteQueryOptions = {
@@ -252,6 +258,30 @@ async function queryCatalogModels(
   context: TenantContext,
   options: CatalogModelQueryOptions,
 ): Promise<ModelCatalogRecord[]> {
+  const availabilityFilter = options.requireAvailableRoute === false ? "" : `
+        AND EXISTS (
+          SELECT 1
+          FROM ai_routes AS available_route
+          JOIN ai_providers AS available_provider
+            ON available_provider.id = available_route.provider_id
+          LEFT JOIN ai_models AS available_model
+            ON available_model.id = available_route.model_id
+          LEFT JOIN tenant_ai_plugin_installs AS available_install
+            ON available_install.id = available_route.plugin_install_id
+          WHERE (available_route.tenant_id = catalog.tenant_id OR available_route.tenant_id IS NULL)
+            AND available_route.status = 'active'
+            AND available_route.modality = catalog.modality
+            AND available_route.model_family = catalog.model_family
+            AND available_route.environment = $4::text
+            AND available_provider.status = 'active'
+            AND (available_route.model_id IS NULL OR available_model.status = 'active')
+            AND (available_route.plugin_install_id IS NULL OR available_install.status = 'published')
+        )`;
+  const catalogScopeOrder = options.tenantFirst
+    ? "CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC"
+    : "CASE WHEN catalog.tenant_id IS NULL THEN 0 ELSE 1 END ASC";
+  const params: Array<string | null> = [context.tenantId, options.modality ?? null, options.modelKey ?? null];
+  if (availabilityFilter) params.push(normalizeEnvironment(options.environment));
   const result = await client.query<ModelCatalogRecord>(
     `
       SELECT DISTINCT ON (catalog.model_family)
@@ -274,42 +304,15 @@ async function queryCatalogModels(
         AND ($2::text IS NULL OR catalog.modality = $2::text)
         AND ($3::text IS NULL OR catalog.model_key = $3::text OR catalog.model_family = $3::text)
         AND (catalog.plugin_install_id IS NULL OR install.status = 'published')
-        AND EXISTS (
-          SELECT 1
-          FROM ai_routes AS available_route
-          JOIN ai_providers AS available_provider
-            ON available_provider.id = available_route.provider_id
-          LEFT JOIN ai_models AS available_model
-            ON available_model.id = available_route.model_id
-          LEFT JOIN tenant_ai_plugin_installs AS available_install
-            ON available_install.id = available_route.plugin_install_id
-          WHERE (available_route.tenant_id = catalog.tenant_id OR available_route.tenant_id IS NULL)
-            AND available_route.status = 'active'
-            AND available_route.modality = catalog.modality
-            AND available_route.model_family = catalog.model_family
-            AND available_route.environment = $4::text
-            AND available_provider.status = 'active'
-            AND (available_route.model_id IS NULL OR available_model.status = 'active')
-            AND (available_route.plugin_install_id IS NULL OR available_install.status = 'published')
-            AND (
-              available_route.model_id IS NULL
-              OR available_route.model_id = catalog.model_id
-              OR available_model.model_key = catalog.model_key
-            )
-        )
+        ${availabilityFilter}
       ORDER BY
         catalog.model_family ASC,
-        CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
+        ${catalogScopeOrder},
         catalog.sort_order ASC,
         catalog.display_name ASC,
         catalog.model_key ASC
     `,
-    [
-      context.tenantId,
-      options.modality ?? null,
-      options.modelKey ?? null,
-      normalizeEnvironment(options.environment),
-    ],
+    params,
   );
   return result.rows;
 }

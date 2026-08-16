@@ -73,6 +73,27 @@ describe("AiModelCatalogService route list", () => {
     expect(String(sql)).toContain("available_model.status = 'active'");
     expect(String(sql)).toContain("available_install.status = 'published'");
     expect(params).toEqual(["11111111-1111-1111-1111-111111111111", "image", null, "staging"]);
+    expect(String(sql)).toContain("available_route.model_family = catalog.model_family");
+    expect(String(sql)).not.toContain("available_route.model_id = catalog.model_id");
+  });
+
+  test("preserves catalog duplicate-family ordering modes across endpoints", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+    const context = { tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" };
+
+    await service.listModels(context, { modality: "image", environment: "production" });
+    const listSql = String(client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_model_catalog AS catalog"))?.[0]);
+    expect(listSql).toContain("CASE WHEN catalog.tenant_id IS NULL THEN 0 ELSE 1 END ASC");
+
+    client.query.mockClear();
+    await service.listBundle(context, { modality: "image", environment: "production" });
+    const bundleSql = String(client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_model_catalog AS catalog"))?.[0]);
+    expect(bundleSql).toContain("CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC");
   });
 
   test("shares route visibility and stable ordering filters", async () => {
@@ -117,6 +138,25 @@ describe("AiModelCatalogService route list", () => {
       "model-a",
       "model-a",
     ]);
+  });
+
+  test("returns no routes for an active catalog model when the requested environment has none", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => sql.includes("FROM ai_model_catalog AS catalog")
+        ? { rows: [{ id: "catalog-1", model_id: null, model_key: "model-a", modality: "image", model_family: "model-a" }] }
+        : { rows: [] }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listRoutesForModel({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, "model-a", {
+      environment: "staging",
+    })).resolves.toEqual([]);
+
+    const catalogCall = client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_model_catalog AS catalog"));
+    expect(String(catalogCall?.[0])).not.toContain("EXISTS (");
+    expect(catalogCall?.[1]).toEqual(["11111111-1111-1111-1111-111111111111", null, "model-a"]);
   });
 
   test("keeps catalog model-key pricing fallback for model-id-less routes", async () => {
