@@ -1,8 +1,44 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { AiModelCatalogService } from "../src/modules/ai-model-catalog/ai-model-catalog.service.js";
+import { modelCatalogBundleQuerySchema } from "../src/modules/ai-model-catalog/ai-model-catalog.schemas.js";
 
 describe("AiModelCatalogService route list", () => {
+  test("parses bundle queries", () => {
+    expect(modelCatalogBundleQuerySchema.parse({ modality: "image" })).toEqual({ modality: "image", environment: "production" });
+    expect(() => modelCatalogBundleQuerySchema.parse({ modality: "audio" })).toThrow();
+  });
+
+  test("groups a model catalog bundle from exactly two queries", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return { rows: [
+            { capabilities: {}, default_route_key: "route-a", display_name: "Model A", id: "catalog-a", modality: "image", model_family: "model-a", model_id: null, model_key: "model-a", sort_order: 1, status: "active", ui_schema: {} },
+            { capabilities: {}, default_route_key: "route-b", display_name: "Model B", id: "catalog-b", modality: "image", model_family: "model-b", model_id: null, model_key: "model-b", sort_order: 2, status: "active", ui_schema: {} },
+          ] };
+        }
+        return { rows: [
+          { capabilities: {}, estimated_credits: "1", min_charge_credits: "1", modality: "image", model_capabilities: {}, model_family: "model-a", model_key: "model-a", pricing_unit: "image_generation", pricing_metadata: null, pricing_fallback_level: 1, provider_key: "provider", provider_name: "Provider", request_config: {}, route_id: "route-a-id", route_key: "route-a", route_label: "Route A" },
+          { capabilities: {}, estimated_credits: "2", min_charge_credits: "2", modality: "image", model_capabilities: {}, model_family: "model-a", model_key: "model-a", pricing_unit: "image_generation", pricing_metadata: null, pricing_fallback_level: 1, provider_key: "provider", provider_name: "Provider", request_config: {}, route_id: "route-a-2-id", route_key: "route-a-2", route_label: "Route A2" },
+          { capabilities: {}, estimated_credits: "3", min_charge_credits: "3", modality: "image", model_capabilities: {}, model_family: "model-b", model_key: "model-b", pricing_unit: "image_generation", pricing_metadata: null, pricing_fallback_level: 1, provider_key: "provider", provider_name: "Provider", request_config: {}, route_id: "route-b-id", route_key: "route-b", route_label: "Route B" },
+        ] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listBundle({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, { modality: "image", environment: "production" })).resolves.toEqual({
+      models: [expect.objectContaining({ modelKey: "model-a" }), expect.objectContaining({ modelKey: "model-b" })],
+      routesByModelKey: {
+        "model-a": [expect.objectContaining({ routeKey: "route-a" }), expect.objectContaining({ routeKey: "route-a-2" })],
+        "model-b": [expect.objectContaining({ routeKey: "route-b" })],
+      },
+    });
+    expect(client.query.mock.calls.filter(([sql]) => typeof sql === "string" && sql.includes("FROM ai_model_catalog AS catalog") || typeof sql === "string" && sql.includes("FROM ai_routes AS route")).length).toBe(2);
+  });
+
   test("preserves established safe image catalog capabilities while excluding unknown values", async () => {
     const client = {
       query: vi.fn(async () => ({

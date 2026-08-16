@@ -8,9 +8,11 @@ import {
 } from "../../http/auth-middleware.js";
 import {
   type ModelCatalogParams,
+  type ModelCatalogBundleQuery,
   type ModelCatalogQuery,
   type ModelCatalogRoutesQuery,
   modelCatalogParamsSchema,
+  modelCatalogBundleQuerySchema,
   modelCatalogQuerySchema,
   modelCatalogRoutesQuerySchema,
 } from "./ai-model-catalog.schemas.js";
@@ -80,6 +82,19 @@ function handleRouteError(
 
 export function registerAiModelCatalogRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant, requirePermission("flow:run")];
+
+  app.get(
+    "/api/v2/ai/model-catalog/bundle",
+    { preHandler: authHandlers },
+    async (request, reply) => {
+      try {
+        const query = modelCatalogBundleQuerySchema.parse(request.query) as ModelCatalogBundleQuery;
+        return reply.send(await app.aiModelCatalogService.listBundle(getTenantContext(request), query));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
 
   app.get(
     "/api/v2/ai/model-catalog",

@@ -7,6 +7,11 @@ export const modelCatalogQuerySchema = z.object({
   modality: z.enum(["image", "text", "video"]).optional(),
 });
 
+export const modelCatalogBundleQuerySchema = z.object({
+  modality: z.enum(["image", "video", "text"]),
+  environment: z.string().trim().min(1).default("production"),
+});
+
 export const modelCatalogParamsSchema = z.object({
   modelKey: modelKeySchema,
 });
@@ -17,4 +22,5 @@ export const modelCatalogRoutesQuerySchema = z.object({
 
 export type ModelCatalogParams = z.infer<typeof modelCatalogParamsSchema>;
 export type ModelCatalogQuery = z.infer<typeof modelCatalogQuerySchema>;
+export type ModelCatalogBundleQuery = z.infer<typeof modelCatalogBundleQuerySchema>;
 export type ModelCatalogRoutesQuery = z.infer<typeof modelCatalogRoutesQuerySchema>;

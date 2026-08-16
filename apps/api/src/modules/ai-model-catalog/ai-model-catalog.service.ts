@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 
 import type {
+  ModelCatalogBundleQuery,
   ModelCatalogQuery,
   ModelCatalogRoutesQuery,
 } from "./ai-model-catalog.schemas.js";
@@ -105,6 +106,11 @@ export type ModelCatalogItemView = {
   uiSchema: Record<string, unknown>;
 };
 
+export type ModelCatalogBundleView = {
+  models: ModelCatalogItemView[];
+  routesByModelKey: Record<string, ModelCatalogRouteView[]>;
+};
+
 export type ModelCatalogRouteView = {
   capabilities: {
     aspectRatios?: string[];
@@ -165,6 +171,81 @@ export class AiModelCatalogService {
 
   constructor(options?: { pool?: Pool }) {
     this.pool = options?.pool ?? createPgPool();
+  }
+
+  async listBundle(
+    context: TenantContext,
+    query: ModelCatalogBundleQuery,
+  ): Promise<ModelCatalogBundleView> {
+    return withTenantTransaction(context, async (client) => {
+      const modelsResult = await client.query<ModelCatalogRecord>(
+        `
+          SELECT DISTINCT ON (catalog.model_family)
+            catalog.id::text AS id,
+            catalog.model_id::text AS model_id,
+            catalog.model_key,
+            catalog.display_name,
+            catalog.modality,
+            catalog.model_family,
+            catalog.default_route_key,
+            catalog.ui_schema,
+            catalog.capabilities,
+            catalog.sort_order,
+            catalog.status
+          FROM ai_model_catalog AS catalog
+          LEFT JOIN tenant_ai_plugin_installs AS install ON install.id = catalog.plugin_install_id
+          WHERE (catalog.tenant_id = $1::uuid OR catalog.tenant_id IS NULL)
+            AND catalog.status = 'active'
+            AND catalog.modality = $2::text
+            AND (catalog.plugin_install_id IS NULL OR install.status = 'published')
+          ORDER BY catalog.model_family ASC,
+            CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
+            catalog.sort_order ASC, catalog.display_name ASC, catalog.model_key ASC
+        `,
+        [context.tenantId, query.modality],
+      );
+      const routesResult = await client.query<ModelRouteRecord>(
+        `
+          SELECT DISTINCT ON (route.route_key)
+            route.id::text AS route_id,
+            route.route_key,
+            route.route_label,
+            route.modality,
+            route.model_family,
+            provider.key AS provider_key,
+            provider.name AS provider_name,
+            model.model_key,
+            COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
+            COALESCE(route.request_config, '{}'::jsonb) AS request_config,
+            NULL::text AS min_charge_credits,
+            NULL::text AS estimated_credits,
+            NULL::text AS pricing_unit,
+            NULL::jsonb AS pricing_metadata,
+            NULL::integer AS pricing_fallback_level
+          FROM ai_routes AS route
+          JOIN ai_providers AS provider ON provider.id = route.provider_id
+          LEFT JOIN ai_models AS model ON model.id = route.model_id
+          WHERE (route.tenant_id = $1::uuid OR route.tenant_id IS NULL)
+            AND route.status = 'active'
+            AND route.modality = $2::text
+            AND route.environment = $3::text
+            AND provider.status = 'active'
+            AND (route.model_id IS NULL OR model.status = 'active')
+          ORDER BY route.route_key ASC,
+            CASE WHEN route.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
+            route.priority ASC, route.weight DESC, route.updated_at DESC, route.id ASC
+        `,
+        [context.tenantId, query.modality, query.environment],
+      );
+      const models = modelsResult.rows.map(mapModelCatalogItem);
+      const routesByModelKey: Record<string, ModelCatalogRouteView[]> = {};
+      for (const row of routesResult.rows) {
+        const route = mapModelCatalogRoute(row);
+        const key = route.modelKey || route.modelFamily;
+        if (key) (routesByModelKey[key] ??= []).push(route);
+      }
+      return { models, routesByModelKey };
+    }, this.pool);
   }
 
   async listModels(

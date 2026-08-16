@@ -104,6 +104,31 @@ async function registerOwner(
 }
 
 describeWithDatabase("ai model catalog API", () => {
+  test("returns an authenticated model catalog bundle", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const api = buildTestApp(appPool);
+        const owner = await registerOwner(api, "catalog-bundle-owner@example.com", "Catalog Bundle Owner");
+        const response = await api.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: "/api/v2/ai/model-catalog/bundle?modality=image",
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual(expect.objectContaining({ models: expect.any(Array), routesByModelKey: expect.any(Object) }));
+        await api.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("publishes only safe Aittco text image input capabilities", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;
