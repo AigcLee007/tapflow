@@ -101,6 +101,27 @@ describe("useTextGenerationCatalog", () => {
     expect(listAiModelRoutesMock).not.toHaveBeenCalled();
   });
 
+  test("keeps available text models when another model route lookup fails", async () => {
+    const unavailableModel = {
+      ...catalogModel,
+      id: "catalog-text-unavailable",
+      modelKey: "unavailable-text-model",
+    };
+    listAiModelCatalogMock.mockResolvedValue([catalogModel, unavailableModel]);
+    listAiModelRoutesMock.mockImplementation((modelKey: string) => (
+      modelKey === catalogModel.modelKey
+        ? Promise.resolve([catalogRoute])
+        : Promise.reject(new Error("Model catalog request timed out"))
+    ));
+
+    const hook = renderHook(() => useTextGenerationCatalog(), { wrapper: authWrapper });
+
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+
+    expect(hook.result.current.error).toBeNull();
+    expect(hook.result.current.models.map((item) => item.id)).toEqual([catalogModel.modelKey]);
+  });
+
   test("exposes an error without fallback models and retries", async () => {
     listAiModelCatalogMock.mockRejectedValueOnce(new Error("catalog unavailable"));
     const hook = renderHook(() => useTextGenerationCatalog(), { wrapper: authWrapper });

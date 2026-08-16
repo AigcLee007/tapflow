@@ -83,8 +83,13 @@ async function loadCatalog(catalogKey: string, modality: string): Promise<VideoM
   };
   request.promise = listAiModelCatalog(modality).then(async (catalog) => {
     const applicable = catalog.filter((model) => model.modality === modality && model.status === "active");
-    const routes = await Promise.all(applicable.map(async (model) => [model.modelKey, await listAiModelRoutes(model.modelKey)] as const));
-    const options = toVideoModelOptions(catalog, Object.fromEntries(routes));
+    const routeResults = await Promise.allSettled(
+      applicable.map(async (model) => [model.modelKey, await listAiModelRoutes(model.modelKey)] as const),
+    );
+    const routesByModelKey = Object.fromEntries(
+      routeResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []),
+    );
+    const options = toVideoModelOptions(catalog, routesByModelKey);
     if (currentGeneration(catalogKey) === generation) {
       cache.set(catalogKey, { generation, options });
     }

@@ -45,6 +45,29 @@ describe("v2HttpClient auth refresh", () => {
   afterEach(() => {
     clearStoredAuth();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  test("aborts a request when its configured timeout elapses", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = apiGet("/ai/model-catalog?modality=video", { timeoutMs: 8_000 });
+    const rejection = expect(pending).rejects.toMatchObject({
+      name: "V2RequestTimeoutError",
+      timeoutMs: 8_000,
+    });
+    await vi.advanceTimersByTimeAsync(8_000);
+
+    expect(requestSignal?.aborted).toBe(true);
+    await rejection;
   });
 
   test("coalesces concurrent refreshes behind one refresh request", async () => {

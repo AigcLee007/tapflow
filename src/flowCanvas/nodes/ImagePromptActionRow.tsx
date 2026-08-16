@@ -5,6 +5,7 @@ import { ImageGenerateToolbar } from './ImageGenerateToolbar';
 type ImagePromptActionRowProps = {
   batchCount: number;
   creditsValue: string;
+  generationDisabled?: boolean;
   isGenerating: boolean;
   modelControl: React.ReactNode;
   settingsControl: React.ReactNode;
@@ -17,6 +18,7 @@ type ImagePromptActionRowProps = {
 export function ImagePromptActionRow({
   batchCount,
   creditsValue,
+  generationDisabled = false,
   isGenerating,
   modelControl,
   settingsControl,
@@ -89,6 +91,7 @@ export function ImagePromptActionRow({
             <ImageGenerateToolbar
               creditsLabel="点数"
               creditsValue={creditsValue}
+              disabled={generationDisabled}
               isGenerating={isGenerating}
               onGenerate={onGenerate}
             />
@@ -163,6 +166,7 @@ export function ImagePromptActionRow({
         <ImageGenerateToolbar
           creditsLabel="点数"
           creditsValue={creditsValue}
+          disabled={generationDisabled}
           isGenerating={isGenerating}
           onGenerate={onGenerate}
         />

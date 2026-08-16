@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Connection, Node, NodeProps } from "@xyflow/react";
 
-import { ImageNodeComponent } from "./FlowNodes";
+import { __resetImageModelCatalogCachesForTests, ImageNodeComponent } from "./FlowNodes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import type { FlowNodeData } from "../types";
 
@@ -17,6 +17,36 @@ const assetApiMocks = vi.hoisted(() => ({
 const workflowRunnerMocks = vi.hoisted(() => ({
   runBackendWorkflow: vi.fn(),
 }));
+const modelCatalogMocks = vi.hoisted(() => ({
+  listAiModelCatalog: vi.fn(),
+  listAiModelRoutes: vi.fn(),
+}));
+const activeCatalogModel = {
+  capabilities: {},
+  defaultRouteKey: "image.active",
+  displayName: "Active image model",
+  id: "catalog-active-image",
+  modality: "image" as const,
+  modelFamily: "active-image-model",
+  modelId: null,
+  modelKey: "active-image-model",
+  sortOrder: 10,
+  status: "active",
+  uiSchema: {},
+};
+const activeCatalogRoute = {
+  estimatedCredits: 1,
+  minChargeCredits: 1,
+  modality: "image",
+  modelFamily: "active-image-model",
+  modelKey: "active-image-model",
+  pricingUnit: "image_generation",
+  providerKey: "test-provider",
+  providerName: "Test provider",
+  routeId: "route-active",
+  routeKey: "image.active",
+  routeLabel: "线路一",
+};
 
 vi.mock("../../assets/assetApi", () => ({
   getAsset: (...args: unknown[]) => assetApiMocks.getAsset(...args),
@@ -28,6 +58,10 @@ vi.mock("../../assets/assetApi", () => ({
 vi.mock("../runtime/v2WorkflowRunner", () => ({
   markBackendRunLaunchFailed: vi.fn(),
   runBackendWorkflow: (...args: unknown[]) => workflowRunnerMocks.runBackendWorkflow(...args),
+}));
+vi.mock("../../services/v2AiModelCatalogApi", () => ({
+  listAiModelCatalog: (...args: unknown[]) => modelCatalogMocks.listAiModelCatalog(...args),
+  listAiModelRoutes: (...args: unknown[]) => modelCatalogMocks.listAiModelRoutes(...args),
 }));
 vi.mock("../text/useTextGenerationCatalog", () => ({ useTextGenerationCatalog: () => ({ error: null, loading: false, models: [], retry: vi.fn() }) }));
 vi.mock("../video/useVideoGenerationCatalog", () => ({ useVideoGenerationCatalog: () => ({ error: null, loading: false, models: [], retry: vi.fn() }) }));
@@ -77,6 +111,7 @@ function addImageTarget() {
 describe("ImageNodeComponent unified inputs", () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().newProject();
+    __resetImageModelCatalogCachesForTests();
     assetApiMocks.getAsset.mockReset();
     assetApiMocks.getAssetDownloadUrl.mockReset();
     assetApiMocks.getAssetVariantUrl.mockReset();
@@ -85,6 +120,34 @@ describe("ImageNodeComponent unified inputs", () => {
     assetApiMocks.getAsset.mockRejectedValue(new Error("offline"));
     workflowRunnerMocks.runBackendWorkflow.mockReset();
     workflowRunnerMocks.runBackendWorkflow.mockResolvedValue(undefined);
+    modelCatalogMocks.listAiModelCatalog.mockReset();
+    modelCatalogMocks.listAiModelRoutes.mockReset();
+    modelCatalogMocks.listAiModelCatalog.mockResolvedValue([activeCatalogModel]);
+    modelCatalogMocks.listAiModelRoutes.mockResolvedValue([activeCatalogRoute]);
+  });
+
+  it("does not request routes or enable generation for a disabled saved image model", async () => {
+    modelCatalogMocks.listAiModelCatalog.mockResolvedValue([]);
+    const target = useFlowCanvasStore.getState().addNode("image", { x: 480, y: 0 }, {
+      createdAt: 1,
+      generationPrompt: "local prompt",
+      generationStatus: "idle",
+      height: 220,
+      kind: "image",
+      modelId: "disabled-image-model",
+      routeKey: "image.disabled",
+      status: "idle",
+      title: "Disabled image model",
+      updatedAt: 1,
+      width: 320,
+    } as any, { selected: true });
+
+    render(<StoreBackedImageNode nodeId={target.id} />);
+
+    await waitFor(() => expect(modelCatalogMocks.listAiModelCatalog).toHaveBeenCalledWith("image"));
+
+    expect(modelCatalogMocks.listAiModelRoutes).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "开始生成" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("renders text and two image inputs while keeping prompt mentions image-only", async () => {
@@ -198,7 +261,9 @@ describe("ImageNodeComponent unified inputs", () => {
 
     render(<StoreBackedImageNode nodeId={target.id} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "开始生成" }));
+    const generate = await screen.findByRole("button", { name: "开始生成" }) as HTMLButtonElement;
+    await waitFor(() => expect(generate.disabled).toBe(false));
+    fireEvent.click(generate);
 
     await waitFor(() => expect(workflowRunnerMocks.runBackendWorkflow).toHaveBeenCalledWith({
       runMode: "target_node",

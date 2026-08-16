@@ -28,9 +28,20 @@ export class V2HttpError extends Error {
   }
 }
 
-type RequestOptions = {
+export class V2RequestTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms`);
+    this.name = "V2RequestTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export type RequestOptions = {
   auth?: boolean;
   retryOnUnauthorized?: boolean;
+  timeoutMs?: number;
 };
 
 type ErrorEnvelope = {
@@ -153,6 +164,28 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs?: number,
+): Promise<Response> {
+  const boundedTimeoutMs = typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : null;
+  if (!boundedTimeoutMs) return fetch(url, init);
+
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), boundedTimeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new V2RequestTimeoutError(boundedTimeoutMs);
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
+
 async function performRefreshAccessToken(): Promise<RefreshResponse> {
   const refreshToken = getStoredRefreshToken();
   if (!refreshToken) {
@@ -228,12 +261,14 @@ async function request<T>(
     headers.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${cleanPath(path)}`, {
+  const requestUrl = `${API_BASE_URL}${cleanPath(path)}`;
+  const requestInit: RequestInit = {
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
     headers,
     method,
-  });
+  };
+  const response = await fetchWithTimeout(requestUrl, requestInit, options.timeoutMs);
 
   if (
     useAuth &&
@@ -247,12 +282,10 @@ async function request<T>(
         ...headers,
         Authorization: `Bearer ${refreshed.accessToken}`,
       };
-      const retryResponse = await fetch(`${API_BASE_URL}${cleanPath(path)}`, {
-        body: body === undefined ? undefined : JSON.stringify(body),
-        cache: "no-store",
+      const retryResponse = await fetchWithTimeout(requestUrl, {
+        ...requestInit,
         headers: retryHeaders,
-        method,
-      });
+      }, options.timeoutMs);
       return parseResponse<T>(retryResponse);
     } catch (error) {
       if (shouldClearAuthAfterRefreshFailure(error)) {

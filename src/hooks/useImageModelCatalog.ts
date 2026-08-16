@@ -35,10 +35,8 @@ const loadV2ImageModelCatalog = () => {
 
 function mapV2CatalogToImageModels(
   items: AiModelCatalogItem[],
-  fallbackModels: ImageModelConfig[],
 ): ImageModelConfig[] {
-  const mapped = mapCatalogModelsToOptions(items, fallbackModels);
-  if (mapped.length === 0) return fallbackModels;
+  const mapped = mapCatalogModelsToOptions(items, []);
 
   return mapped.map((item, index) => {
     const sizeOptions = getSizeOptionsFromCatalogModel(item);
@@ -55,7 +53,7 @@ function mapV2CatalogToImageModels(
       iconKind: 'banana',
       id: item.id,
       isActive: true,
-      isDefaultModel: item.id === fallbackModels[0]?.id,
+      isDefaultModel: index === 0,
       label: item.label,
       modelFamily: item.modelFamily || item.modelKey || item.id,
       panelLayout: 'default',
@@ -114,8 +112,8 @@ export const useImageModelCatalog = () => {
   }, []);
 
   const models = useMemo(
-    () => mapV2CatalogToImageModels(v2Catalog, catalog.models),
-    [catalog.models, v2Catalog],
+    () => mapV2CatalogToImageModels(v2Catalog),
+    [v2Catalog],
   );
 
   return {

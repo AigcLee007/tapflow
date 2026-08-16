@@ -6627,3 +6627,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - added regression coverage for stale signed-URL replacement, automatic pre-expiry refresh, MP4 exclusion from `<img>`, video-icon fallback, and live prompt-mention thumbnail updates. Focused frontend validation passed with 98 tests; the existing PixelHub exact-request-body suite passed with 15 tests; the node-input static smoke suite passed with 54 tests; and `npm run build` passed.
 - the interactive `npm run smoke:node-input-tray` command was attempted twice but its internal `npx.cmd` Playwright CLI invocation timed out after 60 seconds before browser assertions began. Existing build warnings for Browserslist age, generated CSS `task` properties, mixed static/dynamic imports, and large chunks remain non-blocking.
 - Gemini and Sora provider request mapping files were intentionally left unchanged because their reference-field fixes were already verified before this frontend-only task.
+
+## 2026-08-16 - Model Catalog Loading Recovery
+
+- Model catalog and model-scoped route reads now abort after 8 seconds and surface a retryable frontend error instead of leaving Flow-node menus loading indefinitely.
+- Video and text catalogs retain models whose route lookup succeeds when another model route is unavailable or times out.
+- Image model options now fail closed against the active server catalog: no local fallback models or fallback runtime routes are injected, disabled saved models do not request routes, and their generation button remains disabled.
+- Image model menus explicitly show loading, empty, and retryable-error states.
+- Validation passed: 8 focused test files / 37 tests and `npm run build`. The image-node suite emitted existing jsdom media and React `act(...)` warnings; the build emitted existing Browserslist, dynamic-import, and chunk-size warnings.

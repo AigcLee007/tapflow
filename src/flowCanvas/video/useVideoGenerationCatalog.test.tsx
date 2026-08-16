@@ -108,7 +108,7 @@ describe("useVideoGenerationCatalog", () => {
 
     await waitFor(() => expect(first.result.current.loading).toBe(false));
 
-    expect(second.result.current.models.map((item) => item.label)).toEqual(["视频模型 1"]);
+    expect(second.result.current.models.map((item) => item.label)).toEqual(["Catalog video"]);
     expect(listAiModelCatalogMock).toHaveBeenCalledTimes(1);
     expect(listAiModelCatalogMock).toHaveBeenCalledWith("video");
     expect(listAiModelRoutesMock).toHaveBeenCalledTimes(1);
@@ -127,6 +127,27 @@ describe("useVideoGenerationCatalog", () => {
 
     await waitFor(() => expect(hook.result.current.models.map((item) => item.id)).toEqual(["catalog-video-1"]));
     expect(hook.result.current.error).toBeNull();
+  });
+
+  test("keeps available video models when another model route lookup fails", async () => {
+    const unavailableModel = {
+      ...model,
+      id: "catalog-video-unavailable",
+      modelKey: "video.unavailable",
+    };
+    listAiModelCatalogMock.mockResolvedValue([model, unavailableModel]);
+    listAiModelRoutesMock.mockImplementation((modelKey: string) => (
+      modelKey === model.modelKey
+        ? Promise.resolve([generationRoute])
+        : Promise.reject(new Error("Model catalog request timed out"))
+    ));
+
+    const hook = renderHook(() => useVideoGenerationCatalog(), { wrapper: authWrapper });
+
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+
+    expect(hook.result.current.error).toBeNull();
+    expect(hook.result.current.models.map((item) => item.id)).toEqual([model.id]);
   });
 
   test("keeps the retried catalog generation authoritative when an older request resolves later", async () => {

@@ -1,5 +1,7 @@
 import { apiGet, apiPost } from "./v2HttpClient";
 
+const MODEL_CATALOG_REQUEST_TIMEOUT_MS = 8_000;
+
 export type AiModelCatalogItem = {
   capabilities: Record<string, unknown>;
   defaultRouteKey: string | null;
@@ -73,12 +75,15 @@ export type AiRouteTestResult = {
 
 export function listAiModelCatalog(modality?: string): Promise<AiModelCatalogItem[]> {
   const query = modality ? `?modality=${encodeURIComponent(modality)}` : "";
-  return apiGet<AiModelCatalogItem[]>(`/ai/model-catalog${query}`);
+  return apiGet<AiModelCatalogItem[]>(`/ai/model-catalog${query}`, {
+    timeoutMs: MODEL_CATALOG_REQUEST_TIMEOUT_MS,
+  });
 }
 
 export function listAiModelRoutes(modelKey: string): Promise<AiModelCatalogRoute[]> {
   return apiGet<AiModelCatalogRoute[]>(
     `/ai/model-catalog/${encodeURIComponent(modelKey)}/routes`,
+    { timeoutMs: MODEL_CATALOG_REQUEST_TIMEOUT_MS },
   );
 }
 

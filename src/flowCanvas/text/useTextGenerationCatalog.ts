@@ -74,10 +74,13 @@ async function loadCatalog(catalogKey: string): Promise<TextModelOption[]> {
   const request: CatalogRequest = { generation, promise: Promise.resolve([]) };
   request.promise = listAiModelCatalog("text").then(async (catalog) => {
     const applicable = catalog.filter((model) => model.modality === "text" && model.status === "active");
-    const routes = await Promise.all(applicable.map(async (model) => (
+    const routeResults = await Promise.allSettled(applicable.map(async (model) => (
       [model.modelKey, await listAiModelRoutes(model.modelKey)] as const
     )));
-    const options = toTextModelOptions(catalog, Object.fromEntries(routes));
+    const routesByModelKey = Object.fromEntries(
+      routeResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []),
+    );
+    const options = toTextModelOptions(catalog, routesByModelKey);
     if (currentGeneration(catalogKey) === generation) cache.set(catalogKey, { generation, options });
     return options;
   }).finally(() => {

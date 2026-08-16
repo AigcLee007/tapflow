@@ -198,7 +198,6 @@ import {
 import { resolveActiveImageRuntimeRouteKey } from '../utils/imageRuntimeRouteSelection';
 import { formatImageCredits, getDisplayImageCredits, getOfficialImageRouteSizeCredits } from '../utils/imageRoutePricing';
 import type { RuntimeRouteOption } from '../utils/runtimeRouteOptions';
-import { getOfficialFallbackImageRuntimeRoutes } from '../utils/runtimeRouteOptions';
 import { getPromptBarDensity } from '../utils/promptBarDensity';
 import { NodeEditorSurface } from './NodeEditorSurface';
 import {
@@ -363,6 +362,13 @@ let imageModelCatalogRequest: Promise<AiModelCatalogItem[]> | null = null;
 const imageModelRoutesCache = new Map<string, RuntimeRouteOption[]>();
 const imageModelRoutesRequest = new Map<string, Promise<RuntimeRouteOption[]>>();
 
+export function __resetImageModelCatalogCachesForTests() {
+  imageModelCatalogCache = null;
+  imageModelCatalogRequest = null;
+  imageModelRoutesCache.clear();
+  imageModelRoutesRequest.clear();
+}
+
 const loadImageModelCatalogWithCache = () => {
   if (imageModelCatalogCache) return Promise.resolve(imageModelCatalogCache);
   if (!imageModelCatalogRequest) {
@@ -402,6 +408,8 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
   const [v2Catalog, setV2Catalog] = useState<AiModelCatalogItem[]>(() => imageModelCatalogCache ?? []);
   const [loading, setLoading] = useState(() => enabled && !imageModelCatalogCache);
   const [loaded, setLoaded] = useState(() => Boolean(imageModelCatalogCache));
+  const [error, setError] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
     if (enabled) setCatalog(getImageModelCatalogSnapshot());
@@ -416,12 +424,14 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
       setLoaded(true);
     }
     setLoading(!hasCache);
+    setError(null);
     void loadImageModelCatalogWithCache()
       .then((items) => {
         if (active) setV2Catalog(items);
       })
-      .catch(() => {
+      .catch((reason: unknown) => {
         if (active && !imageModelCatalogCache) setV2Catalog([]);
+        if (active) setError(reason instanceof Error ? reason.message : '模型目录加载失败');
       })
       .finally(() => {
         if (!active) return;
@@ -431,7 +441,7 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
     return () => {
       active = false;
     };
-  }, [enabled]);
+  }, [enabled, reloadVersion]);
 
   const models = useMemo(
     () => {
@@ -441,13 +451,19 @@ const useImageModelCatalogWhenNeeded = (enabled: boolean) => {
     [catalog.models, enabled, loaded, v2Catalog],
   );
 
-  return { models, loading, loaded };
+  const retry = useCallback(() => {
+    if (!enabled) return;
+    setError(null);
+    setLoaded(false);
+    setReloadVersion((value) => value + 1);
+  }, [enabled]);
+
+  return { models, loading, loaded, error, retry };
 };
 
 const getImageModelCatalogRouteLookupKey = (
-  modelId: string,
   catalogModel?: { modelFamily?: string | null; modelKey?: string | null } | null,
-) => String(catalogModel?.modelFamily || modelId || catalogModel?.modelKey || '').trim();
+) => String(catalogModel?.modelFamily || catalogModel?.modelKey || '').trim();
 
 const useModelScopedImageRoutes = (
   enabled: boolean,
@@ -2683,6 +2699,8 @@ const normalizePanoramaGenerateSize = (value: unknown): PanoramaGenerateSize => 
 };
 
 interface ImageModelRouteDropupProps {
+  catalogError?: string | null;
+  catalogLoading?: boolean;
   modelOptions: Array<{ id: string; label: string; sizeOptions?: string[] }>;
   currentModelId: string;
   currentRouteKey: string;
@@ -2690,9 +2708,12 @@ interface ImageModelRouteDropupProps {
   routesLoading?: boolean;
   onChangeModel: (modelId: string) => void;
   onChangeRoute: (routeKey: string) => void;
+  onRetryCatalog?: () => void;
 }
 
 const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
+  catalogError = null,
+  catalogLoading = false,
   modelOptions,
   currentModelId,
   currentRouteKey,
@@ -2700,6 +2721,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   routesLoading = false,
   onChangeModel,
   onChangeRoute,
+  onRetryCatalog,
 }) => {
   const [open, setOpen] = useState(false);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
@@ -2713,6 +2735,7 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
   const currentRouteLabel = currentRoute
     ? getUserFacingRouteLineLabel(currentRoute, currentRouteIndex)
     : knownRouteLineLabel;
+  const currentModelLabel = currentModel?.label || (catalogLoading ? '正在加载模型' : '暂无可用模型');
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
@@ -2727,13 +2750,26 @@ const ImageModelRouteDropup: React.FC<ImageModelRouteDropupProps> = ({
         title="选择模型与线路"
       >
         {IMAGE_MODEL_ICON_BY_ID[currentModelId] || <GoogleLogo />}
-        <span>{currentModel?.label || currentModelId}</span>
+        <span>{currentModelLabel}</span>
         {currentRouteLabel ? <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 500, lineHeight: 1.1 }}>· {currentRouteLabel}</span> : null}
         <ChevronDown size={14} color="#a1a1aa" />
       </button>
 
       {open && position ? createPortal(
         <div ref={menuRef} style={buildFixedImageMenuSurface(position)} className="sleek-scroll-y nodrag nopan nowheel">
+          {modelOptions.length === 0 ? (
+            <>
+              <div style={imageMenuSubHeader}>模型目录</div>
+              <div role="status" style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.35, padding: '8px 6px 10px' }}>
+                {catalogLoading ? '模型加载中...' : catalogError ? '模型目录加载失败' : '暂无可用模型'}
+              </div>
+              {catalogError && onRetryCatalog ? (
+                <button type="button" className="nodrag nopan" onClick={onRetryCatalog} style={imageMenuItem(false, false)}>
+                  <span className={MENU_ITEM_PRIMARY_CLASS}>重新加载</span>
+                </button>
+              ) : null}
+            </>
+          ) : null}
           {modelOptions.map((option) => {
             const active = option.id === currentModelId;
             const hovered = hoveredModelId === option.id;
@@ -4632,21 +4668,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
     label: model.label,
     sizeOptions: getSizeOptionsFromCatalogModel(model),
   }));
-  if (modelOptions.length === 0) {
-    modelOptions.push(
-      { id: 'pixellelabs.nano-banana-pro', label: 'Nano Banana Pro', sizeOptions: ['1k'] },
-      { id: 'pixellelabs.nano-banana-2', label: 'Nano Banana 2', sizeOptions: ['1k'] },
-      { id: 'gpt-image-2', label: 'GPT-Image-2', sizeOptions: ['1k', '2k', '4k'] },
-    );
-  }
 
-  const currentModelId = resolveV2ImageModelId(String(d.modelId || modelOptions[0]?.id || 'nano-banana-pro'));
+  const currentModelId = resolveV2ImageModelId(String(d.modelId || modelOptions[0]?.id || ''));
   const selectedCatalogModel = models.find((model) => model.id === currentModelId) || null;
-  const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(currentModelId, selectedCatalogModel);
+  const modelRouteLookupKey = getImageModelCatalogRouteLookupKey(selectedCatalogModel);
   const scopedRouteState = useModelScopedImageRoutes(Boolean(modelRouteLookupKey), modelRouteLookupKey);
-  const officialFallbackRuntimeRoutes = getOfficialFallbackImageRuntimeRoutes(currentModelId);
-  const modelRuntimeRoutes = scopedRouteState.routes.length ? scopedRouteState.routes : officialFallbackRuntimeRoutes;
-  const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[currentModelId] || '';
+  const modelRuntimeRoutes = scopedRouteState.routes;
+  const preferredRuntimeRouteKey = selectedCatalogModel?.defaultRouteKey || '';
   const normalizedCurrentRouteKey = normalizeImageRuntimeRouteKey(currentModelId, d.routeKey);
   const preferredRuntimeRoute = preferredRuntimeRouteKey
     ? modelRuntimeRoutes.find((route) => route.routeKey === preferredRuntimeRouteKey)
@@ -4699,13 +4727,10 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   const visibleRuntimeRoutes = modelRuntimeRoutes;
   const activePanoramaModelId = resolveV2ImageModelId(String(panoramaGenerateModelId || currentModelId));
   const selectedPanoramaCatalogModel = models.find((model) => model.id === activePanoramaModelId) || null;
-  const panoramaRouteLookupKey = getImageModelCatalogRouteLookupKey(activePanoramaModelId, selectedPanoramaCatalogModel);
+  const panoramaRouteLookupKey = getImageModelCatalogRouteLookupKey(selectedPanoramaCatalogModel);
   const panoramaScopedRouteState = useModelScopedImageRoutes(Boolean(panoramaRouteLookupKey), panoramaRouteLookupKey);
-  const panoramaRuntimeRoutes = (
-    panoramaScopedRouteState.routes.length
-      ? panoramaScopedRouteState.routes
-      : getOfficialFallbackImageRuntimeRoutes(activePanoramaModelId)
-  ).filter((route) => isImageGenerationModeSupportedByRoute(PANORAMA_GENERATION_MODE, route));
+  const panoramaRuntimeRoutes = panoramaScopedRouteState.routes
+    .filter((route) => isImageGenerationModeSupportedByRoute(PANORAMA_GENERATION_MODE, route));
   const panoramaRouteOptions = panoramaRuntimeRoutes.map((route, index) => ({
     label: getUserFacingRouteLabel(route, index),
     routeKey: route.routeKey,
@@ -5166,7 +5191,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
       const nextSize = nextSizes.includes(currentSize) ? currentSize : (nextSizes[0] || '1k');
       const fallbackRoute = getLowestCostImageRouteForModel(normalizedModelId, nextSize) || getSelectedImageRoute(normalizedModelId);
       const catalogModel = models.find((model) => model.id === normalizedModelId) || null;
-      const preferredRouteKey = catalogModel?.defaultRouteKey || IMAGE_RUNTIME_ROUTE_BY_MODEL_ID[normalizedModelId] || '';
+      const preferredRouteKey = catalogModel?.defaultRouteKey || '';
       const defaults = getDefaultParamsFromUiSchema(catalogModel?.uiSchema);
       updateNodeData(id, {
         modelId: normalizedModelId,
@@ -5190,13 +5215,13 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
   );
 
   useEffect(() => {
-    if (showNodeEditor && !scopedRouteState.loaded) return;
+    if (showNodeEditor && modelRouteLookupKey && !scopedRouteState.loaded) return;
     if (d.modelId === currentModelId && normalizedCurrentRouteKey === selectedModelRuntimeRoute?.routeKey) return;
     updateNodeData(id, {
       modelId: currentModelId,
       routeKey: selectedModelRuntimeRoute?.routeKey,
     });
-  }, [currentModelId, d.modelId, id, normalizedCurrentRouteKey, scopedRouteState.loaded, selectedModelRuntimeRoute?.routeKey, showNodeEditor, updateNodeData]);
+  }, [currentModelId, d.modelId, id, modelRouteLookupKey, normalizedCurrentRouteKey, scopedRouteState.loaded, selectedModelRuntimeRoute?.routeKey, showNodeEditor, updateNodeData]);
 
   useEffect(() => {
     if (!selectedRoute) return;
@@ -7548,9 +7573,12 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
             <ImagePromptActionRow
               batchCount={d.batchCount || 1}
               creditsValue={generationModeRunBlocker ? '未配置' : formatImageCredits(displayPointCost ?? 0)}
+              generationDisabled={!selectedRuntimeRoute?.routeKey}
               isGenerating={isGenerating}
               modelControl={(
                 <ImageModelRouteDropup
+                  catalogError={imageCatalogState.error}
+                  catalogLoading={imageCatalogState.loading}
                   modelOptions={modelOptions}
                   currentModelId={currentModelId}
                   currentRouteKey={currentRouteKey}
@@ -7558,6 +7586,7 @@ const ImageNodeHeavy = memo(function ImageNodeHeavy({
                   routesLoading={scopedRouteState.loading}
                   onChangeModel={applyModelSelection}
                   onChangeRoute={applyRouteSelection}
+                  onRetryCatalog={imageCatalogState.retry}
                 />
               )}
               settingsControl={(
