@@ -2,11 +2,56 @@ import { describe, expect, test, vi } from "vitest";
 
 import { AiModelCatalogService } from "../src/modules/ai-model-catalog/ai-model-catalog.service.js";
 import { modelCatalogBundleQuerySchema } from "../src/modules/ai-model-catalog/ai-model-catalog.schemas.js";
+import type { AiModelCatalogCache } from "../src/modules/ai-model-catalog/ai-model-catalog.cache.js";
 
 describe("AiModelCatalogService route list", () => {
   test("parses bundle queries", () => {
     expect(modelCatalogBundleQuerySchema.parse({ modality: "image" })).toEqual({ modality: "image", environment: "production" });
     expect(() => modelCatalogBundleQuerySchema.parse({ modality: "audio" })).toThrow();
+  });
+
+  test("returns a cached bundle without opening a database transaction", async () => {
+    const cachedBundle = { models: [], routesByModelKey: {} };
+    const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
+      get: vi.fn(async () => cachedBundle),
+      set: vi.fn(async () => undefined),
+    };
+    const pool = { connect: vi.fn() };
+    const service = new AiModelCatalogService({ pool, cache } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listBundle(
+      { tenantId: "tenant-1", userId: "user-1" },
+      { modality: "image", environment: "production" },
+    )).resolves.toBe(cachedBundle);
+    expect(cache.get).toHaveBeenCalledWith({
+      environment: "production",
+      modality: "image",
+      tenantId: "tenant-1",
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  test("writes a database bundle after a cache miss", async () => {
+    const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
+      get: vi.fn(async () => null),
+      set: vi.fn(async () => undefined),
+    };
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool, cache } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+    const context = { tenantId: "tenant-1", userId: "user-1" };
+    const query = { modality: "video", environment: "staging" };
+
+    await expect(service.listBundle(context, query)).resolves.toEqual({ models: [], routesByModelKey: {} });
+    expect(cache.get).toHaveBeenCalledWith({ ...query, tenantId: context.tenantId });
+    expect(cache.set).toHaveBeenCalledWith(
+      { ...query, tenantId: context.tenantId },
+      { models: [], routesByModelKey: {} },
+    );
   });
 
   test("groups a model catalog bundle from exactly two queries", async () => {

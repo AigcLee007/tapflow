@@ -7,6 +7,7 @@ import type {
   ModelCatalogQuery,
   ModelCatalogRoutesQuery,
 } from "./ai-model-catalog.schemas.js";
+import type { AiModelCatalogCache, AiModelCatalogCacheBundleContext } from "./ai-model-catalog.cache.js";
 
 type TenantContext = {
   tenantId: string;
@@ -168,16 +169,26 @@ export class AiModelCatalogApiError extends Error {
 
 export class AiModelCatalogService {
   readonly pool: Pool;
+  readonly cache?: Pick<AiModelCatalogCache, "get" | "set">;
 
-  constructor(options?: { pool?: Pool }) {
+  constructor(options?: { cache?: Pick<AiModelCatalogCache, "get" | "set">; pool?: Pool }) {
     this.pool = options?.pool ?? createPgPool();
+    this.cache = options?.cache;
   }
 
   async listBundle(
     context: TenantContext,
     query: ModelCatalogBundleQuery,
   ): Promise<ModelCatalogBundleView> {
-    return withTenantTransaction(context, async (client) => {
+    const cacheContext: AiModelCatalogCacheBundleContext = {
+      environment: query.environment,
+      modality: query.modality,
+      tenantId: context.tenantId,
+    };
+    const cachedBundle = await this.readCachedBundle(cacheContext);
+    if (cachedBundle) return cachedBundle;
+
+    const bundle = await withTenantTransaction(context, async (client) => {
       const models = (await queryCatalogModels(client, context, {
         modality: query.modality,
         environment: query.environment,
@@ -189,6 +200,26 @@ export class AiModelCatalogService {
       }));
       return { models, routesByModelKey };
     }, this.pool);
+    await this.writeCachedBundle(cacheContext, bundle);
+    return bundle;
+  }
+
+  private async readCachedBundle(context: AiModelCatalogCacheBundleContext): Promise<ModelCatalogBundleView | null> {
+    if (!this.cache) return null;
+    try {
+      return await this.cache.get(context);
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeCachedBundle(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView): Promise<void> {
+    if (!this.cache) return;
+    try {
+      await this.cache.set(context, bundle);
+    } catch {
+      // Cache failures must not turn a successful database response into an API error.
+    }
   }
 
   async listModels(
