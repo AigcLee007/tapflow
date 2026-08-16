@@ -32,7 +32,7 @@ describe("AiModelCatalogService route list", () => {
     await expect(service.listBundle({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, { modality: "image", environment: "production" })).resolves.toEqual({
       models: [expect.objectContaining({ modelKey: "model-a" }), expect.objectContaining({ modelKey: "model-b" })],
       routesByModelKey: {
-        "model-a": [expect.objectContaining({ routeKey: "route-a" }), expect.objectContaining({ routeKey: "route-a-2" })],
+        "model-a": [expect.objectContaining({ routeKey: "route-a", pricing: expect.objectContaining({ unitCredits: 1 }) }), expect.objectContaining({ routeKey: "route-a-2" })],
         "model-b": [expect.objectContaining({ routeKey: "route-b" })],
       },
     });

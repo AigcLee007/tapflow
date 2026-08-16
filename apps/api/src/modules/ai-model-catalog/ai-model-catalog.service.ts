@@ -198,11 +198,23 @@ export class AiModelCatalogService {
             AND catalog.status = 'active'
             AND catalog.modality = $2::text
             AND (catalog.plugin_install_id IS NULL OR install.status = 'published')
+            AND EXISTS (
+              SELECT 1 FROM ai_routes AS available_route
+              JOIN ai_providers AS available_provider ON available_provider.id = available_route.provider_id
+              LEFT JOIN ai_models AS available_model ON available_model.id = available_route.model_id
+              WHERE (available_route.tenant_id = catalog.tenant_id OR available_route.tenant_id IS NULL)
+                AND available_route.status = 'active'
+                AND available_route.modality = catalog.modality
+                AND available_route.model_family = catalog.model_family
+                AND available_route.environment = $3::text
+                AND available_provider.status = 'active'
+                AND (available_route.model_id IS NULL OR available_model.status = 'active')
+            )
           ORDER BY catalog.model_family ASC,
             CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC,
             catalog.sort_order ASC, catalog.display_name ASC, catalog.model_key ASC
         `,
-        [context.tenantId, query.modality],
+        [context.tenantId, query.modality, query.environment],
       );
       const routesResult = await client.query<ModelRouteRecord>(
         `
@@ -217,14 +229,32 @@ export class AiModelCatalogService {
             model.model_key,
             COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
             COALESCE(route.request_config, '{}'::jsonb) AS request_config,
-            NULL::text AS min_charge_credits,
-            NULL::text AS estimated_credits,
-            NULL::text AS pricing_unit,
-            NULL::jsonb AS pricing_metadata,
-            NULL::integer AS pricing_fallback_level
+            pricing.min_charge_credits::text AS min_charge_credits,
+            pricing.unit_credits::text AS estimated_credits,
+            pricing.unit AS pricing_unit,
+            pricing.metadata AS pricing_metadata,
+            pricing.pricing_fallback_level
           FROM ai_routes AS route
           JOIN ai_providers AS provider ON provider.id = route.provider_id
           LEFT JOIN ai_models AS model ON model.id = route.model_id
+          LEFT JOIN LATERAL (
+            SELECT mp.min_charge_credits, mp.unit_credits, mp.unit, mp.metadata,
+              CASE
+                WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = route.route_key THEN 1
+                WHEN mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = 'default' THEN 2
+                WHEN mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default' THEN 3
+                ELSE 4
+              END AS pricing_fallback_level
+            FROM model_pricing AS mp
+            WHERE mp.active = true
+              AND mp.unit = CASE route.modality WHEN 'image' THEN 'image_generation' WHEN 'video' THEN 'video_generation' WHEN 'text' THEN 'text_generation' ELSE route.modality || '_generation' END
+              AND ((mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = route.route_key)
+                OR (mp.provider = provider.key AND mp.model = COALESCE(model.model_key, route.model_family) AND mp.route = 'default')
+                OR (mp.provider = provider.key AND mp.model = 'default' AND mp.route = 'default')
+                OR (mp.provider = 'default' AND mp.model = 'default' AND mp.route = 'default'))
+            ORDER BY pricing_fallback_level ASC
+            LIMIT 1
+          ) AS pricing ON true
           WHERE (route.tenant_id = $1::uuid OR route.tenant_id IS NULL)
             AND route.status = 'active'
             AND route.modality = $2::text
