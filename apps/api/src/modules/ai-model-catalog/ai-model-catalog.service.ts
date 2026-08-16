@@ -169,9 +169,9 @@ export class AiModelCatalogApiError extends Error {
 
 export class AiModelCatalogService {
   readonly pool: Pool;
-  readonly cache?: Pick<AiModelCatalogCache, "get" | "set">;
+  readonly cache?: Pick<AiModelCatalogCache, "createSnapshot" | "get" | "set">;
 
-  constructor(options?: { cache?: Pick<AiModelCatalogCache, "get" | "set">; pool?: Pool }) {
+  constructor(options?: { cache?: Pick<AiModelCatalogCache, "createSnapshot" | "get" | "set">; pool?: Pool }) {
     this.pool = options?.pool ?? createPgPool();
     this.cache = options?.cache;
   }
@@ -185,7 +185,8 @@ export class AiModelCatalogService {
       modality: query.modality,
       tenantId: context.tenantId,
     };
-    const cachedBundle = await this.readCachedBundle(cacheContext);
+    const cacheSnapshot = await this.createCacheSnapshot(cacheContext);
+    const cachedBundle = await this.readCachedBundle(cacheContext, cacheSnapshot);
     if (cachedBundle) return cachedBundle;
 
     const bundle = await withTenantTransaction(context, async (client) => {
@@ -200,23 +201,38 @@ export class AiModelCatalogService {
       }));
       return { models, routesByModelKey };
     }, this.pool);
-    await this.writeCachedBundle(cacheContext, bundle);
+    await this.writeCachedBundle(cacheContext, bundle, cacheSnapshot);
     return bundle;
   }
 
-  private async readCachedBundle(context: AiModelCatalogCacheBundleContext): Promise<ModelCatalogBundleView | null> {
-    if (!this.cache) return null;
+  private async createCacheSnapshot(context: AiModelCatalogCacheBundleContext): Promise<string | null | undefined> {
+    if (!this.cache?.createSnapshot) return undefined;
     try {
-      return await this.cache.get(context);
+      return await this.cache.createSnapshot(context);
     } catch {
       return null;
     }
   }
 
-  private async writeCachedBundle(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView): Promise<void> {
+  private async readCachedBundle(context: AiModelCatalogCacheBundleContext, snapshot?: string | null): Promise<ModelCatalogBundleView | null> {
+    if (!this.cache) return null;
+    try {
+      return snapshot === undefined
+        ? await this.cache.get(context)
+        : await this.cache.get(context, snapshot);
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeCachedBundle(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView, snapshot?: string | null): Promise<void> {
     if (!this.cache) return;
     try {
-      await this.cache.set(context, bundle);
+      if (snapshot === undefined) {
+        await this.cache.set(context, bundle);
+      } else {
+        await this.cache.set(context, bundle, snapshot);
+      }
     } catch {
       // Cache failures must not turn a successful database response into an API error.
     }

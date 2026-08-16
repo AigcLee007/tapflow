@@ -1,6 +1,7 @@
 import type { ModelCatalogBundleView } from "./ai-model-catalog.service.js";
 
 export const AI_MODEL_CATALOG_CACHE_TTL_SECONDS = 30;
+export const AI_MODEL_CATALOG_CACHE_OPERATION_TIMEOUT_MS = 200;
 const GLOBAL_VERSION_KEY = "tapflow:ai-catalog:version:global";
 
 export type AiModelCatalogCacheBundleContext = {
@@ -20,8 +21,9 @@ export type AiModelCatalogCacheLogger = {
 };
 
 export interface AiModelCatalogCache {
-  get(context: AiModelCatalogCacheBundleContext): Promise<ModelCatalogBundleView | null>;
-  set(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView): Promise<void>;
+  createSnapshot?(context: AiModelCatalogCacheBundleContext): Promise<string | null>;
+  get(context: AiModelCatalogCacheBundleContext, snapshot?: string | null): Promise<ModelCatalogBundleView | null>;
+  set(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView, snapshot?: string | null): Promise<void>;
   invalidateGlobal(): Promise<void>;
   invalidateTenant(tenantId: string): Promise<void>;
 }
@@ -32,10 +34,19 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
     private readonly logger: AiModelCatalogCacheLogger = console,
   ) {}
 
-  async get(context: AiModelCatalogCacheBundleContext): Promise<ModelCatalogBundleView | null> {
+  async createSnapshot(context: AiModelCatalogCacheBundleContext): Promise<string | null> {
     try {
-      const key = await this.buildCacheKey(context);
-      const serialized = await this.redis.get(key);
+      return await this.buildCacheKey(context);
+    } catch (error) {
+      this.logError(error, "ai model catalog cache key resolution failed");
+      return null;
+    }
+  }
+
+  async get(context: AiModelCatalogCacheBundleContext, snapshot?: string | null): Promise<ModelCatalogBundleView | null> {
+    try {
+      const key = snapshot ?? await this.buildCacheKey(context);
+      const serialized = await this.withTimeout(this.redis.get(key));
       if (!serialized) return null;
       const parsed: unknown = JSON.parse(serialized);
       if (!isModelCatalogBundle(parsed)) {
@@ -49,10 +60,10 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
     }
   }
 
-  async set(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView): Promise<void> {
+  async set(context: AiModelCatalogCacheBundleContext, bundle: ModelCatalogBundleView, snapshot?: string | null): Promise<void> {
     try {
-      const key = await this.buildCacheKey(context);
-      await this.redis.set(key, JSON.stringify(bundle), "EX", AI_MODEL_CATALOG_CACHE_TTL_SECONDS);
+      const key = snapshot ?? await this.buildCacheKey(context);
+      await this.withTimeout(this.redis.set(key, JSON.stringify(bundle), "EX", AI_MODEL_CATALOG_CACHE_TTL_SECONDS));
     } catch (error) {
       this.logError(error, "ai model catalog cache write failed");
     }
@@ -60,7 +71,7 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
 
   async invalidateGlobal(): Promise<void> {
     try {
-      await this.redis.incr(GLOBAL_VERSION_KEY);
+      await this.withTimeout(this.redis.incr(GLOBAL_VERSION_KEY));
     } catch (error) {
       this.logError(error, "ai model catalog global cache invalidation failed");
     }
@@ -68,7 +79,7 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
 
   async invalidateTenant(tenantId: string): Promise<void> {
     try {
-      await this.redis.incr(this.tenantVersionKey(tenantId));
+      await this.withTimeout(this.redis.incr(this.tenantVersionKey(tenantId)));
     } catch (error) {
       this.logError(error, "ai model catalog tenant cache invalidation failed");
     }
@@ -90,7 +101,7 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
   }
 
   private async readVersion(key: string): Promise<number> {
-    return normalizeVersion(await this.redis.get(key));
+    return normalizeVersion(await this.withTimeout(this.redis.get(key)));
   }
 
   private tenantVersionKey(tenantId: string): string {
@@ -104,6 +115,20 @@ export class RedisAiModelCatalogCache implements AiModelCatalogCache {
       // Logging must never turn a cache bypass into a failed catalog response.
     }
   }
+
+  private async withTimeout<T>(operation: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("ai model catalog cache operation timed out")), AI_MODEL_CATALOG_CACHE_OPERATION_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
 }
 
 function normalizeVersion(value: string | null): number {
@@ -115,7 +140,13 @@ function isModelCatalogBundle(value: unknown): value is ModelCatalogBundleView {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
   return Array.isArray(candidate.models)
+    && candidate.models.every(isRecord)
     && Boolean(candidate.routesByModelKey)
     && typeof candidate.routesByModelKey === "object"
-    && !Array.isArray(candidate.routesByModelKey);
+    && !Array.isArray(candidate.routesByModelKey)
+    && Object.values(candidate.routesByModelKey as Record<string, unknown>).every((routes) => Array.isArray(routes) && routes.every(isRecord));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
