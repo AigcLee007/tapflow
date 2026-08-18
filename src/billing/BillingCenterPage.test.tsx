@@ -72,6 +72,16 @@ describe("BillingCenterPage", () => {
     expect(screen.queryByText("Pro")).toBeNull();
   });
 
+  test("places redeem code directly below recharge plans", async () => {
+    renderPage();
+
+    const rechargeSection = await screen.findByTestId("billing-recharge-section");
+    const activitySection = screen.getByTestId("billing-activity-section");
+
+    expect(within(rechargeSection).getByText("兑换码")).toBeTruthy();
+    expect(within(activitySection).queryByText("兑换码")).toBeNull();
+  });
+
   test("shows a Chinese wallet loading error without exposing the server error", async () => {
     getBillingSummaryMock.mockRejectedValueOnce(new Error("Unable to load wallet"));
     renderPage();
