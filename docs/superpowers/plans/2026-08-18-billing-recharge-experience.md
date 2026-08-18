@@ -420,4 +420,3 @@ git commit -m "docs: record recharge experience upgrade"
 - No secrets or authoritative payment state enter frontend storage.
 - Focused tests and npm run build pass, or infrastructure-only browser blocker is documented.
 - PROJECT_RECORD.md records final evidence.
-
