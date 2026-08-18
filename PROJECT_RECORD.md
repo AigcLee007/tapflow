@@ -6643,3 +6643,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - made recharge reachable from the authenticated shell balance, account menu, billing page, canvas toolbar, and workbench desktop/mobile headers. Billing now presents recharge before activity, while creator surfaces retain their current draft/context after opening the dialog.
 - added fail-closed insufficient-credit prompts for canvas and workbench generation. The prompt dispatches a recharge request before reserve/run work and never auto-submits the blocked generation after payment.
 - focused validation passed for recharge cards, checkout hook, payment state, canvas toolbar, workbench pricing/page, and billing page compatibility suites; `npm run build` passed. The existing auth-router locale assertion remains unrelated and expects legacy English labels; Browserslist, React `act(...)`, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-18 - Recharge Layout And Payment Modal Follow-Up
+
+- desktop recharge plans now use a four-column grid, with four loading skeletons so the loading and ready states keep the same geometry; narrower viewports retain responsive two-column or single-column behavior.
+- checkout creation now opens the shared centered recharge dialog from the billing page and other entry points. Payment QR/status content is no longer rendered inline below the billing recharge section; existing polling, mobile redirect, and payment APIs are unchanged.
+- focused billing, recharge-panel, and payment-status validation passed with 23 tests; `npm run build` passed. Existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
