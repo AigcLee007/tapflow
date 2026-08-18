@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
@@ -93,7 +93,7 @@ describe("BillingCenterPage", () => {
     expect(screen.queryByText("Unable to create payment checkout")).toBeNull();
   });
 
-  test("starts payment polling after checkout creation without a reload", async () => {
+  test("shows checkout-created payment QR inside the recharge dialog", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
     const paymentId = "payment-created-without-reload";
     createPaymentCheckoutMock.mockResolvedValueOnce({
@@ -111,10 +111,10 @@ describe("BillingCenterPage", () => {
       planKey: "credits_100",
       amountCents: 990,
       credits: 100,
-      status: "paid",
-      checkoutUrl: null,
-      qrCodeUrl: null,
-      expiresAtSnapshot: "2027-01-01T00:00:00.000Z",
+      status: "checkout_created",
+      checkoutUrl: "https://pay.example.test/order",
+      qrCodeUrl: "https://pay.example.test/qr",
+      expiresAtSnapshot: null,
     });
     renderPage();
 
@@ -122,8 +122,9 @@ describe("BillingCenterPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /￥9\.90/ }));
 
     await waitFor(() => expect(getPaymentMock).toHaveBeenCalledWith(paymentId));
-    await waitFor(() => expect(getBillingSummaryMock.mock.calls.length).toBeGreaterThan(1));
-    expect(await screen.findByText("已支付")).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "充值积分" });
+    expect(within(dialog).getByRole("img", { name: "支付二维码" }).getAttribute("src")).toBe("https://pay.example.test/qr");
+    expect(screen.queryByTestId("billing-inline-payment-status")).toBeNull();
   });
 
   test("confirms return state only after the owned payment API reports paid", async () => {

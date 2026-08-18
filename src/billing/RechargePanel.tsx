@@ -79,7 +79,8 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
       ) : null}
 
       {isLoadingLike ? (
-        <div className="mt-4 grid gap-3 lg:grid-cols-3" data-testid="recharge-plan-grid">
+        <div className="mt-4 grid gap-3 lg:grid-cols-4" data-testid="recharge-plan-grid">
+          <PlanSkeleton />
           <PlanSkeleton />
           <PlanSkeleton />
           <PlanSkeleton />
@@ -88,7 +89,7 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
 
       {status === "ready" ? (
         sortedPlans.length > 0 ? (
-          <div className="mt-4 grid gap-3 lg:grid-cols-3" data-testid="recharge-plan-grid">
+          <div className="mt-4 grid gap-3 lg:grid-cols-4" data-testid="recharge-plan-grid">
             {sortedPlans.map((plan) => {
               const isRecommended = plan.key === recommendedPlanKey;
               const isBusy = busyPlanKey === plan.key;

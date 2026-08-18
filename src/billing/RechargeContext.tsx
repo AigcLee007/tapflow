@@ -38,6 +38,7 @@ export function RechargeProvider({ children }: { children: React.ReactNode }) {
   const beginCheckout = useCallback(async (plan: RechargeCheckoutState["plans"][number]) => {
     const next = await checkout.startCheckout(plan);
     if (!next) return;
+    setDialogOpen(true);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("paymentId", next.id);

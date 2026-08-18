@@ -25,6 +25,7 @@ describe("RechargePanel", () => {
   const plans = [
     makePlan({ id: "plan-3", key: "plan-3", name: "旗舰创作", amountCents: 20000, credits: 3300, sortOrder: 30 }),
     makePlan({ id: "plan-1", key: "plan-1", name: "入门创作", amountCents: 990, credits: 100, sortOrder: 10 }),
+    makePlan({ id: "plan-4", key: "plan-4", name: "专业创作", amountCents: 30000, credits: 5000, sortOrder: 40 }),
     makePlan({ id: "plan-2", key: "plan-2", name: "进阶创作", amountCents: 5000, credits: 700, sortOrder: 20 }),
   ];
 
@@ -46,9 +47,9 @@ describe("RechargePanel", () => {
 
     expect(screen.getByRole("heading", { name: "充值积分" })).toBeTruthy();
     expect(screen.getByText("一次购买，立即到账，不自动续费")).toBeTruthy();
-    expect(screen.getByTestId("recharge-plan-grid").className).toContain("lg:grid-cols-3");
+    expect(screen.getByTestId("recharge-plan-grid").className).toContain("lg:grid-cols-4");
     expect(screen.getByText("入门创作")).toBeTruthy();
-    expect(screen.getAllByText("有效期 365 天")).toHaveLength(3);
+    expect(screen.getAllByText("有效期 365 天")).toHaveLength(4);
     expect(screen.queryByText(/首充|赠送|自动续费中/)).toBeNull();
   });
 
@@ -65,7 +66,7 @@ describe("RechargePanel", () => {
 
     expect(screen.getAllByText("推荐")).toHaveLength(1);
     const ctas = screen.getAllByRole("button", { name: /立即充值/ });
-    expect(ctas).toHaveLength(3);
+    expect(ctas).toHaveLength(4);
     expect(ctas[1].className).toContain("bg-white");
   });
 
@@ -108,7 +109,7 @@ describe("RechargePanel", () => {
       />,
     );
 
-    expect(screen.getAllByTestId("recharge-plan-skeleton")).toHaveLength(3);
+    expect(screen.getAllByTestId("recharge-plan-skeleton")).toHaveLength(4);
     expect(screen.queryByRole("button", { name: "立即充值" })).toBeNull();
   });
 

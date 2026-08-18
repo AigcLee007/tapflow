@@ -4,7 +4,6 @@ import { useAuth } from "../auth/useAuth";
 import { buildBillingActivityRows, getEmptyBillingDisplayCatalog, loadBillingDisplayCatalog, type BillingDisplayCatalog } from "./billingActivity";
 import { BillingActivityTable } from "./BillingActivityTable";
 import { BillingSummaryCards } from "./BillingSummaryCards";
-import { PaymentStatusPanel } from "./PaymentStatusPanel";
 import { RechargePanel } from "./RechargePanel";
 import { RechargeProvider, useRecharge, useRechargeContext } from "./RechargeContext";
 import { RedeemCodeBox } from "./RedeemCodeBox";
@@ -46,7 +45,6 @@ function BillingCenterPageContent() {
       <section className="mt-6" data-testid="billing-recharge-section">
         <RechargePanel busyPlanKey={recharge.busyPlanKey} onRetry={() => void recharge.loadPlans()} onSelect={(plan) => void recharge.beginCheckout(plan)} plans={recharge.plans} status={recharge.plansStatus} />
         {recharge.error ? <p className="mt-3 text-sm text-rose-200">{recharge.error}</p> : null}
-        {!recharge.dialogOpen ? <div className="mt-4"><PaymentStatusPanel payment={recharge.payment} /></div> : null}
       </section>
       <section className="mt-6" data-testid="billing-activity-section">
         <BillingActivityTable items={activityRows} />
