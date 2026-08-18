@@ -30,6 +30,7 @@ import { canAccessOperationsConsole, resolveProductRole } from "../auth/productR
 import { useAuth } from "../auth/useAuth";
 import { getAvailableCredits } from "../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
+import { useRecharge } from "../billing/RechargeContext";
 import {
   getAdminAiRouteStats,
   listPublishedAnnouncements,
@@ -57,7 +58,7 @@ const navItems = [
   { icon: Box, label: "生图工作台", path: WORKBENCH_ROUTE },
   { icon: BookOpen, label: "提示词广场", path: PROMPTS_ROUTE },
   { icon: Box, label: "素材库", path: ASSETS_ROUTE },
-  { icon: CreditCard, label: "账单充值", path: BILLING_ROUTE },
+  { icon: CreditCard, label: "账单", path: BILLING_ROUTE },
 ];
 
 function displayTenantName(name?: string | null) {
@@ -103,6 +104,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const productRole = resolveProductRole({ permissions, roles });
   const canAdmin = canAccessOperationsConsole(productRole);
   const { summary: billingSummary } = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
+  const recharge = useRecharge();
   const availableCredits = getAvailableCredits(billingSummary);
   const hasUnreadAnnouncements = announcements.some((notice) => !notice.isRead);
 
@@ -211,6 +213,15 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="relative flex min-w-0 items-center gap-4">
+            <button
+              className="hidden items-center gap-2 rounded-full border border-cyan-300/40 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 sm:inline-flex"
+              onClick={() => recharge.openRecharge({ source: "shell" })}
+              title="当前积分，点击充值"
+              type="button"
+            >
+              <span>{availableCredits?.toLocaleString() ?? "--"} 积分</span>
+              <span className="text-cyan-300">充值</span>
+            </button>
             <button
               aria-label="通知"
               ref={noticeLayer.triggerRef as React.RefObject<HTMLButtonElement>}
@@ -362,6 +373,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                   <div className="mt-3 text-xs text-slate-400">
                     身份：{getProductRoleLabel(productRole)}
                   </div>
+                  <button className="mt-4 w-full rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950" onClick={() => { accountLayer.closeLayer(); recharge.openRecharge({ source: "account" }); }} type="button">
+                    立即充值
+                  </button>
                 </div>
 
                 <div className={MENU_DIVIDER_CLASS} />

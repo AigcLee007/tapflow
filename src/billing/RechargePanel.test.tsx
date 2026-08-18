@@ -64,7 +64,7 @@ describe("RechargePanel", () => {
     );
 
     expect(screen.getAllByText("推荐")).toHaveLength(1);
-    const ctas = screen.getAllByRole("button", { name: "立即充值" });
+    const ctas = screen.getAllByRole("button", { name: /立即充值/ });
     expect(ctas).toHaveLength(3);
     expect(ctas[1].className).toContain("bg-white");
   });
@@ -80,7 +80,7 @@ describe("RechargePanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getAllByRole("button", { name: "立即充值" })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: /立即充值/ })[1]);
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(

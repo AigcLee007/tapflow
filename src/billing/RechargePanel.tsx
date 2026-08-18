@@ -116,6 +116,7 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
                   <div className="mt-4 text-3xl font-semibold text-white">{formatAmount(plan.amountCents)}</div>
                   <p className="mt-2 text-xs text-slate-400">{formatUnitPrice(plan)}</p>
                   <p className="mt-1 text-xs text-slate-400">有效期 {plan.validityDays} 天</p>
+                  <span className="sr-only">{plan.credits.toLocaleString()} 积分，有效期 {plan.validityDays} 天</span>
 
                   <div className="mt-auto pt-4">
                     <button
@@ -128,6 +129,7 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
                       ].join(" ")}
                       disabled={busyPlanKey !== null}
                       onClick={() => void onSelect(plan)}
+                      aria-label={`${formatAmount(plan.amountCents)} 立即充值`}
                       type="button"
                     >
                       {isBusy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
