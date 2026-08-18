@@ -27,6 +27,7 @@ type Props = {
   onDeleteGeneration: (generationId: string) => void;
   onDownloadOriginal: (result: WorkbenchResult, generation: WorkbenchGeneration) => void;
   onGenerate: () => void;
+  onRecharge: () => void;
   onOpenResult: (result: WorkbenchResult) => void;
   performanceTracker?: WorkbenchPerformanceTracker | null;
   onRegenerate: (generation: WorkbenchGeneration) => void;
@@ -49,6 +50,7 @@ export function WorkbenchMobileShell({
   onDeleteGeneration,
   onDownloadOriginal,
   onGenerate,
+  onRecharge,
   onOpenResult,
   performanceTracker,
   onRegenerate,
@@ -138,11 +140,12 @@ export function WorkbenchMobileShell({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
           <div className="flex h-10 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 text-[12px] font-black text-[#ffe35a]">
             <Coins size={13} />
             <span data-testid="workbench-mobile-credit-balance">{availableCredits?.toLocaleString() ?? "--"}</span>
           </div>
+          <button className="rounded-full border border-cyan-300/40 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100" onClick={onRecharge} type="button">充值积分</button>
         </div>
       </header>
 

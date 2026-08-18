@@ -6635,3 +6635,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Image model options now fail closed against the active server catalog: no local fallback models or fallback runtime routes are injected, disabled saved models do not request routes, and their generation button remains disabled.
 - Image model menus explicitly show loading, empty, and retryable-error states.
 - Validation passed: 8 focused test files / 37 tests and `npm run build`. The image-node suite emitted existing jsdom media and React `act(...)` warnings; the build emitted existing Browserslist, dynamic-import, and chunk-size warnings.
+
+## 2026-08-18 - Global One-Time Recharge Experience
+
+- replaced the narrow billing recharge panel with server-owned fixed-plan cards, stable desktop three-column/mobile one-column layout, a second-plan recommendation treatment, and explicit `一次购买，立即到账，不自动续费` copy without inventing bonus, discount, or subscription claims.
+- added a shared checkout hook and authenticated global recharge provider/dialog. Existing recharge-plan, checkout, payment-status, and billing-summary APIs remain unchanged; payment state is held in React state only, with `paymentId` recovery, 3-second polling, visibility rechecks, mobile checkout redirects, and paid-state balance invalidation.
+- made recharge reachable from the authenticated shell balance, account menu, billing page, canvas toolbar, and workbench desktop/mobile headers. Billing now presents recharge before activity, while creator surfaces retain their current draft/context after opening the dialog.
+- added fail-closed insufficient-credit prompts for canvas and workbench generation. The prompt dispatches a recharge request before reserve/run work and never auto-submits the blocked generation after payment.
+- focused validation passed for recharge cards, checkout hook, payment state, canvas toolbar, workbench pricing/page, and billing page compatibility suites; `npm run build` passed. The existing auth-router locale assertion remains unrelated and expects legacy English labels; Browserslist, React `act(...)`, mixed-import, and chunk-size warnings remain non-blocking.

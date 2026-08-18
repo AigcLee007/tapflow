@@ -18,6 +18,7 @@ import {
 } from "../flowCanvas/workbench/imageWorkbenchUtils";
 import { getWorkbenchAspectOptions, getWorkbenchModelSizeOptions } from "./workbenchModelParams";
 import { insertWorkbenchReferenceMention } from "./workbenchReferences";
+import { getWorkbenchEstimatedCredits } from "./workbenchPricing";
 import type { WorkbenchDraft } from "./workbenchTypes";
 
 type Props = {
@@ -119,12 +120,6 @@ function formatRouteLabel(route: RuntimeRouteOption) {
   const lower = route.routeKey.toLowerCase();
   if (lower.includes(".t3") || lower.includes("line-2") || lower.includes("route-2")) return "\u7ebf\u8def\u4e8c";
   return TEXT.routeOne;
-}
-
-function getEstimatedCredits(draft: WorkbenchDraft) {
-  const size = String(draft.size || "").toLowerCase();
-  const perImage = size === "2k" ? 2 : size === "4k" ? 4 : 4;
-  return Math.max(1, draft.quantity || 1) * perImage;
 }
 
 async function loadAssetPreviewUrl(assetId: string): Promise<AssetDownloadUrlResponse | null> {
@@ -359,7 +354,7 @@ export function WorkbenchComposer({
     () => [...pendingReferenceIds, ...draft.referenceUploadIds, ...draft.referenceAssetIds].slice(0, MAX_REFERENCE_COUNT),
     [draft.referenceAssetIds, draft.referenceUploadIds, pendingReferenceIds],
   );
-  const estimatedCredits = getEstimatedCredits(draft);
+  const estimatedCredits = getWorkbenchEstimatedCredits(draft);
   const hasPendingReferenceUploads = pendingReferenceIds.length > 0;
 
   const updateReferenceScroll = React.useCallback(() => {

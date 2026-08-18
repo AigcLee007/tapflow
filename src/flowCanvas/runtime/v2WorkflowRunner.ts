@@ -14,6 +14,7 @@ import {
   type WorkflowRunStreamHandle,
 } from '../../services/v2WorkflowRunsApi';
 import { getBillingSummary, listBillingPricing, type BillingPricingRow } from '../../billing/billingApi';
+import { requestRecharge } from '../../billing/rechargeRequest';
 import { useFlowCanvasStore } from '../store/flowCanvasStore';
 import type {
   FlowImageGenerationMode,
@@ -460,6 +461,11 @@ async function reserveCreditsForTargetNode(nodeId: string): Promise<CreditPrefli
     const localReservedCredits = getOptimisticReservedCredits();
     const effectiveAvailable = Math.max(availableCredits - localReservedCredits, 0);
     if (effectiveAvailable < estimatedCredits) {
+      requestRecharge({
+        availableCredits: effectiveAvailable,
+        requiredCredits: estimatedCredits,
+        source: 'canvas',
+      });
       const message = buildInsufficientCreditsMessage({
         availableCredits,
         balanceCredits,
