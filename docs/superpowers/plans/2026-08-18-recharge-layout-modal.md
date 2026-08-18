@@ -45,6 +45,7 @@ Expected: the current three-column token and inline-payment assumptions fail bef
 **Files:**
 - Modify: `src/billing/RechargePanel.tsx`
 - Modify: `src/billing/BillingCenterPage.tsx`
+- Modify: `src/billing/RechargeContext.tsx`
 - Modify: `src/billing/RechargeDialog.tsx`
 
 - [ ] **Step 1: Use four columns at the desktop breakpoint**
@@ -58,6 +59,10 @@ Keep the recharge section and its error message, but remove the `PaymentStatusPa
 - [ ] **Step 3: Make the dialog explicitly centered and viewport-safe**
 
 Keep the portal on `document.body`, add a dialog label that includes the current title, and use a centered fixed overlay with a bounded `max-h`. Keep body scroll locking, Escape, backdrop dismissal, close focus, and internal scrolling. Ensure the payment panel is rendered only within this dialog after checkout.
+
+- [ ] **Step 4: Open the dialog after an order is created from any entry point**
+
+In `RechargeContext.beginCheckout`, call `setDialogOpen(true)` after `startCheckout` returns a payment. This covers the billing page, where the user can select a plan before the dialog is open, while preserving the existing error path when checkout creation returns `null`.
 
 ### Task 3: Verify behavior and polish
 

@@ -30,7 +30,7 @@ export function RechargeDialog() {
   }, [recharge.dialogOpen, recharge.closeRecharge]);
 
   if (!recharge.dialogOpen || typeof document === "undefined") return null;
-  const title = recharge.payment ? "完成充值" : "充值积分";
+  const title = "充值积分";
   return createPortal(
     <div className="fixed inset-0 z-[2600] flex items-center justify-center bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) recharge.closeRecharge(); }}>
       <div aria-labelledby="recharge-dialog-title" aria-modal="true" className="flex max-h-[calc(100dvh-32px)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0f14] shadow-2xl" role="dialog">
