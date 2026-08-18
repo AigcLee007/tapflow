@@ -6649,3 +6649,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - desktop recharge plans now use a four-column grid, with four loading skeletons so the loading and ready states keep the same geometry; narrower viewports retain responsive two-column or single-column behavior.
 - checkout creation now opens the shared centered recharge dialog from the billing page and other entry points. Payment QR/status content is no longer rendered inline below the billing recharge section; existing polling, mobile redirect, and payment APIs are unchanged.
 - focused billing, recharge-panel, and payment-status validation passed with 23 tests; `npm run build` passed. Existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-19 - WeChat Scan-First Recharge Modal
+
+- redesigned the payment panel as a compact single-column scan-first checkout with a centered QR code, `微信扫码支付` heading, explicit `当前仅支持微信支付` copy, and a concise amount/credits/status summary.
+- removed the old nested payment-status card treatment; paid states now remain in the same modal with a success confirmation, while mobile checkout continues to use the existing redirect behavior.
+- focused recharge validation passed with 23 tests and `npm run build`; existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
