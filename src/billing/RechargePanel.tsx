@@ -11,18 +11,25 @@ export type RechargePanelProps = {
   status: "idle" | "loading" | "ready" | "error";
 };
 
+const PLAN_DISPLAY_NAMES: Record<string, string> = {
+  credits_100: "轻量尝鲜",
+  credits_700: "日常创作",
+  credits_1500: "高频创作",
+  credits_3300: "专业创作",
+};
+
 function formatAmount(cents: number): string {
   return `￥${(cents / 100).toFixed(2)}`;
 }
 
 function getBonusBreakdown(plan: RechargePlan): { baseCredits: number; bonusCredits: number } | null {
-  if (plan.amountCents === 990 && plan.credits === 100) {
-    return null;
-  }
-
-  const baseCredits = Math.floor(plan.amountCents / 1000) * 100;
+  const baseCredits = plan.key === "credits_100" ? 100 : Math.floor(plan.amountCents / 10);
   const bonusCredits = Math.max(plan.credits - baseCredits, 0);
   return bonusCredits > 0 ? { baseCredits, bonusCredits } : null;
+}
+
+function getPlanDisplayName(plan: RechargePlan): string {
+  return PLAN_DISPLAY_NAMES[plan.key] ?? plan.name;
 }
 
 function sortPlans(plans: RechargePlan[]): RechargePlan[] {
@@ -106,7 +113,7 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-white">{plan.name}</h3>
+                      <h3 className="text-sm font-semibold text-white">{getPlanDisplayName(plan)}</h3>
                     </div>
                     {isRecommended ? (
                       <span className="rounded-full border border-cyan-300/40 bg-cyan-300/12 px-2 py-1 text-[11px] font-semibold text-cyan-100">

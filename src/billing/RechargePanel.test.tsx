@@ -23,10 +23,10 @@ describe("RechargePanel", () => {
   const onRetry = vi.fn();
 
   const plans = [
-    makePlan({ id: "plan-3", key: "plan-3", name: "旗舰创作", amountCents: 20000, credits: 3300, sortOrder: 30 }),
-    makePlan({ id: "plan-1", key: "plan-1", name: "入门创作", amountCents: 990, credits: 100, sortOrder: 10 }),
-    makePlan({ id: "plan-4", key: "plan-4", name: "专业创作", amountCents: 30000, credits: 5000, sortOrder: 40 }),
-    makePlan({ id: "plan-2", key: "plan-2", name: "进阶创作", amountCents: 5000, credits: 700, sortOrder: 20 }),
+    makePlan({ id: "plan-3", key: "credits_1500", name: "1,500 AI credits", amountCents: 10000, credits: 1500, sortOrder: 30 }),
+    makePlan({ id: "plan-1", key: "credits_100", name: "100 AI credits", amountCents: 990, credits: 120, sortOrder: 10 }),
+    makePlan({ id: "plan-4", key: "credits_3300", name: "3,300 AI credits", amountCents: 20000, credits: 3300, sortOrder: 40 }),
+    makePlan({ id: "plan-2", key: "credits_700", name: "700 AI credits", amountCents: 5000, credits: 700, sortOrder: 20 }),
   ];
 
   beforeEach(() => {
@@ -47,11 +47,11 @@ describe("RechargePanel", () => {
 
     expect(screen.getByRole("heading", { name: "充值积分" })).toBeTruthy();
     expect(screen.getByTestId("recharge-plan-grid").className).toContain("lg:grid-cols-4");
-    expect(screen.getByText("入门创作")).toBeTruthy();
-    expect(screen.getByText("进阶创作").closest("article")?.textContent).toContain("基础 500 + 加赠 200");
-    expect(screen.getByText("旗舰创作").closest("article")?.textContent).toContain("基础 2,000 + 加赠 1,300");
-    expect(screen.getByText("专业创作").closest("article")?.textContent).toContain("基础 3,000 + 加赠 2,000");
-    expect(screen.queryByText("基础 99 + 加赠 1")).toBeNull();
+    expect(screen.getByText("轻量尝鲜").closest("article")?.textContent).toContain("基础 100 + 加赠 20");
+    expect(screen.getByText("日常创作").closest("article")?.textContent).toContain("基础 500 + 加赠 200");
+    expect(screen.getByText("高频创作").closest("article")?.textContent).toContain("基础 1,000 + 加赠 500");
+    expect(screen.getByText("专业创作").closest("article")?.textContent).toContain("基础 2,000 + 加赠 1,300");
+    expect(screen.queryByText(/AI credits/)).toBeNull();
     expect(screen.queryByText(/约 ￥.*\/ 积分/)).toBeNull();
     expect(screen.queryByText("一次购买，立即到账，不自动续费")).toBeNull();
     expect(screen.getAllByText("有效期 365 天")).toHaveLength(4);
@@ -69,7 +69,7 @@ describe("RechargePanel", () => {
       />,
     );
 
-    expect(screen.getByText("入门创作").closest("article")?.className).toContain("hover:-translate-y-1");
+    expect(screen.getByText("轻量尝鲜").closest("article")?.className).toContain("hover:-translate-y-1");
   });
 
   test("marks the second sorted plan as recommended and keeps its cta filled", () => {
@@ -106,8 +106,8 @@ describe("RechargePanel", () => {
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "plan-2",
-        key: "plan-2",
-        name: "进阶创作",
+        key: "credits_700",
+        name: "700 AI credits",
         amountCents: 5000,
         credits: 700,
         currency: "CNY",
@@ -115,6 +115,19 @@ describe("RechargePanel", () => {
         sortOrder: 20,
       }),
     );
+  });
+
+  test("falls back to the administrator name for an unknown plan key", () => {
+    render(
+      <RechargePanel
+        busyPlanKey={null}
+        onSelect={onSelect}
+        plans={[makePlan({ key: "credits_custom", name: "团队定制套餐" })]}
+        status="ready"
+      />,
+    );
+
+    expect(screen.getByText("团队定制套餐")).toBeTruthy();
   });
 
   test("renders loading skeletons with a stable three-card layout", () => {
