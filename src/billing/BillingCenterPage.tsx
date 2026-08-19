@@ -45,10 +45,10 @@ function BillingCenterPageContent() {
       <section className="mt-6" data-testid="billing-recharge-section">
         <RechargePanel busyPlanKey={recharge.busyPlanKey} onRetry={() => void recharge.loadPlans()} onSelect={(plan) => void recharge.beginCheckout(plan)} plans={recharge.plans} status={recharge.plansStatus} />
         {recharge.error ? <p className="mt-3 text-sm text-rose-200">{recharge.error}</p> : null}
+        <div className="mt-4"><RedeemCodeBox onRedeemed={refreshData} /></div>
       </section>
       <section className="mt-6" data-testid="billing-activity-section">
         <BillingActivityTable items={activityRows} />
-        <div className="mt-4"><RedeemCodeBox onRedeemed={refreshData} /></div>
       </section>
     </main>
   </div>;
