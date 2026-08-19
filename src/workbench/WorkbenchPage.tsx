@@ -15,6 +15,7 @@ import { HOME_ROUTE, WORKSPACE_ROUTE } from "../app/routes";
 import { getAssetVariantUrl } from "../assets/assetApi";
 import { useAuth } from "../auth/useAuth";
 import { getAvailableCredits } from "../billing/billingDisplay";
+import { useRecharge } from "../billing/RechargeContext";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
 import type { ImageModelConfig } from "../config/imageModels";
 import { downloadOriginalImage } from "../flowCanvas/utils/imageDownload";
@@ -28,6 +29,7 @@ import { WorkbenchMobileShell } from "./WorkbenchMobileShell";
 import { WorkbenchResultSheet } from "./WorkbenchResultSheet";
 import { useWorkbenchGenerations } from "./useWorkbenchGenerations";
 import type { WorkbenchDraft, WorkbenchGeneration, WorkbenchResult } from "./workbenchTypes";
+import { getWorkbenchEstimatedCredits } from "./workbenchPricing";
 
 function navigate(path: string) {
   window.history.pushState(null, "", path);
@@ -937,6 +939,15 @@ export function WorkbenchPage() {
   const isMobile = viewportWidth < 768;
   const { summary: billingSummary } = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
   const availableCredits = getAvailableCredits(billingSummary);
+  const recharge = useRecharge();
+  const handleGenerate = React.useCallback(() => {
+    const required = getWorkbenchEstimatedCredits(draft);
+    if (availableCredits !== null && availableCredits < required) {
+      recharge.openRecharge({ source: "workbench" });
+      return;
+    }
+    void submit(draft);
+  }, [availableCredits, draft, recharge, submit]);
 
   React.useEffect(() => {
     if (models.length === 0) return;
@@ -1055,7 +1066,8 @@ export function WorkbenchPage() {
             onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
             onDeleteGeneration={handleDeleteGeneration}
             onDownloadOriginal={handleDownloadOriginal}
-            onGenerate={() => void submit(draft)}
+            onGenerate={handleGenerate}
+            onRecharge={() => recharge.openRecharge({ source: "workbench" })}
             onOpenResult={openResultPreview}
             performanceTracker={tracker}
             onRegenerate={handleRegenerateFromGeneration}
@@ -1137,6 +1149,9 @@ export function WorkbenchPage() {
             <Coins size={14} />
             <span>{availableCredits?.toLocaleString() ?? "--"}</span>
           </div>
+          <button className="flex h-10 items-center rounded-[16px] border border-cyan-300/40 bg-cyan-300/12 px-3.5 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/20" onClick={() => recharge.openRecharge({ source: "workbench" })} type="button">
+            充值积分
+          </button>
           <button
             aria-label="通知"
             className="relative flex h-10 items-center gap-2 rounded-[16px] border border-white/10 bg-white/[0.06] px-3.5 text-sm font-bold text-slate-100 transition hover:bg-white/[0.12]"
@@ -1166,7 +1181,7 @@ export function WorkbenchPage() {
               isGenerating={submitting}
               models={models}
               onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-              onGenerate={() => void submit(draft)}
+              onGenerate={handleGenerate}
             />
 
             <WorkbenchDesktopResultFeed
@@ -1189,7 +1204,7 @@ export function WorkbenchPage() {
                 isGenerating={submitting}
                 models={models}
                 onChangeDraft={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-                onGenerate={() => void submit(draft)}
+                onGenerate={handleGenerate}
               />
             </div>
 

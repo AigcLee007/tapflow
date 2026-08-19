@@ -14,6 +14,7 @@ import { TemplateAdminListPage } from "../admin/templates/TemplateAdminListPage"
 import { getTemplateIdFromAdminPath } from "../admin/templates/templateAdminNavigation";
 import { ProviderSettingsPage } from "../account/ProviderSettingsPage";
 import { BillingCenterPage } from "../billing/BillingCenterPage";
+import { RechargeProvider } from "../billing/RechargeContext";
 import { FlowProjectPage } from "../flowCanvas/FlowProjectPage";
 import { WorkbenchPage } from "../workbench/WorkbenchPage";
 import { PromptPlazaPage } from "../prompts/PromptPlazaPage";
@@ -210,17 +211,19 @@ export function AppRouter() {
   return (
     <>
       <AuthGate>
-        {isProjectRoute(pathname) ? (
-          getProjectMode(pathname) === "workbench" ? <Redirect to={WORKBENCH_ROUTE} /> : <FlowProjectPage />
-        ) : pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`) ? (
-          <WorkbenchPage />
-        ) : (
-          <WorkspaceShell>
-            <div className="app-route-transition" key={getAppRouteTransitionKey(pathname)}>
-              <ProtectedRoutes pathname={pathname} />
-            </div>
-          </WorkspaceShell>
-        )}
+        <RechargeProvider>
+          {isProjectRoute(pathname) ? (
+            getProjectMode(pathname) === "workbench" ? <Redirect to={WORKBENCH_ROUTE} /> : <FlowProjectPage />
+          ) : pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`) ? (
+            <WorkbenchPage />
+          ) : (
+            <WorkspaceShell>
+              <div className="app-route-transition" key={getAppRouteTransitionKey(pathname)}>
+                <ProtectedRoutes pathname={pathname} />
+              </div>
+            </WorkspaceShell>
+          )}
+        </RechargeProvider>
       </AuthGate>
       <AppVersionReminder />
     </>
