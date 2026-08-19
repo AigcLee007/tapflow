@@ -6661,3 +6661,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - removed the verbose unit-price and renewal copy from recharge cards and the global recharge dialog, leaving the card hierarchy focused on total credits, price, validity, and the purchase action.
 - recharge cards now show baseline credits plus calculated bonus credits for qualifying plans; the ￥9.90 entry plan remains a simple 100-credit offer without an artificial `+1` bonus label.
 - added a restrained hover/focus lift and cyan shadow treatment with reduced-motion support; focused recharge validation passed after the copy and interaction update.
+
+## 2026-08-19 - User-Facing Recharge Plan Aliases
+
+- user recharge cards now map the four stable production plan keys to `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作` without changing administrator-owned plan names, database records, or payment snapshots; unknown plan keys continue to show the server-provided name.
+- corrected the `credits_100` presentation rule so a server-configured 120-credit entry plan displays `基础 100 + 加赠 20` instead of `基础 0 + 加赠 120`.
