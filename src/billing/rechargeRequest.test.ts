@@ -2,15 +2,29 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { RECHARGE_REQUEST_EVENT, requestRecharge } from "./rechargeRequest";
 
-describe("requestRecharge", () => {
-  afterEach(() => vi.restoreAllMocks());
+describe("rechargeRequest", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-  test("dispatches the typed browser event", () => {
+  test("emits one exact recharge request event", () => {
     const listener = vi.fn();
-    window.addEventListener(RECHARGE_REQUEST_EVENT, listener);
-    requestRecharge({ availableCredits: 1, requiredCredits: 2, source: "canvas" });
+    window.addEventListener(RECHARGE_REQUEST_EVENT, listener as EventListener);
+
+    const detail = { availableCredits: 120, requiredCredits: 340, source: "canvas" as const };
+    requestRecharge(detail);
+
     expect(listener).toHaveBeenCalledTimes(1);
-    expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ availableCredits: 1, requiredCredits: 2, source: "canvas" });
-    window.removeEventListener(RECHARGE_REQUEST_EVENT, listener);
+    expect((listener.mock.calls[0]?.[0] as CustomEvent<typeof detail>).detail).toEqual(detail);
+  });
+
+  test("does nothing when window is unavailable", () => {
+    vi.stubGlobal("window", undefined);
+
+    expect(() =>
+      requestRecharge({
+        source: "billing",
+      }),
+    ).not.toThrow();
   });
 });

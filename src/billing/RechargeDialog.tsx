@@ -18,22 +18,49 @@ export function RechargeDialog() {
   const recharge = useRecharge();
   const billingSnapshot = useBillingSummarySnapshot(true);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!recharge.dialogOpen) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") recharge.closeRecharge(); };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        recharge.closeRecharge();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener("keydown", handleKeyDown);
-    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", handleKeyDown); };
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
   }, [recharge.dialogOpen, recharge.closeRecharge]);
 
   if (!recharge.dialogOpen || typeof document === "undefined") return null;
-  const title = "充值积分";
+  const title = recharge.payment ? "完成充值" : "充值积分";
   return createPortal(
     <div className="fixed inset-0 z-[2600] flex items-center justify-center bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) recharge.closeRecharge(); }}>
-      <div aria-labelledby="recharge-dialog-title" aria-modal="true" className="flex max-h-[calc(100dvh-32px)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0f14] shadow-2xl" role="dialog">
+      <div aria-labelledby="recharge-dialog-title" aria-modal="true" className="flex max-h-[calc(100dvh-32px)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0f14] shadow-2xl" ref={dialogRef} role="dialog">
         <div className="flex shrink-0 items-center justify-between border-b border-white/8 px-5 py-4">
           <div><h2 className="text-lg font-semibold text-white" id="recharge-dialog-title">{title}</h2><p className="mt-1 text-xs text-slate-400">当前可用 {getAvailableCredits(billingSnapshot.summary)?.toLocaleString() ?? "--"} 积分</p></div>
           <button aria-label="关闭充值" className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white" onClick={recharge.closeRecharge} ref={closeRef} type="button"><X size={18} /></button>

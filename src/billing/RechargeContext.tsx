@@ -17,7 +17,7 @@ const RechargeContext = createContext<RechargeContextValue | null>(null);
 
 export function RechargeProvider({ children }: { children: React.ReactNode }) {
   const initialPaymentId = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("paymentId");
-  const checkout = useRechargeCheckout(initialPaymentId);
+  const checkout = useRechargeCheckout({ initialPaymentId });
   const billingSnapshot = useBillingSummarySnapshot(true);
   const [dialogOpen, setDialogOpen] = useState(Boolean(initialPaymentId));
   const [prompt, setPrompt] = useState<RechargeRequestDetail | null>(null);
@@ -38,7 +38,6 @@ export function RechargeProvider({ children }: { children: React.ReactNode }) {
   const beginCheckout = useCallback(async (plan: RechargeCheckoutState["plans"][number]) => {
     const next = await checkout.startCheckout(plan);
     if (!next) return;
-    setDialogOpen(true);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("paymentId", next.id);

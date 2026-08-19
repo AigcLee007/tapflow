@@ -8,5 +8,5 @@ export type RechargeRequestDetail = {
 
 export function requestRecharge(detail: RechargeRequestDetail): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent<RechargeRequestDetail>(RECHARGE_REQUEST_EVENT, { detail }));
+  window.dispatchEvent(new CustomEvent(RECHARGE_REQUEST_EVENT, { detail }));
 }

@@ -3,6 +3,12 @@
 Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
 
+## 2026-08-19 - Canvas-first Agent + Skill Product Design
+
+- Confirmed the product direction: the canvas remains the primary workspace, the right-side Agent is the control layer, and LibTV-style Skills are reusable professional creation guides.
+- Confirmed first-release scope: conversational Skill authoring, editable private Skill drafts, official Skills, image and video production, key-step approval, asset-backed outputs, and canvas write-back. Public marketplace, ratings, multi-agent roles, and long-term memory remain deferred.
+- Added the design and implementation plan: `docs/superpowers/specs/2026-08-19-agent-skill-product-design.md` and `docs/superpowers/plans/2026-08-19-agent-skill-product-plan.md`.
+
 ## 2026-08-15 - Sole Default AI Route Emergency Disable
 
 - Model Center now allows a `super_admin` to disable a broken AI route even when it is the product model's only/default route. The existing API update flow clears the route's default state and the catalog default key while preserving route, audit, billing, and workflow history.
@@ -6666,3 +6672,12 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - user recharge cards now map the four stable production plan keys to `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作` without changing administrator-owned plan names, database records, or payment snapshots; unknown plan keys continue to show the server-provided name.
 - corrected the `credits_100` presentation rule so a server-configured 120-credit entry plan displays `基础 100 + 加赠 20` instead of `基础 0 + 加赠 120`.
+
+## 2026-08-20 - Lovart-Inspired Recharge Experience
+
+- replaced the duplicated billing-page plan grid with one shared centered recharge modal. Workspace balance controls, insufficient-credit prompts, canvas/workbench entries, and `/billing` now open the same purchase flow.
+- added the approved four-plan presentation aliases: `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作`. The second plan remains `最受欢迎`; lime hover/focus emphasis follows the active card while the recommendation ribbon stays attached to that plan.
+- kept the server-owned plan amounts, credits, validity, checkout creation, payment polling, idempotency, and wallet ledger unchanged. The purchase UI identifies WeChat as the only supported payment method and centers the QR state inside the modal. No subscription copy, unit-price copy, fabricated QR countdown, payment API, or database table was added.
+- `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
+- the modal now traps keyboard focus, supports Shift+Tab/Tab cycling, and restores focus to the opening control when closed.
+- focused validation passed: 8 test files / 84 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.

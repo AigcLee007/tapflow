@@ -82,12 +82,12 @@ describe("WorkspaceShell", () => {
       "生图工作台",
       "提示词广场",
       "素材库",
-      "账单充值",
+      "账单",
     ]);
     expect(screen.queryByRole("button", { name: /^工作台$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^工作空间$/ })).toBeNull();
     expect(screen.getAllByRole("button", { name: /素材库/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /账单充值/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /账单/ }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /价格方案/ })).toBeNull();
   });
 
