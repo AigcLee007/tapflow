@@ -34,7 +34,7 @@ describe("RechargePanel", () => {
     onRetry.mockReset();
   });
 
-  test("renders fixed server plan cards without invented renewal or bonus copy", () => {
+  test("renders concise plan cards with baseline bonus copy", () => {
     render(
       <RechargePanel
         busyPlanKey={null}
@@ -46,11 +46,30 @@ describe("RechargePanel", () => {
     );
 
     expect(screen.getByRole("heading", { name: "充值积分" })).toBeTruthy();
-    expect(screen.getByText("一次购买，立即到账，不自动续费")).toBeTruthy();
     expect(screen.getByTestId("recharge-plan-grid").className).toContain("lg:grid-cols-4");
     expect(screen.getByText("入门创作")).toBeTruthy();
+    expect(screen.getByText("进阶创作").closest("article")?.textContent).toContain("基础 500 + 加赠 200");
+    expect(screen.getByText("旗舰创作").closest("article")?.textContent).toContain("基础 2,000 + 加赠 1,300");
+    expect(screen.getByText("专业创作").closest("article")?.textContent).toContain("基础 3,000 + 加赠 2,000");
+    expect(screen.queryByText("基础 99 + 加赠 1")).toBeNull();
+    expect(screen.queryByText(/约 ￥.*\/ 积分/)).toBeNull();
+    expect(screen.queryByText("一次购买，立即到账，不自动续费")).toBeNull();
     expect(screen.getAllByText("有效期 365 天")).toHaveLength(4);
     expect(screen.queryByText(/首充|赠送|自动续费中/)).toBeNull();
+  });
+
+  test("adds a restrained hover lift to each plan card", () => {
+    render(
+      <RechargePanel
+        busyPlanKey={null}
+        onRetry={onRetry}
+        onSelect={onSelect}
+        plans={plans}
+        status="ready"
+      />,
+    );
+
+    expect(screen.getByText("入门创作").closest("article")?.className).toContain("hover:-translate-y-1");
   });
 
   test("marks the second sorted plan as recommended and keeps its cta filled", () => {

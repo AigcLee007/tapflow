@@ -6655,3 +6655,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - redesigned the payment panel as a compact single-column scan-first checkout with a centered QR code, `微信扫码支付` heading, explicit `当前仅支持微信支付` copy, and a concise amount/credits/status summary.
 - removed the old nested payment-status card treatment; paid states now remain in the same modal with a success confirmation, while mobile checkout continues to use the existing redirect behavior.
 - focused recharge validation passed with 23 tests and `npm run build`; existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-19 - Recharge Copy And Hover Treatment
+
+- removed the verbose unit-price and renewal copy from recharge cards and the global recharge dialog, leaving the card hierarchy focused on total credits, price, validity, and the purchase action.
+- recharge cards now show baseline credits plus calculated bonus credits for qualifying plans; the ￥9.90 entry plan remains a simple 100-credit offer without an artificial `+1` bonus label.
+- added a restrained hover/focus lift and cyan shadow treatment with reduced-motion support; focused recharge validation passed after the copy and interaction update.

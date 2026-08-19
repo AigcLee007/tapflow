@@ -35,7 +35,7 @@ export function RechargeDialog() {
     <div className="fixed inset-0 z-[2600] flex items-center justify-center bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) recharge.closeRecharge(); }}>
       <div aria-labelledby="recharge-dialog-title" aria-modal="true" className="flex max-h-[calc(100dvh-32px)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0f14] shadow-2xl" role="dialog">
         <div className="flex shrink-0 items-center justify-between border-b border-white/8 px-5 py-4">
-          <div><h2 className="text-lg font-semibold text-white" id="recharge-dialog-title">{title}</h2><p className="mt-1 text-xs text-slate-400">当前可用 {getAvailableCredits(billingSnapshot.summary)?.toLocaleString() ?? "--"} 积分，一次购买，不自动续费</p></div>
+          <div><h2 className="text-lg font-semibold text-white" id="recharge-dialog-title">{title}</h2><p className="mt-1 text-xs text-slate-400">当前可用 {getAvailableCredits(billingSnapshot.summary)?.toLocaleString() ?? "--"} 积分</p></div>
           <button aria-label="关闭充值" className="grid h-9 w-9 place-items-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white" onClick={recharge.closeRecharge} ref={closeRef} type="button"><X size={18} /></button>
         </div>
         <div className="min-h-0 overflow-y-auto p-5">

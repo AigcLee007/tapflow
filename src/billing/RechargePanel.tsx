@@ -15,12 +15,14 @@ function formatAmount(cents: number): string {
   return `￥${(cents / 100).toFixed(2)}`;
 }
 
-function formatUnitPrice(plan: RechargePlan): string {
-  if (plan.credits <= 0) {
-    return "积分单价不可用";
+function getBonusBreakdown(plan: RechargePlan): { baseCredits: number; bonusCredits: number } | null {
+  if (plan.amountCents === 990 && plan.credits === 100) {
+    return null;
   }
 
-  return `约 ￥${(plan.amountCents / plan.credits / 100).toFixed(2)} / 积分`;
+  const baseCredits = Math.floor(plan.amountCents / 1000) * 100;
+  const bonusCredits = Math.max(plan.credits - baseCredits, 0);
+  return bonusCredits > 0 ? { baseCredits, bonusCredits } : null;
 }
 
 function sortPlans(plans: RechargePlan[]): RechargePlan[] {
@@ -60,7 +62,6 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
     <section className="rounded border border-white/10 bg-white/[0.04] p-4">
       <header className="space-y-2">
         <h2 className="text-sm font-semibold text-white">充值积分</h2>
-        <p className="text-xs text-slate-400">一次购买，立即到账，不自动续费</p>
       </header>
 
       {status === "error" ? (
@@ -93,11 +94,12 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
             {sortedPlans.map((plan) => {
               const isRecommended = plan.key === recommendedPlanKey;
               const isBusy = busyPlanKey === plan.key;
+              const bonusBreakdown = getBonusBreakdown(plan);
 
               return (
                 <article
                   className={[
-                    "flex min-h-[300px] flex-col rounded-2xl border p-4",
+                    "flex min-h-[300px] flex-col rounded-2xl border p-4 transition duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(34,211,238,0.12)] focus-within:-translate-y-1 focus-within:shadow-[0_16px_36px_rgba(34,211,238,0.12)] motion-reduce:transform-none motion-reduce:transition-none",
                     isRecommended ? "border-cyan-300/50 bg-cyan-300/8" : "border-white/10 bg-black/20",
                   ].join(" ")}
                   key={plan.id}
@@ -105,7 +107,6 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-white">{plan.name}</h3>
-                      <p className="mt-1 text-xs text-slate-400">{plan.credits.toLocaleString()} 积分</p>
                     </div>
                     {isRecommended ? (
                       <span className="rounded-full border border-cyan-300/40 bg-cyan-300/12 px-2 py-1 text-[11px] font-semibold text-cyan-100">
@@ -114,8 +115,9 @@ export function RechargePanel({ busyPlanKey, onRetry, onSelect, plans, status }:
                     ) : null}
                   </div>
 
-                  <div className="mt-4 text-3xl font-semibold text-white">{formatAmount(plan.amountCents)}</div>
-                  <p className="mt-2 text-xs text-slate-400">{formatUnitPrice(plan)}</p>
+                  <div className="mt-4 text-3xl font-semibold text-white">{plan.credits.toLocaleString()} 积分</div>
+                  {bonusBreakdown ? <p className="mt-2 text-xs text-slate-300">基础 {bonusBreakdown.baseCredits.toLocaleString()} + <span className="font-semibold text-cyan-300">加赠 {bonusBreakdown.bonusCredits.toLocaleString()}</span></p> : null}
+                  <div className={bonusBreakdown ? "mt-4 text-2xl font-semibold text-white" : "mt-5 text-2xl font-semibold text-white"}>{formatAmount(plan.amountCents)}</div>
                   <p className="mt-1 text-xs text-slate-400">有效期 {plan.validityDays} 天</p>
                   <span className="sr-only">{plan.credits.toLocaleString()} 积分，有效期 {plan.validityDays} 天</span>
 
