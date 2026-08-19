@@ -4,8 +4,6 @@ import { useAuth } from "../auth/useAuth";
 import { buildBillingActivityRows, getEmptyBillingDisplayCatalog, loadBillingDisplayCatalog, type BillingDisplayCatalog } from "./billingActivity";
 import { BillingActivityTable } from "./BillingActivityTable";
 import { BillingSummaryCards } from "./BillingSummaryCards";
-import { PaymentStatusPanel } from "./PaymentStatusPanel";
-import { RechargePanel } from "./RechargePanel";
 import { RechargeProvider, useRecharge, useRechargeContext } from "./RechargeContext";
 import { RedeemCodeBox } from "./RedeemCodeBox";
 import { listBillingLedger, listBillingUsageEvents, type BillingLedgerEntry, type BillingUsageEvent } from "./billingApi";
@@ -20,7 +18,6 @@ function BillingCenterPageContent() {
   const [catalog, setCatalog] = useState<BillingDisplayCatalog>(() => getEmptyBillingDisplayCatalog());
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef(0);
-  const { loadPlans, plansStatus } = recharge;
   const identityKey = useMemo(() => authenticated && user ? `${user.id}:${sessionId ?? "none"}` : "anonymous", [authenticated, sessionId, user]);
 
   const refreshData = useCallback(async () => {
@@ -34,7 +31,6 @@ function BillingCenterPageContent() {
   }, [authenticated, user]);
 
   useEffect(() => { void refreshData(); }, [identityKey, refreshData]);
-  useEffect(() => { if (plansStatus === "idle") void loadPlans(); }, [loadPlans, plansStatus]);
   useEffect(() => { void loadBillingDisplayCatalog().then(setCatalog).catch(() => undefined); }, []);
   const activityRows = useMemo(() => buildBillingActivityRows(usage, ledger, catalog), [catalog, ledger, usage]);
 
@@ -44,13 +40,16 @@ function BillingCenterPageContent() {
       {error || billingSnapshot.status === "error" ? <p className="mt-4 rounded border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{error ?? "钱包加载失败，请稍后重试。"}</p> : null}
       <div className="mt-6"><BillingSummaryCards summary={billingSnapshot.summary} /></div>
       <section className="mt-6" data-testid="billing-recharge-section">
-        <RechargePanel busyPlanKey={recharge.busyPlanKey} onRetry={() => void recharge.loadPlans()} onSelect={(plan) => void recharge.beginCheckout(plan)} plans={recharge.plans} status={recharge.plansStatus} />
-        {recharge.error ? <p className="mt-3 text-sm text-rose-200">{recharge.error}</p> : null}
-        {!recharge.dialogOpen ? <div className="mt-4"><PaymentStatusPanel payment={recharge.payment} /></div> : null}
+        <div className="rounded-2xl border border-lime-300/30 bg-lime-300/10 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div><h2 className="text-lg font-semibold text-white">充值积分</h2><p className="mt-1 text-sm text-slate-300">选择积分套餐，使用微信支付完成充值。</p></div>
+            <button className="rounded-xl bg-lime-300 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-lime-200" data-testid="billing-recharge-entry" onClick={() => recharge.openRecharge({ source: "billing" })} type="button">立即充值</button>
+          </div>
+        </div>
+        <div className="mt-4"><RedeemCodeBox onRedeemed={refreshData} /></div>
       </section>
       <section className="mt-6" data-testid="billing-activity-section">
         <BillingActivityTable items={activityRows} />
-        <div className="mt-4"><RedeemCodeBox onRedeemed={refreshData} /></div>
       </section>
     </main>
   </div>;
