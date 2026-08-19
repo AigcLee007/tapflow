@@ -6641,3 +6641,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Image model options now fail closed against the active server catalog: no local fallback models or fallback runtime routes are injected, disabled saved models do not request routes, and their generation button remains disabled.
 - Image model menus explicitly show loading, empty, and retryable-error states.
 - Validation passed: 8 focused test files / 37 tests and `npm run build`. The image-node suite emitted existing jsdom media and React `act(...)` warnings; the build emitted existing Browserslist, dynamic-import, and chunk-size warnings.
+
+## 2026-08-20 - Lovart-Inspired Recharge Experience
+
+- replaced the duplicated billing-page plan grid with one shared centered recharge modal. Workspace balance controls, insufficient-credit prompts, canvas/workbench entries, and `/billing` now open the same purchase flow.
+- added the approved four-plan presentation aliases: `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作`. The second plan remains `最受欢迎`; lime hover/focus emphasis follows the active card while the recommendation ribbon stays attached to that plan.
+- kept the server-owned plan amounts, credits, validity, checkout creation, payment polling, idempotency, and wallet ledger unchanged. The purchase UI identifies WeChat as the only supported payment method and centers the QR state inside the modal. No subscription copy, unit-price copy, fabricated QR countdown, payment API, or database table was added.
+- `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
+- focused validation passed: 8 test files / 83 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.
