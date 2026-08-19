@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
@@ -55,6 +55,29 @@ describe("BillingCenterPage", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("dialog").querySelector("#recharge-dialog-title")?.textContent).toBe("充值积分");
     await waitFor(() => expect(screen.getByTestId("recharge-plan-grid")).toBeTruthy());
+  });
+
+  test("keeps keyboard focus inside the recharge dialog and restores the trigger on close", async () => {
+    renderPage();
+    const trigger = await screen.findByTestId("billing-recharge-entry");
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = await screen.findByRole("dialog");
+    const close = screen.getByRole("button", { name: "关闭充值" });
+    await waitFor(() => expect(within(dialog).getAllByRole("button", { name: "立即充值" })).toHaveLength(2));
+    const lastAction = within(dialog).getAllByRole("button", { name: "立即充值" }).at(-1)!;
+
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(lastAction);
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+
+    fireEvent.click(close);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
 });
