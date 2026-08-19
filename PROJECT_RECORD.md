@@ -3,6 +3,12 @@
 Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
 
+## 2026-08-19 - Canvas-first Agent + Skill Product Design
+
+- Confirmed the product direction: the canvas remains the primary workspace, the right-side Agent is the control layer, and LibTV-style Skills are reusable professional creation guides.
+- Confirmed first-release scope: conversational Skill authoring, editable private Skill drafts, official Skills, image and video production, key-step approval, asset-backed outputs, and canvas write-back. Public marketplace, ratings, multi-agent roles, and long-term memory remain deferred.
+- Added the design and implementation plan: `docs/superpowers/specs/2026-08-19-agent-skill-product-design.md` and `docs/superpowers/plans/2026-08-19-agent-skill-product-plan.md`.
+
 ## 2026-08-15 - Sole Default AI Route Emergency Disable
 
 - Model Center now allows a `super_admin` to disable a broken AI route even when it is the product model's only/default route. The existing API update flow clears the route's default state and the catalog default key while preserving route, audit, billing, and workflow history.
