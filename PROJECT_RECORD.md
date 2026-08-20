@@ -6,8 +6,11 @@ Maintainers: project team + Codex sessions
 ## 2026-08-19 - Canvas-first Agent + Skill Product Design
 
 - Confirmed the product direction: the canvas remains the primary workspace, the right-side Agent is the control layer, and LibTV-style Skills are reusable professional creation guides.
-- Confirmed first-release scope: conversational Skill authoring, editable private Skill drafts, official Skills, image and video production, key-step approval, asset-backed outputs, and canvas write-back. Public marketplace, ratings, multi-agent roles, and long-term memory remain deferred.
-- Added the design and implementation plan: `docs/superpowers/specs/2026-08-19-agent-skill-product-design.md` and `docs/superpowers/plans/2026-08-19-agent-skill-product-plan.md`.
+- Confirmed first-release scope: conversational Skill authoring, editable private Skill drafts, official Skills, text/image/video production, key-step approval, text-node and asset-backed outputs, and canvas write-back. Public marketplace, ratings, multi-agent roles, and long-term memory remain deferred.
+- Text Skills are first-class: text-only Skills create authoritative canvas text outputs without requiring media assets; image/video Skills may call text steps for scripts, storyboards, prompts, and review notes.
+- Refined the target architecture after reviewing the reference plan: one canvas-first V2 Agent turn loop uses native tool calling, streamed events, scoped/redacted context, strict canvas-only tools, flow-revision CAS, durable idempotency, and the existing workflow/billing path. The current Agent remains a feature-flagged fallback until V2 staging acceptance.
+- Skill storage now includes a LibTV-facing source form and internal `SKILL.md` package import/export. Optional `graph.json` is a non-executable, allowlisted canvas-template manifest that is validated on import, publication, and instantiation.
+- Added and refined the design and implementation plan: `docs/superpowers/specs/2026-08-19-agent-skill-product-design.md` and `docs/superpowers/plans/2026-08-19-agent-skill-product-plan.md`.
 
 ## 2026-08-15 - Sole Default AI Route Emergency Disable
 
