@@ -22,6 +22,7 @@ import type {
   CreateAgentTurnInput,
 } from "./agent.schemas.js";
 import { V2AgentTurnLoop, type V2AgentToolExecution } from "./v2/agent-turn-loop.js";
+import type { SkillService } from "./skill.service.js";
 
 type PgPool = Pool;
 
@@ -285,6 +286,7 @@ export class AgentService {
   readonly sessionRepository: AgentSessionRepository;
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
   readonly flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
+  readonly skillService: Pick<SkillService, "getPublishedVersion"> | null;
 
   constructor(options: {
     aiModelCatalogService?: Pick<AiModelCatalogService, "listModels" | "listRoutesForModel">;
@@ -296,6 +298,7 @@ export class AgentService {
     canvasService?: AgentCanvasService;
     sessionRepository?: AgentSessionRepository;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
+    skillService?: Pick<SkillService, "getPublishedVersion"> | null;
   }) {
     this.env = options.env;
     this.executorService = options.executorService ?? null;
@@ -322,6 +325,7 @@ export class AgentService {
         } as never,
         pool: this.pool,
       });
+    this.skillService = options.skillService ?? null;
     this.plannerService = new AgentPlannerService(this.env, this.textRuntime, plannerOutputSchema);
   }
 
@@ -562,23 +566,28 @@ export class AgentService {
     if (!session.flowId || input.snapshot.flowId !== session.flowId) {
       throw new AgentApiError(400, "AGENT_CANVAS_FLOW_MISMATCH", "Agent session is not bound to the requested flow.");
     }
-    const userMessage = await this.sessionRepository.appendUserMessage(context, sessionId, { content: input.prompt, metadata: { agentVersion: "v2" } });
+    const userMessage = await this.sessionRepository.appendUserMessage(context, sessionId, { content: input.prompt, metadata: { agentVersion: "v2", selectedSkillId: input.selectedSkillId ?? null } });
     const idempotencyKey = input.idempotencyKey?.trim() || `agent-v2:${sessionId}:${userMessage.id}`;
-    const turnId = await this.createV2TurnRecord(context, sessionId, userMessage.id, input.snapshot, idempotencyKey);
+    const currentDraft = await this.flowsService.getFlowDraft(context, session.flowId);
+    const graphRevision = currentDraft.revision;
+    const skill = input.selectedSkillId && this.skillService
+      ? await this.skillService.getPublishedVersion(context, input.selectedSkillId)
+      : null;
+    const turnId = await this.createV2TurnRecord(context, sessionId, userMessage.id, input.snapshot, idempotencyKey, graphRevision);
     const loop = new V2AgentTurnLoop({
       textRuntime: { streamText: (request) => this.textRuntime.streamText!(context, request) },
-      executeTool: async (tool) => this.executeV2Tool(context, sessionId, turnId, input.snapshot, tool),
+      executeTool: async (tool) => this.executeV2Tool(context, sessionId, turnId, input.snapshot, tool, graphRevision),
     });
     let eventIndex = 0;
     try {
-      for await (const event of loop.run({ canvas: { revision: 0, nodes: input.snapshot.nodes }, prompt: input.prompt, routeKey: input.routeKey })) {
+      for await (const event of loop.run({ canvas: { revision: graphRevision, nodes: input.snapshot.nodes }, prompt: input.prompt, routeKey: input.routeKey, skill: skill ? { id: skill.id, version: skill.version, source: skill.source, normalized: {} } : undefined })) {
         eventIndex += 1;
         await this.sessionRepository.appendSessionEvent(context, {
           agentNamespace: "canvas",
           agentVersion: "v2",
           eventJson: event as unknown as Record<string, unknown>,
           eventType: event.type,
-          graphRevision: 0,
+          graphRevision,
           idempotencyKey: `${idempotencyKey}:event:${eventIndex}`,
           sessionId,
           turnId,
@@ -602,13 +611,13 @@ export class AgentService {
     }
   }
 
-  private async createV2TurnRecord(context: AgentContext, sessionId: string, userMessageId: string, snapshot: CanvasAgentSnapshotInput, idempotencyKey: string): Promise<string> {
+  private async createV2TurnRecord(context: AgentContext, sessionId: string, userMessageId: string, snapshot: CanvasAgentSnapshotInput, idempotencyKey: string, graphRevision: number): Promise<string> {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<{ id: string }>(`
         INSERT INTO agent_turns (tenant_id, session_id, user_message_id, status, snapshot_json, plan_json, error_json, agent_version, graph_revision, idempotency_key, updated_at)
-        VALUES ($1::uuid, $2::uuid, $3::uuid, 'running', $4::jsonb, '{}'::jsonb, NULL, 'v2', 0, $5, now())
+        VALUES ($1::uuid, $2::uuid, $3::uuid, 'running', $4::jsonb, '{}'::jsonb, NULL, 'v2', $6, $5, now())
         ON CONFLICT DO NOTHING
-        RETURNING id::text AS id`, [context.tenantId, sessionId, userMessageId, JSON.stringify(snapshot), idempotencyKey]);
+        RETURNING id::text AS id`, [context.tenantId, sessionId, userMessageId, JSON.stringify(snapshot), idempotencyKey, graphRevision]);
       if (result.rows[0]) return result.rows[0].id;
       const existing = await client.query<{ id: string }>(`SELECT id::text AS id FROM agent_turns WHERE tenant_id = $1::uuid AND agent_version = 'v2' AND idempotency_key = $2 LIMIT 1`, [context.tenantId, idempotencyKey]);
       if (!existing.rows[0]) throw new Error("AGENT_TURN_IDEMPOTENCY_CONFLICT");
@@ -622,8 +631,8 @@ export class AgentService {
     }, this.pool);
   }
 
-  private async executeV2Tool(context: AgentContext, sessionId: string, turnId: string, snapshot: CanvasAgentSnapshotInput, tool: V2AgentToolExecution) {
-    if (tool.name === "canvas.get_context") return { revision: 0, nodes: snapshot.nodes, edges: snapshot.edges };
+  private async executeV2Tool(context: AgentContext, sessionId: string, turnId: string, snapshot: CanvasAgentSnapshotInput, tool: V2AgentToolExecution, graphRevision: number) {
+    if (tool.name === "canvas.get_context") return { revision: graphRevision, nodes: snapshot.nodes, edges: snapshot.edges };
     if (tool.name === "skill.load") return { status: "no_skill_selected" };
     if (tool.name === "canvas.apply_ops") {
       const ops = tool.arguments.ops as Array<Record<string, unknown>>;

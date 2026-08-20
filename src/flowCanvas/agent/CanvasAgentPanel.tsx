@@ -4,7 +4,7 @@ import { AGENT_REFERENCE_LIMIT, buildAgentReferenceContext } from "./agentRefere
 import { buildAgentArtifactRefChips } from "./agentArtifactRefs";
 import { buildAgentWorkspaceTimeline } from "./agentWorkspaceTimeline";
 import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from "./agentSessionEvents";
-import { getAgentImageRunSettings, listAgentSessions } from "./canvasAgentApi";
+import { getAgentImageRunSettings, listAgentSessions, listAgentSkills, type AgentSkillPreview } from "./canvasAgentApi";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
@@ -21,6 +21,7 @@ import { useAgentEventStream } from "./useAgentEventStream";
 import { useAgentWorkspacePanel } from "./useAgentWorkspacePanel";
 import { useCanvasAgentSession } from "./useCanvasAgentSession";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { MenuSelect } from "../../components/menu/MenuSelect";
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -114,6 +115,8 @@ export function CanvasAgentPanel(props: {
   const history = useAgentConversationHistory(sessionActions.sessionId);
   const eventStream = useAgentEventStream(sessionActions.sessionId);
   const [availableModels, setAvailableModels] = React.useState<ReturnType<typeof getEmptyModels>>([]);
+  const [availableSkills, setAvailableSkills] = React.useState<AgentSkillPreview[]>([]);
+  const [selectedSkillId, setSelectedSkillId] = React.useState<string | null>(null);
   const [sessionList, setSessionList] = React.useState<Array<{
     createdAt: string;
     flowId: string | null;
@@ -167,6 +170,11 @@ export function CanvasAgentPanel(props: {
         setAvailableModels(response.models);
       })
       .catch(() => setAvailableModels([]));
+  }, []);
+
+  React.useEffect(() => {
+    if (import.meta.env.VITE_AGENT_SKILLS_ENABLED !== "true") return;
+    void listAgentSkills({ scope: "available" }).then(setAvailableSkills).catch(() => setAvailableSkills([]));
   }, []);
 
   React.useEffect(() => {
@@ -373,6 +381,18 @@ export function CanvasAgentPanel(props: {
             </div>
           ) : null}
 
+          {availableSkills.length > 0 ? (
+            <div style={{ padding: "0 16px 10px" }}>
+              <MenuSelect
+                fullWidth
+                label="选择 Skill"
+                onChange={(value) => setSelectedSkillId(value || null)}
+                options={[{ label: "通用 Agent", value: "" }, ...availableSkills.map((skill) => ({ label: skill.name, value: skill.id }))]}
+                size="compact"
+                value={selectedSkillId ?? ""}
+              />
+            </div>
+          ) : null}
           <CanvasAgentComposer
             draftValue={composerDraft}
             models={modelOptions}
@@ -386,7 +406,7 @@ export function CanvasAgentPanel(props: {
                 chips: composerReferenceChips,
                 continuationContext: activeContinuation,
               });
-              await sessionActions.sendPrompt(prompt, { referenceContext });
+              await sessionActions.sendPrompt(prompt, { referenceContext, selectedSkillId });
               setUploadedReferences([]);
             }}
             onUploadError={setUploadError}

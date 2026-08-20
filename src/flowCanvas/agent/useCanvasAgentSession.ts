@@ -11,6 +11,7 @@ import {
   executeAgentTurnStream,
   getAgentImageRunSettings,
   openAgentTurnStream,
+  openAgentV2TurnStream,
   readAgentSseStream,
   type AgentContinuationContext,
   type AgentSessionEvent,
@@ -50,6 +51,7 @@ type UseCanvasAgentSessionOptions = {
 
 type SendPromptOptions = {
   referenceContext?: AgentReferenceContext;
+  selectedSkillId?: string | null;
 };
 
 type ApplyResult = {
@@ -566,6 +568,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
             continuationContext: activeContinuation,
             prompt: trimmed,
             referenceContext: options?.referenceContext,
+            selectedSkillId: options?.selectedSkillId,
             snapshot,
           });
           if (response.ok) {
@@ -589,10 +592,12 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
 
         try {
           let receivedPlan = false;
-          const response = await openAgentTurnStream(resolvedSessionId, {
+          const streamOpener = import.meta.env.VITE_AGENT_V2_ENABLED === "true" ? openAgentV2TurnStream : openAgentTurnStream;
+          const response = await streamOpener(resolvedSessionId, {
             continuationContext: activeContinuation,
             prompt: trimmed,
             referenceContext: options?.referenceContext,
+            selectedSkillId: options?.selectedSkillId,
             snapshot,
           });
           if (!response.ok) {
@@ -614,6 +619,17 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
               receivedPlan = true;
               applyPlan(data as CanvasAgentPlannerOutput);
             },
+            onAgentV2: (eventName, data) => {
+              receivedPlan = true;
+              if (eventName === "agent_v2_text_delta" && typeof data === "object" && data && "text" in data) {
+                const text = String((data as { text: unknown }).text);
+                setMessages((current) => [...current, createMessage("assistant", text)]);
+              }
+              if (eventName === "agent_v2_turn_completed" && typeof data === "object" && data && "text" in data) {
+                setMessages((current) => [...current, createMessage("assistant", String((data as { text: unknown }).text))]);
+                transitionWorkspaceState({ type: "turn_completed" });
+              }
+            },
           });
 
           if (receivedPlan) {
@@ -632,6 +648,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
             continuationContext: activeContinuation,
             prompt: trimmed,
             referenceContext: options?.referenceContext,
+            selectedSkillId: options?.selectedSkillId,
             snapshot,
           });
           applyPlan(plan);

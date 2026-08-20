@@ -39,6 +39,12 @@ export class SkillService {
     return result;
   }
 
+  async getPublishedVersion(context: SkillDbContext, skillId: string) {
+    const result = await this.repository.getVersion(context, skillId);
+    if (!result || result.status !== "published") throw new Error("SKILL_NOT_FOUND");
+    return result;
+  }
+
   async updateDraft(context: SkillDbContext, skillId: string, source: SkillSource, expectedRevision: number) {
     const valid = skillSourceSchema.parse(source);
     normalizeSkillSource(valid);

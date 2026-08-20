@@ -10,6 +10,7 @@ Maintainers: project team + Codex sessions
 - Added feature-flag enforcement to Skill catalog, authoring, draft, publish, import, export, and duplicate routes. Flags remain disabled by default.
 - Added the first native-stream V2 canvas Agent turn loop and `/api/v2/agent/sessions/:sessionId/v2-turns/stream`. It persists v2 turn metadata/idempotency, replays session events, and exposes only canvas-bound tools with flow/session checks.
 - Focused validation passed: API Skill/V2 tests (`8` passed), workflow-core build, API build, and `git diff --check`. Full staging/browser/e2e acceptance remains pending; V2 runtime flags stay disabled until that acceptance.
+- V2 turns now accept `selectedSkillId`, load the tenant-authorized published Skill version server-side, include it as untrusted context for the native loop, and use the current remote flow revision for turn metadata and canvas CAS. The canvas Agent panel exposes the available Skill catalog through the shared TapNow-style menu and routes V2 stream events into the existing timeline.
 
 ## 2026-08-19 - Canvas-first Agent + Skill Product Design
 

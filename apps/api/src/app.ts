@@ -328,6 +328,7 @@ export function buildApp(options?: {
     storageProvider,
   });
   const promptsService = new PromptsService({ pool, promptCatalogMediaDir: env.promptCatalogMediaDir });
+  const skillService = new SkillService();
   const agentService = new AgentService({
     aiModelCatalogService,
     env,
@@ -338,8 +339,8 @@ export function buildApp(options?: {
     sessionRepository: agentSessionRepository,
     runSettingsService: agentRunSettingsService,
     textRuntime: agentTextRuntime,
+    skillService,
   });
-  const skillService = new SkillService();
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });

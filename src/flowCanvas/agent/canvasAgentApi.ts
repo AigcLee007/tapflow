@@ -91,6 +91,7 @@ export type AgentContinuationContext = {
 export type AgentTurnRequestInput = {
   continuationContext?: AgentContinuationContext | null;
   prompt: string;
+  selectedSkillId?: string | null;
   referenceContext?: AgentReferenceContext;
   snapshot: CanvasAgentSnapshot;
 };
@@ -286,6 +287,7 @@ export async function openAgentSessionEventStream(sessionId: string, input?: { a
 export async function readAgentSseStream(
   response: Response,
   handlers: {
+    onAgentV2?: (eventName: string, data: unknown) => void;
     onEvent?: (data: unknown) => void;
     onDone?: (data: unknown) => void;
     onError?: (data: unknown) => void;
@@ -312,6 +314,7 @@ export async function readAgentSseStream(
       if (event === "plan") handlers.onPlan?.(data);
       if (event === "done") handlers.onDone?.(data);
       if (event === "error") handlers.onError?.(data);
+      if (event?.startsWith("agent_v2_")) handlers.onAgentV2?.(event, data);
     }
   }
 }
