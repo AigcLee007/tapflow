@@ -24,6 +24,8 @@ import { AuditApiService } from "./modules/audit/audit.service.js";
 import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
+import { registerSkillRoutes } from "./modules/agent/skill.routes.js";
+import { SkillService } from "./modules/agent/skill.service.js";
 import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
@@ -336,6 +338,7 @@ export function buildApp(options?: {
     runSettingsService: agentRunSettingsService,
     textRuntime: agentTextRuntime,
   });
+  const skillService = new SkillService();
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });
@@ -353,6 +356,7 @@ export function buildApp(options?: {
 
   app.decorate("adminService", adminService);
   app.decorate("agentService", agentService);
+  app.decorate("skillService", skillService);
   app.decorate("aiGatewayService", aiGatewayService);
   app.decorate("aiModelCatalogService", aiModelCatalogService);
   app.decorate("aiModelConfigurationsService", aiModelConfigurationsService);
@@ -473,6 +477,7 @@ export function buildApp(options?: {
 
   registerAdminRoutes(app);
   registerAgentRoutes(app);
+  registerSkillRoutes(app, skillService);
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
   registerAiModelCatalogRoutes(app);
