@@ -8,8 +8,14 @@ import type {
   TextGenerationRequest,
   VideoGenerationRequest,
 } from "./types.js";
+import type { ProviderTextStreamEvent } from "./text-streaming-contract.js";
 
 export interface ProviderAdapter {
+  streamText?(
+    context: ProviderCallContext,
+    request: TextGenerationRequest,
+  ): AsyncIterable<ProviderTextStreamEvent> | Promise<AsyncIterable<ProviderTextStreamEvent>>;
+
   generateText?(
     context: ProviderCallContext,
     request: TextGenerationRequest,

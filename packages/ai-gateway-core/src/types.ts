@@ -5,6 +5,19 @@ export type TextMessage = {
   role: "assistant" | "system" | "user";
 };
 
+/** A provider-neutral JSON-schema tool exposed to the text model. */
+export type TextToolDefinition = {
+  description?: string;
+  inputSchema: Record<string, unknown>;
+  name: string;
+};
+
+export type TextToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | { function: { name: string }; type: "function" };
+
 export type AssetReferenceInput = {
   assetId: string;
   durationMs?: number | null;
@@ -21,7 +34,10 @@ export type TextGenerationRequest = {
   messages: TextMessage[];
   model?: string | null;
   routeKey?: string | null;
+  signal?: AbortSignal;
   temperature?: number | null;
+  tools?: TextToolDefinition[];
+  toolChoice?: TextToolChoice;
 };
 
 export type ImageGenerationRequest = {

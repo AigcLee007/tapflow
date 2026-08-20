@@ -23,6 +23,15 @@ export { VisionaryNanoBananaAdapter } from "./visionary-nano-banana-adapter.js";
 export { MockProviderAdapter } from "./mock-provider-adapter.js";
 export type { ProviderAdapter } from "./provider-adapter.js";
 export {
+  assertTextStreamingCapabilities,
+  resolveTextStreamingCapabilities,
+} from "./text-streaming-contract.js";
+export type {
+  ProviderTextStreamEvent,
+  TextStreamEvent,
+  TextStreamingCapabilities,
+} from "./text-streaming-contract.js";
+export {
   ProviderAdapterRegistry,
   createDefaultAiGateway,
   createDefaultProviderAdapterRegistry,
@@ -77,6 +86,8 @@ export type {
   ResolvedRoute,
   TextGenerationRequest,
   TextMessage,
+  TextToolChoice,
+  TextToolDefinition,
   VideoGenerationRequest,
   VideoGenerationParams,
 } from "./types.js";

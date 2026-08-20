@@ -14,6 +14,7 @@ import type {
   ResolvedRoute,
   TextGenerationRequest,
 } from "./types.js";
+import type { TextStreamEvent } from "./text-streaming-contract.js";
 
 type RuntimeContext = {
   tenantId: string;
@@ -228,6 +229,44 @@ export class DatabaseTextGenerationRuntime {
       });
       throw normalizedError;
     }
+  }
+
+  /**
+   * Resolve credentials and routes server-side before opening the Agent
+   * control-plane stream. Provider frames and decrypted credentials never
+   * cross this boundary; callers receive the normalized Gateway event union.
+   */
+  async *streamText(
+    context: RuntimeContext,
+    request: TextGenerationRequest,
+  ): AsyncGenerator<TextStreamEvent> {
+    const routes = await this.listRuntimeRoutes(context, request.routeKey ?? null);
+    const selectedRoute = this.routeResolver.resolveTextRoute({
+      routeKey: request.routeKey ?? null,
+      routes,
+    });
+    if (
+      !selectedRoute.credential.id ||
+      !selectedRoute.credential.encryptedSecret ||
+      !selectedRoute.credential.nonce ||
+      !selectedRoute.credential.authTag
+    ) {
+      throw new AiGatewayError({
+        code: "CREDENTIAL_REQUIRED",
+        message: "The selected route does not have a usable credential",
+        statusCode: 400,
+      });
+    }
+    const apiKey = this.credentialVault.getSecretForProviderCall({
+      authTag: selectedRoute.credential.authTag,
+      encryptedSecret: selectedRoute.credential.encryptedSecret,
+      nonce: selectedRoute.credential.nonce,
+    });
+    yield* this.aiGateway.streamText({
+      apiKey,
+      request,
+      route: selectedRoute,
+    });
   }
 
   private async listRuntimeRoutes(
