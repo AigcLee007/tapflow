@@ -11,3 +11,13 @@ export {
 export { topologicalSort } from "./topological-sort.js";
 export { compileGraph } from "./compiler.js";
 export { checksumGraph } from "./checksum.js";
+export {
+  SkillPackageValidationError,
+  parseSkillMarkdown,
+  serializeSkillMarkdown,
+  validateSkillGraphTemplate,
+  type SkillFrontmatter,
+  type SkillGraphTemplate,
+  type SkillMarkdownDocument,
+  type SkillModality,
+} from "./skill-md.js";
