@@ -25,6 +25,7 @@ import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
 import { registerSkillRoutes } from "./modules/agent/skill.routes.js";
+import { SkillAuthoringService } from "./modules/agent/skill-authoring.service.js";
 import { SkillService } from "./modules/agent/skill.service.js";
 import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
@@ -477,7 +478,10 @@ export function buildApp(options?: {
 
   registerAdminRoutes(app);
   registerAgentRoutes(app);
-  registerSkillRoutes(app, skillService);
+  registerSkillRoutes(app, skillService, new SkillAuthoringService(), {
+    skillsEnabled: env.agentSkillsEnabled,
+    authoringEnabled: env.agentSkillAuthoringEnabled,
+  });
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
   registerAiModelCatalogRoutes(app);

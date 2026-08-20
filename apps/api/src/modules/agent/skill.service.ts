@@ -2,6 +2,12 @@ import { normalizeSkillSource } from "./skill-normalizer.js";
 import { skillSourceSchema } from "./skill-schemas.js";
 import { SkillRepository, type SkillDbContext } from "./skill.repository.js";
 import type { SkillSource } from "./skill-types.js";
+import {
+  parseSkillMarkdown,
+  serializeSkillMarkdown,
+  validateSkillGraphTemplate,
+  type SkillGraphTemplate,
+} from "@aigc-flow/workflow-core";
 
 export class SkillService {
   readonly repository: Pick<SkillRepository, "createDraft" | "duplicate" | "getDraft" | "list" | "publish" | "updateDraft">;
@@ -42,5 +48,49 @@ export class SkillService {
   async publish(context: SkillDbContext, skillId: string, source: SkillSource) {
     const valid = skillSourceSchema.parse(source);
     return this.repository.publish(context, skillId, valid, normalizeSkillSource(valid));
+  }
+
+  async exportPackage(context: SkillDbContext, skillId: string): Promise<{ skillMd: string; graphJson?: SkillGraphTemplate }> {
+    const repository = this.repository as SkillService["repository"] & { getVersion?: SkillRepository["getVersion"] };
+    if (!repository.getVersion) throw new Error("SKILL_EXPORT_UNAVAILABLE");
+    const version = await repository.getVersion(context, skillId);
+    if (!version) throw new Error("SKILL_NOT_FOUND");
+    const normalized = normalizeSkillSource(version.source);
+    const skillMd = version.markdown?.trim() || serializeSkillMarkdown({
+      approval_policy: normalized.approvalRules.beforeCreditRun ? "credit_required" : "auto",
+      ...(version.source.category ? { category: version.source.category } : {}),
+      compatible_graph_schema: "v2",
+      description: version.source.summary,
+      inputs: normalized.inputHints.map((item) => item.label),
+      modality: version.source.modality,
+      name: version.source.name,
+      outputs: normalized.deliveryChecks,
+      triggers: version.source.triggers ?? [],
+    }, version.source.method);
+    return version.graph ? { skillMd, graphJson: validateSkillGraphTemplate(version.graph) } : { skillMd };
+  }
+
+  async importPackage(context: SkillDbContext, pkg: { skillMd: string; graphJson?: unknown }) {
+    const parsed = parseSkillMarkdown(pkg.skillMd);
+    const source: SkillSource = {
+      askWhen: "缺少必要输入时追问",
+      ...(parsed.frontmatter.category ? { category: parsed.frontmatter.category } : {}),
+      inputs: parsed.frontmatter.inputs.join("\n"),
+      method: parsed.body.trim() || "分析需求\n完成创作\n检查输出",
+      modality: parsed.frontmatter.modality,
+      name: parsed.frontmatter.name,
+      outputs: parsed.frontmatter.outputs.join("\n"),
+      summary: parsed.frontmatter.description,
+      triggers: parsed.frontmatter.triggers,
+      usageScenarios: "通过 Skill 目录或触发词使用",
+    };
+    const valid = skillSourceSchema.parse(source);
+    if (pkg.graphJson !== undefined) validateSkillGraphTemplate(pkg.graphJson);
+    return this.repository.createDraft(context, valid);
+  }
+
+  async duplicate(context: SkillDbContext, skillId: string, source: SkillSource) {
+    const valid = skillSourceSchema.parse(source);
+    return this.repository.duplicate(context, skillId, valid);
   }
 }

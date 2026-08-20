@@ -21,6 +21,7 @@ import type {
   CreateAgentSessionInput,
   CreateAgentTurnInput,
 } from "./agent.schemas.js";
+import { V2AgentTurnLoop, type V2AgentToolExecution } from "./v2/agent-turn-loop.js";
 
 type PgPool = Pool;
 
@@ -282,7 +283,7 @@ export class AgentService {
   readonly pool: PgPool;
   readonly runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
   readonly sessionRepository: AgentSessionRepository;
-  readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
+  readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
   readonly flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
 
   constructor(options: {
@@ -294,7 +295,7 @@ export class AgentService {
     runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
     canvasService?: AgentCanvasService;
     sessionRepository?: AgentSessionRepository;
-    textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
+    textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
   }) {
     this.env = options.env;
     this.executorService = options.executorService ?? null;
@@ -543,6 +544,100 @@ export class AgentService {
       formatStreamEvent("plan", result),
       formatStreamEvent("done", { sessionId: result.sessionId, turnId: result.turnId }),
     ].join("");
+  }
+
+  async streamV2TurnEvents(
+    context: AgentContext,
+    sessionId: string,
+    input: CreateAgentTurnInput & { routeKey?: string; idempotencyKey?: string },
+    writeChunk: (chunk: string) => void | Promise<void>,
+  ) {
+    if (!this.env.agentV2Enabled || !this.env.agentV2RuntimeEnabled) {
+      throw new AgentApiError(404, "AGENT_V2_DISABLED", "Canvas Agent v2 is disabled.");
+    }
+    if (!this.textRuntime.streamText) {
+      throw new AgentApiError(400, "AGENT_ROUTE_CAPABILITY_REQUIRED", "The selected AI route does not support native Agent streaming.");
+    }
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    if (!session.flowId || input.snapshot.flowId !== session.flowId) {
+      throw new AgentApiError(400, "AGENT_CANVAS_FLOW_MISMATCH", "Agent session is not bound to the requested flow.");
+    }
+    const userMessage = await this.sessionRepository.appendUserMessage(context, sessionId, { content: input.prompt, metadata: { agentVersion: "v2" } });
+    const idempotencyKey = input.idempotencyKey?.trim() || `agent-v2:${sessionId}:${userMessage.id}`;
+    const turnId = await this.createV2TurnRecord(context, sessionId, userMessage.id, input.snapshot, idempotencyKey);
+    const loop = new V2AgentTurnLoop({
+      textRuntime: { streamText: this.textRuntime.streamText.bind(this.textRuntime) },
+      executeTool: async (tool) => this.executeV2Tool(context, sessionId, turnId, session.flowId!, input.snapshot, tool),
+    });
+    let eventIndex = 0;
+    try {
+      for await (const event of loop.run({ canvas: { revision: 0, nodes: input.snapshot.nodes }, prompt: input.prompt, routeKey: input.routeKey })) {
+        eventIndex += 1;
+        await this.sessionRepository.appendSessionEvent(context, {
+          agentNamespace: "canvas",
+          agentVersion: "v2",
+          eventJson: event as unknown as Record<string, unknown>,
+          eventType: event.type,
+          graphRevision: 0,
+          idempotencyKey: `${idempotencyKey}:event:${eventIndex}`,
+          sessionId,
+          turnId,
+        });
+        await writeChunk(formatStreamEvent(`agent_v2_${event.type}`, { ...event, turnId }));
+      }
+      await this.finishV2TurnRecord(context, turnId, "succeeded", null);
+    } catch (error) {
+      await this.finishV2TurnRecord(context, turnId, "failed", { code: "AGENT_V2_TURN_FAILED", message: error instanceof Error ? error.message : String(error) });
+      await this.sessionRepository.appendSessionEvent(context, {
+        agentNamespace: "canvas",
+        agentVersion: "v2",
+        eventJson: { code: "AGENT_V2_TURN_FAILED", message: error instanceof Error ? error.message : String(error) },
+        eventType: "turn_failed",
+        graphRevision: 0,
+        idempotencyKey: `${idempotencyKey}:failed`,
+        sessionId,
+        turnId,
+      });
+      throw error;
+    }
+  }
+
+  private async createV2TurnRecord(context: AgentContext, sessionId: string, userMessageId: string, snapshot: CanvasAgentSnapshotInput, idempotencyKey: string): Promise<string> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ id: string }>(`
+        INSERT INTO agent_turns (tenant_id, session_id, user_message_id, status, snapshot_json, plan_json, error_json, agent_version, graph_revision, idempotency_key, updated_at)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, 'running', $4::jsonb, '{}'::jsonb, NULL, 'v2', 0, $5, now())
+        ON CONFLICT DO NOTHING
+        RETURNING id::text AS id`, [context.tenantId, sessionId, userMessageId, JSON.stringify(snapshot), idempotencyKey]);
+      if (result.rows[0]) return result.rows[0].id;
+      const existing = await client.query<{ id: string }>(`SELECT id::text AS id FROM agent_turns WHERE tenant_id = $1::uuid AND agent_version = 'v2' AND idempotency_key = $2 LIMIT 1`, [context.tenantId, idempotencyKey]);
+      if (!existing.rows[0]) throw new Error("AGENT_TURN_IDEMPOTENCY_CONFLICT");
+      return existing.rows[0].id;
+    }, this.pool);
+  }
+
+  private async finishV2TurnRecord(context: AgentContext, turnId: string, status: "succeeded" | "failed", errorJson: Record<string, string> | null) {
+    await withTenantTransaction(context, async (client) => {
+      await client.query(`UPDATE agent_turns SET status = $3, error_json = $4::jsonb, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid AND agent_version = 'v2'`, [context.tenantId, turnId, status, errorJson ? JSON.stringify(errorJson) : null]);
+    }, this.pool);
+  }
+
+  private async executeV2Tool(context: AgentContext, sessionId: string, turnId: string, snapshot: CanvasAgentSnapshotInput, tool: V2AgentToolExecution) {
+    if (tool.name === "canvas.get_context") return { revision: 0, nodes: snapshot.nodes, edges: snapshot.edges };
+    if (tool.name === "skill.load") return { status: "no_skill_selected" };
+    if (tool.name === "canvas.apply_ops") {
+      const ops = tool.arguments.ops as Array<Record<string, unknown>>;
+      const mapped = ops.map((op) => {
+        if (op.type === "add_text" || op.type === "add_image" || op.type === "add_video") return { type: "add_node", kind: op.type === "add_text" ? "text" : op.type === "add_image" ? "image" : "video", data: { text: op.text ?? "", title: op.type }, position: { x: 0, y: 0 } } as const;
+        if (op.type === "update_node") return { type: "update_node_data", nodeId: String(op.nodeId), patch: { text: op.text ?? "" } } as const;
+        return { type: "connect_nodes", source: String(op.source), target: String(op.target) } as const;
+      });
+      return this.canvasService.applyOps(context, sessionId, { expectedRevision: Number(tool.arguments.expectedRevision), flowId: snapshot.flowId!, ops: mapped, turnId });
+    }
+    if (tool.name === "canvas.run_nodes") return { status: "queued", nodeIds: tool.arguments.nodeIds };
+    if (tool.name === "canvas.await_results") return { status: "waiting", nodeIds: tool.arguments.nodeIds };
+    if (tool.name === "ask_user") return { status: "waiting_for_input", question: tool.arguments.question };
+    return { status: tool.arguments.status, summary: tool.arguments.summary };
   }
 
   async buildExecuteTurnStream(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {

@@ -1,5 +1,6 @@
 import { skillSourceSchema } from "./skill-schemas.js";
 import type { SkillSource } from "./skill-types.js";
+import { z } from "zod";
 
 export type SkillAuthoringTurnInput = {
   draft: Partial<SkillSource>;
@@ -14,6 +15,27 @@ export type SkillAuthoringTurnResult = {
   validationNotes: string[];
 };
 
+const authoringOutputSchema = z.object({
+  assistantReply: z.string().trim().min(1).max(2000),
+  missingQuestions: z.array(z.string().trim().min(1).max(300)).max(8),
+  readyToPreview: z.boolean(),
+  sourcePatch: skillSourceSchema.partial().strict(),
+  validationNotes: z.array(z.string().trim().min(1).max(300)).max(12),
+}).strict();
+
+export type SkillAuthoringStructuredOutput = z.infer<typeof authoringOutputSchema>;
+
+export function parseAuthoringStructuredOutput(raw: string | unknown): SkillAuthoringStructuredOutput {
+  const value = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return authoringOutputSchema.parse(value);
+}
+
+function stripJsonFence(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  return fenced?.[1]?.trim() ?? trimmed;
+}
+
 const DEFAULT_SOURCE: SkillSource = {
   askWhen: "缺少必要输入时追问",
   inputs: "",
@@ -26,6 +48,14 @@ const DEFAULT_SOURCE: SkillSource = {
 };
 
 export class SkillAuthoringService {
+  parseModelOutput(raw: string): SkillAuthoringStructuredOutput {
+    try {
+      return parseAuthoringStructuredOutput(stripJsonFence(raw));
+    } catch {
+      throw new Error("AUTHORING_OUTPUT_INVALID");
+    }
+  }
+
   async turn(input: SkillAuthoringTurnInput): Promise<SkillAuthoringTurnResult> {
     const message = input.userMessage.trim();
     const source: SkillSource = { ...DEFAULT_SOURCE, ...input.draft };

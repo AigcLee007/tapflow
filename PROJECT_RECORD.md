@@ -3,6 +3,14 @@
 Last updated: 2026-08-15
 Maintainers: project team + Codex sessions
 
+## 2026-08-20 - Agent + Skill V2 API Slice
+
+- Added strict conversational Skill authoring output parsing with a bounded fenced-JSON normalization path; unknown provider, route, executable, and other non-Skill fields are rejected by the authoring schema.
+- Added LibTV-style Skill package API support for `SKILL.md` import/export, validated optional declarative `graph.json`, and private Skill duplication. Import/export responses contain only creator-facing Skill content.
+- Added feature-flag enforcement to Skill catalog, authoring, draft, publish, import, export, and duplicate routes. Flags remain disabled by default.
+- Added the first native-stream V2 canvas Agent turn loop and `/api/v2/agent/sessions/:sessionId/v2-turns/stream`. It persists v2 turn metadata/idempotency, replays session events, and exposes only canvas-bound tools with flow/session checks.
+- Focused validation passed: API Skill/V2 tests (`8` passed), workflow-core build, API build, and `git diff --check`. Full staging/browser/e2e acceptance remains pending; V2 runtime flags stay disabled until that acceptance.
+
 ## 2026-08-19 - Canvas-first Agent + Skill Product Design
 
 - Confirmed the product direction: the canvas remains the primary workspace, the right-side Agent is the control layer, and LibTV-style Skills are reusable professional creation guides.

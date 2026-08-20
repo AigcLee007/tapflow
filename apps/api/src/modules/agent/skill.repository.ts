@@ -16,6 +16,15 @@ export type SkillPreview = {
   visibility: "official" | "private";
 };
 export type SkillDraft = { id: string; ownerUserId: string; revision: number; source: SkillSource };
+export type SkillVersion = {
+  id: string;
+  skillId: string;
+  version: number;
+  source: SkillSource;
+  markdown: string;
+  graph: unknown | null;
+  status: string;
+};
 
 type SkillRepositoryOptions = { pool?: Pool };
 
@@ -59,6 +68,21 @@ export class SkillRepository {
     }, this.pool);
   }
 
+  async getVersion(context: SkillDbContext, skillId: string): Promise<SkillVersion | null> {
+    return withTenantTransaction(context, async (client) => {
+      const row = await client.query<{
+        id: string; skill_id: string; version_no: number; source_json: SkillSource;
+        source_markdown: string; graph_json: unknown | null; status: string;
+      }>(`SELECT v.id::text AS id, v.skill_id::text AS skill_id, v.version_no, v.source_json, v.source_markdown, v.graph_json, v.status
+          FROM agent_skill_versions v JOIN agent_skills s ON s.id = v.skill_id
+          WHERE s.id = $1::uuid AND ((s.visibility = 'official' AND s.status = 'published' AND s.tenant_id IS NULL)
+            OR (s.visibility = 'private' AND s.tenant_id = $2::uuid AND s.owner_user_id = $3::uuid))
+            AND v.status = 'published' ORDER BY v.version_no DESC LIMIT 1`, [skillId, context.tenantId, context.userId]);
+      const value = row.rows[0];
+      return value ? { id: value.id, skillId: value.skill_id, version: Number(value.version_no), source: value.source_json, markdown: value.source_markdown, graph: value.graph_json, status: value.status } : null;
+    }, this.pool);
+  }
+
   async updateDraft(context: SkillDbContext, skillId: string, source: SkillSource, expectedRevision: number): Promise<SkillDraft> {
     return withTenantTransaction(context, async (client) => {
       const update = await client.query<{ revision: number }>(`UPDATE agent_skills SET name = $4, summary = $5, modality = $6, revision = revision + 1, updated_at = now() WHERE id = $1::uuid AND tenant_id = $2::uuid AND owner_user_id = $3::uuid AND revision = $7 RETURNING revision`, [skillId, context.tenantId, context.userId, source.name, source.summary, source.modality, expectedRevision]);
@@ -70,7 +94,7 @@ export class SkillRepository {
 
   async publish(context: SkillDbContext, skillId: string, source: SkillSource, normalized: NormalizedSkill): Promise<SkillPreview> {
     return withTenantTransaction(context, async (client) => {
-      const row = await client.query<{ id: string; version_no: number }>(`SELECT id::text AS id, COALESCE(MAX(version_no), 0) + 1 AS version_no FROM agent_skill_versions WHERE skill_id = $1::uuid GROUP BY id LIMIT 1`, [skillId]);
+      const row = await client.query<{ version_no: number }>(`SELECT COALESCE(MAX(version_no), 0) + 1 AS version_no FROM agent_skill_versions WHERE skill_id = $1::uuid`, [skillId]);
       const version = Number(row.rows[0]?.version_no ?? 1);
       const versionResult = await client.query<{ id: string }>(`INSERT INTO agent_skill_versions (tenant_id, skill_id, version_no, source_json, normalized_json, source_checksum, status, created_by) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6, 'published', $7::uuid) RETURNING id::text AS id`, [context.tenantId, skillId, version, JSON.stringify(source), JSON.stringify(normalized), normalized.checksum, context.userId]);
       const skill = await client.query<{ id: string; name: string; modality: SkillSource["modality"]; status: string; summary: string; visibility: "private"; owner_user_id: string; }>(`UPDATE agent_skills SET status = 'published', current_version_id = $2::uuid, updated_at = now() WHERE id = $1::uuid AND tenant_id = $3::uuid AND owner_user_id = $4::uuid RETURNING id::text AS id, name, modality, status, summary, visibility, owner_user_id::text AS owner_user_id`, [skillId, versionResult.rows[0]!.id, context.tenantId, context.userId]);

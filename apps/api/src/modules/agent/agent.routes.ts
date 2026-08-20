@@ -364,6 +364,30 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   );
 
   app.post(
+    "/api/v2/agent/sessions/:sessionId/v2-turns/stream",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:update")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<CreateAgentTurnInput & { routeKey?: string; idempotencyKey?: string }>(request, createAgentTurnSchema.extend({ routeKey: z.string().trim().max(200).optional(), idempotencyKey: z.string().trim().max(200).optional() }));
+        startAgentSse(reply);
+        try {
+          await app.agentService.streamV2TurnEvents(getAgentContext(request), params.sessionId, body, (chunk) => reply.raw.write(chunk));
+        } catch (streamError) {
+          writeAgentSseFailure(streamError, request, reply);
+        } finally {
+          reply.raw.end();
+        }
+        return reply;
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
     "/api/v2/agent/sessions/:sessionId/tool-calls/approve/stream",
     {
       preHandler: [...authHandlers, requirePermission("flow:run")],

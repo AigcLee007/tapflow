@@ -31,4 +31,35 @@ describe("SkillService", () => {
     expect(result).toMatchObject({ id: "skill-1", status: "published", modality: "text", version: 1 });
     expect(result).not.toHaveProperty("normalized");
   });
+
+  it("exports a creator-readable SKILL.md and imports it without executable package fields", async () => {
+    const service = new SkillService({
+      repository: {
+        getVersion: async () => ({
+          id: "version-1",
+          skillId: "skill-1",
+          version: 1,
+          source: {
+            name: "Copy",
+            summary: "Write copy",
+            usageScenarios: "Ads",
+            inputs: "Facts",
+            method: "Analyze facts\nWrite copy",
+            outputs: "Copy",
+            askWhen: "Missing facts",
+            modality: "text",
+          },
+          markdown: "",
+          graph: null,
+          status: "published",
+        }),
+        createDraft: async (_context, source) => ({ id: "skill-2", ownerUserId: "user-1", source, revision: 0 }),
+      } as never,
+    });
+    const exported = await service.exportPackage({ tenantId: "tenant-1", userId: "user-1" }, "skill-1");
+    expect(exported.skillMd).toContain("compatible_graph_schema: v2");
+    const imported = await service.importPackage({ tenantId: "tenant-1", userId: "user-1" }, { skillMd: exported.skillMd });
+    expect(imported.id).toBe("skill-2");
+    await expect(service.importPackage({ tenantId: "tenant-1", userId: "user-1" }, { skillMd: exported.skillMd, graphJson: { script: "node" } })).rejects.toThrow();
+  });
 });
