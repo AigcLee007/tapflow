@@ -46,10 +46,14 @@ export type AgentHistoryTurn = {
 };
 
 export type AgentSessionEventRecord = {
+  agentNamespace?: string | null;
+  agentVersion?: string | null;
   createdAt: string;
   eventJson: Record<string, unknown>;
   eventType: string;
+  graphRevision?: number | null;
   id: string;
+  idempotencyKey?: string | null;
   seq: number;
   sessionId: string;
   taskId: string | null;
@@ -57,12 +61,34 @@ export type AgentSessionEventRecord = {
 };
 
 export type AppendAgentSessionEventInput = {
+  agentNamespace?: string | null;
+  agentVersion?: string | null;
   eventJson: Record<string, unknown>;
   eventType: string;
+  graphRevision?: number | null;
+  idempotencyKey?: string | null;
   sessionId: string;
   taskId?: string | null;
   turnId?: string | null;
 };
+
+export type AgentTurnLease = {
+  expiresAt: string;
+  leaseOwner: string;
+  turnId: string;
+};
+
+const DEFAULT_TURN_LEASE_MS = 30_000;
+const MIN_TURN_LEASE_MS = 5_000;
+const MAX_TURN_LEASE_MS = 5 * 60_000;
+
+function boundedLeaseMs(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_TURN_LEASE_MS;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error("AGENT_TURN_LEASE_INVALID");
+  }
+  return Math.min(MAX_TURN_LEASE_MS, Math.max(MIN_TURN_LEASE_MS, Math.floor(value)));
+}
 
 type SessionRow = {
   created_at: string;
@@ -216,10 +242,14 @@ export class AgentSessionRepository {
     return withTenantTransaction(context, async (client) => {
       await this.requireSession(client, sessionId);
       const result = await client.query<{
+        agent_namespace: string | null;
+        agent_version: string | null;
         created_at: string;
         event_json: Record<string, unknown>;
         event_type: string;
+        graph_revision: string | null;
         id: string;
+        idempotency_key: string | null;
         seq: string;
         session_id: string;
         task_id: string | null;
@@ -228,6 +258,10 @@ export class AgentSessionRepository {
         `
           SELECT
             id::text AS id,
+            agent_namespace,
+            agent_version,
+            graph_revision::text AS graph_revision,
+            idempotency_key,
             session_id::text AS session_id,
             turn_id::text AS turn_id,
             task_id::text AS task_id,
@@ -244,10 +278,14 @@ export class AgentSessionRepository {
       );
 
       return result.rows.map((row) => ({
+        agentNamespace: row.agent_namespace,
+        agentVersion: row.agent_version,
         createdAt: row.created_at,
         eventJson: row.event_json ?? {},
         eventType: row.event_type,
+        graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
         id: row.id,
+        idempotencyKey: row.idempotency_key,
         seq: Number(row.seq),
         sessionId: row.session_id,
         taskId: row.task_id,
@@ -308,11 +346,19 @@ export class AgentSessionRepository {
   ): Promise<AgentSessionEventRecord> {
     return withTenantTransaction(context, async (client) => {
       await this.requireSession(client, input.sessionId);
+      if (input.agentVersion === "v2" && input.turnId) {
+        await this.assertTurnActiveClient(client, context.tenantId, input.turnId);
+      }
+
       const result = await client.query<{
+        agent_namespace: string | null;
+        agent_version: string | null;
         created_at: string;
         event_json: Record<string, unknown>;
         event_type: string;
+        graph_revision: string | null;
         id: string;
+        idempotency_key: string | null;
         seq: string;
         session_id: string;
         task_id: string | null;
@@ -324,12 +370,21 @@ export class AgentSessionRepository {
             session_id,
             turn_id,
             task_id,
+            agent_namespace,
+            agent_version,
+            graph_revision,
+            idempotency_key,
             event_type,
             event_json
           )
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::jsonb)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::bigint, $8, $9, $10::jsonb)
+          ON CONFLICT DO NOTHING
           RETURNING
             id::text AS id,
+            agent_namespace,
+            agent_version,
+            graph_revision::text AS graph_revision,
+            idempotency_key,
             session_id::text AS session_id,
             turn_id::text AS turn_id,
             task_id::text AS task_id,
@@ -343,23 +398,168 @@ export class AgentSessionRepository {
           input.sessionId,
           input.turnId ?? null,
           input.taskId ?? null,
+          input.agentNamespace ?? null,
+          input.agentVersion ?? null,
+          input.graphRevision ?? null,
+          input.idempotencyKey ?? null,
           input.eventType,
           JSON.stringify(input.eventJson),
         ],
       );
 
-      const row = result.rows[0]!;
+      let row = result.rows[0];
+      if (!row && input.agentVersion === "v2" && input.idempotencyKey) {
+        const existing = await client.query<typeof result.rows[number]>(
+          `
+            SELECT
+              id::text AS id,
+              agent_namespace,
+              agent_version,
+              graph_revision::text AS graph_revision,
+              idempotency_key,
+              session_id::text AS session_id,
+              turn_id::text AS turn_id,
+              task_id::text AS task_id,
+              seq::text AS seq,
+              event_type,
+              event_json,
+              created_at::text AS created_at
+            FROM agent_task_events
+            WHERE tenant_id = $1::uuid
+              AND agent_version = 'v2'
+              AND idempotency_key = $2
+            LIMIT 1
+          `,
+          [context.tenantId, input.idempotencyKey],
+        );
+        row = existing.rows[0];
+      }
+      if (!row) throw new Error("AGENT_EVENT_IDEMPOTENCY_CONFLICT");
       return {
+        agentNamespace: row.agent_namespace,
+        agentVersion: row.agent_version,
         createdAt: row.created_at,
         eventJson: row.event_json ?? {},
         eventType: row.event_type,
+        graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
         id: row.id,
+        idempotencyKey: row.idempotency_key,
         seq: Number(row.seq),
         sessionId: row.session_id,
         taskId: row.task_id,
         turnId: row.turn_id,
       };
     }, this.pool);
+  }
+
+  async assertTurnActive(context: AgentContext, turnId: string): Promise<void> {
+    return withTenantTransaction(context, async (client) => {
+      await this.assertTurnActiveClient(client, context.tenantId, turnId);
+    }, this.pool);
+  }
+
+  async acquireTurnLease(
+    context: AgentContext,
+    input: { leaseMs?: number; leaseOwner: string; turnId: string },
+  ): Promise<AgentTurnLease | null> {
+    const leaseMs = boundedLeaseMs(input.leaseMs);
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ expires_at: string; id: string }>(
+        `
+          UPDATE agent_turns
+          SET lease_owner = $3,
+              lease_expires_at = now() + ($4::int * interval '1 millisecond'),
+              updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+            AND cancelled_at IS NULL
+            AND (
+              lease_owner IS NULL
+              OR lease_expires_at IS NULL
+              OR lease_expires_at <= now()
+              OR lease_owner = $3
+            )
+          RETURNING id::text AS id, lease_expires_at::text AS expires_at
+        `,
+        [context.tenantId, input.turnId, input.leaseOwner, leaseMs],
+      );
+      const row = result.rows[0];
+      return row ? { expiresAt: row.expires_at, leaseOwner: input.leaseOwner, turnId: row.id } : null;
+    }, this.pool);
+  }
+
+  async renewTurnLease(
+    context: AgentContext,
+    input: { leaseMs?: number; leaseOwner: string; turnId: string },
+  ): Promise<AgentTurnLease | null> {
+    const leaseMs = boundedLeaseMs(input.leaseMs);
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ expires_at: string; id: string }>(
+        `
+          UPDATE agent_turns
+          SET lease_expires_at = now() + ($4::int * interval '1 millisecond'), updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND id = $2::uuid
+            AND cancelled_at IS NULL
+            AND lease_owner = $3
+            AND lease_expires_at > now()
+          RETURNING id::text AS id, lease_expires_at::text AS expires_at
+        `,
+        [context.tenantId, input.turnId, input.leaseOwner, leaseMs],
+      );
+      const row = result.rows[0];
+      return row ? { expiresAt: row.expires_at, leaseOwner: input.leaseOwner, turnId: row.id } : null;
+    }, this.pool);
+  }
+
+  async releaseTurnLease(
+    context: AgentContext,
+    input: { leaseOwner: string; turnId: string },
+  ): Promise<boolean> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query(
+        `
+          UPDATE agent_turns
+          SET lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+          WHERE tenant_id = $1::uuid AND id = $2::uuid AND lease_owner = $3
+        `,
+        [context.tenantId, input.turnId, input.leaseOwner],
+      );
+      return result.rowCount === 1;
+    }, this.pool);
+  }
+
+  async cancelTurn(
+    context: AgentContext,
+    input: { reason?: string; turnId: string },
+  ): Promise<boolean> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query(
+        `
+          UPDATE agent_turns
+          SET cancelled_at = COALESCE(cancelled_at, now()),
+              lease_owner = NULL,
+              lease_expires_at = NULL,
+              error_json = COALESCE(error_json, '{}'::jsonb) || jsonb_build_object(
+                'code', 'AGENT_TURN_CANCELLED',
+                'reason', $3
+              ),
+              updated_at = now()
+          WHERE tenant_id = $1::uuid AND id = $2::uuid
+        `,
+        [context.tenantId, input.turnId, input.reason ?? "Cancelled by user"],
+      );
+      return result.rowCount === 1;
+    }, this.pool);
+  }
+
+  private async assertTurnActiveClient(client: PoolClient, tenantId: string, turnId: string): Promise<void> {
+    const result = await client.query<{ cancelled_at: string | null }>(
+      `SELECT cancelled_at::text AS cancelled_at FROM agent_turns WHERE tenant_id = $1::uuid AND id = $2::uuid LIMIT 1`,
+      [tenantId, turnId],
+    );
+    if (result.rowCount === 0) throw new Error("AGENT_TURN_NOT_FOUND");
+    if (result.rows[0]!.cancelled_at) throw new Error("AGENT_TURN_CANCELLED");
   }
 
   private async requireSession(client: PoolClient, sessionId: string): Promise<SessionRow> {

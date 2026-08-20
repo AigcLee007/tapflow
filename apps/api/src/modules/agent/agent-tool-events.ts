@@ -1,4 +1,15 @@
-export type AgentToolEvent =
+type AgentToolEventMetadata = {
+  agentNamespace?: string;
+  agentVersion?: "legacy" | "v2";
+  graphRevision?: number;
+  idempotencyKey?: string;
+  redactionVersion?: string;
+  skillVersionId?: string;
+  taskId?: string;
+  turnId?: string;
+};
+
+export type AgentToolEvent = (
   | { type: "thinking_status"; label: string; detail?: string }
   | { type: "message_delta"; content: string }
   | { type: "tool_started"; toolCallKey: string; toolName: string }
@@ -21,7 +32,8 @@ export type AgentToolEvent =
     }
   | { type: "approval_required"; estimate: unknown; toolCallKey: string; turnId: string }
   | { type: "turn_completed"; finalText: string; turnId: string }
-  | { type: "turn_failed"; code: string; message: string; turnId?: string };
+  | { type: "turn_failed"; code: string; message: string }
+) & AgentToolEventMetadata;
 
 export function formatAgentToolEvent(event: AgentToolEvent): string {
   const { type, ...data } = event;
