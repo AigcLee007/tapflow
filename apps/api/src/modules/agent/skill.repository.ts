@@ -51,12 +51,12 @@ export class SkillRepository {
     }, this.pool);
   }
 
-  async createDraft(context: SkillDbContext, source: SkillSource): Promise<SkillDraft> {
+  async createDraft(context: SkillDbContext, source: SkillSource, packageData: { graphJson?: unknown | null } = {}): Promise<SkillDraft & { graph?: unknown | null }> {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<{ id: string }>(`INSERT INTO agent_skills (tenant_id, owner_user_id, visibility, status, slug, name, summary, modality) VALUES ($1::uuid, $2::uuid, 'private', 'draft', $3, $4, $5, $6) RETURNING id::text AS id`, [context.tenantId, context.userId, slugify(source.name), source.name, source.summary, source.modality]);
       const id = result.rows[0]!.id;
-      await client.query(`INSERT INTO agent_skill_versions (tenant_id, skill_id, version_no, source_json, normalized_json, source_checksum, status, created_by) VALUES ($1::uuid, $2::uuid, 1, $3::jsonb, '{}'::jsonb, '', 'draft', $4::uuid)`, [context.tenantId, id, JSON.stringify(source), context.userId]);
-      return { id, ownerUserId: context.userId!, revision: 0, source };
+      await client.query(`INSERT INTO agent_skill_versions (tenant_id, skill_id, version_no, source_json, normalized_json, graph_json, source_checksum, status, created_by) VALUES ($1::uuid, $2::uuid, 1, $3::jsonb, '{}'::jsonb, $5::jsonb, '', 'draft', $4::uuid)`, [context.tenantId, id, JSON.stringify(source), context.userId, packageData.graphJson ? JSON.stringify(packageData.graphJson) : null]);
+      return { id, ownerUserId: context.userId!, revision: 0, source, graph: packageData.graphJson ?? null };
     }, this.pool);
   }
 

@@ -1,4 +1,4 @@
-import type { DatabaseTextGenerationRuntime } from "@aigc-flow/ai-gateway-core";
+import type { TextGenerationRequest, TextStreamEvent } from "@aigc-flow/ai-gateway-core";
 import { z } from "zod";
 
 const canvasGetContextArgs = z.object({}).strict();
@@ -46,7 +46,7 @@ type V2TurnInput = {
   skill?: { id: string; version: number; source: unknown; normalized: unknown };
 };
 
-type V2Runtime = Pick<DatabaseTextGenerationRuntime, "streamText">;
+type V2Runtime = { streamText: (request: TextGenerationRequest) => AsyncGenerator<TextStreamEvent> };
 
 const SYSTEM_PROMPT = [
   "You are TapFlow Canvas Agent v2.",

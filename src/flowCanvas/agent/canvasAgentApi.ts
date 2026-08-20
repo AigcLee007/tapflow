@@ -67,6 +67,17 @@ export type AgentImageRunSettingsEstimateResponse = {
   size: "1K" | "2K" | "4K";
 };
 
+export type AgentSkillPreview = {
+  id: string;
+  modality: "text" | "image" | "video";
+  name: string;
+  ownerUserId: string | null;
+  status: string;
+  summary: string;
+  version: number;
+  visibility: "official" | "private";
+};
+
 export type AgentContinuationContext = {
   action: CanvasAgentContinuationAction;
   assetId: string;
@@ -158,6 +169,34 @@ export function createAgentMessage(sessionId: string, input: {
 
 export function createAgentTurn(sessionId: string, input: AgentTurnRequestInput) {
   return apiPost<CreateAgentTurnResponse>(`/agent/sessions/${sessionId}/turns`, input);
+}
+
+export function listAgentSkills(input?: { modality?: AgentSkillPreview["modality"]; q?: string; scope?: "available" | "mine" }) {
+  const query = new URLSearchParams({ scope: input?.scope ?? "available" });
+  if (input?.modality) query.set("modality", input.modality);
+  if (input?.q) query.set("q", input.q);
+  return apiGet<AgentSkillPreview[]>(`/agent/skills?${query.toString()}`);
+}
+
+export function getAgentSkill(skillId: string) {
+  return apiGet<{ id: string; ownerUserId: string; revision: number; source: Record<string, unknown> }>(`/agent/skills/${skillId}`);
+}
+
+export function authorAgentSkillTurn(input: { draft: Record<string, unknown>; userMessage: string }) {
+  return apiPost<Record<string, unknown>>("/agent/skills/authoring/turn", input);
+}
+
+export async function openAgentV2TurnStream(sessionId: string, input: AgentTurnRequestInput & { idempotencyKey?: string; routeKey?: string }) {
+  const token = getStoredAccessToken();
+  return fetch(`/api/v2/agent/sessions/${sessionId}/v2-turns/stream`, {
+    body: JSON.stringify(input),
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
 }
 
 export function applyAgentCanvasOps(

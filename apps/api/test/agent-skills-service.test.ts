@@ -53,13 +53,14 @@ describe("SkillService", () => {
           graph: null,
           status: "published",
         }),
-        createDraft: async (_context, source) => ({ id: "skill-2", ownerUserId: "user-1", source, revision: 0 }),
+        createDraft: async (_context, source, packageData) => ({ id: "skill-2", ownerUserId: "user-1", source, revision: 0, graph: packageData?.graphJson ?? null }),
       } as never,
     });
     const exported = await service.exportPackage({ tenantId: "tenant-1", userId: "user-1" }, "skill-1");
     expect(exported.skillMd).toContain("compatible_graph_schema: v2");
-    const imported = await service.importPackage({ tenantId: "tenant-1", userId: "user-1" }, { skillMd: exported.skillMd });
+    const imported = await service.importPackage({ tenantId: "tenant-1", userId: "user-1" }, { skillMd: exported.skillMd, graphJson: { schemaVersion: "v2", nodes: [{ id: "text-1", type: "text", data: { body: "{{topic}}" } }], edges: [] } });
     expect(imported.id).toBe("skill-2");
+    expect(imported.graph).toMatchObject({ schemaVersion: "v2" });
     await expect(service.importPackage({ tenantId: "tenant-1", userId: "user-1" }, { skillMd: exported.skillMd, graphJson: { script: "node" } })).rejects.toThrow();
   });
 });

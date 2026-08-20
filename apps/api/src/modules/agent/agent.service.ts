@@ -566,8 +566,8 @@ export class AgentService {
     const idempotencyKey = input.idempotencyKey?.trim() || `agent-v2:${sessionId}:${userMessage.id}`;
     const turnId = await this.createV2TurnRecord(context, sessionId, userMessage.id, input.snapshot, idempotencyKey);
     const loop = new V2AgentTurnLoop({
-      textRuntime: { streamText: this.textRuntime.streamText.bind(this.textRuntime) },
-      executeTool: async (tool) => this.executeV2Tool(context, sessionId, turnId, session.flowId!, input.snapshot, tool),
+      textRuntime: { streamText: (request) => this.textRuntime.streamText!(context, request) },
+      executeTool: async (tool) => this.executeV2Tool(context, sessionId, turnId, input.snapshot, tool),
     });
     let eventIndex = 0;
     try {

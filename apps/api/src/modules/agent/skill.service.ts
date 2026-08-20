@@ -10,7 +10,7 @@ import {
 } from "@aigc-flow/workflow-core";
 
 export class SkillService {
-  readonly repository: Pick<SkillRepository, "createDraft" | "duplicate" | "getDraft" | "list" | "publish" | "updateDraft">;
+  readonly repository: Pick<SkillRepository, "createDraft" | "duplicate" | "getDraft" | "list" | "publish" | "updateDraft" | "getVersion">;
 
   constructor(options: { repository?: SkillService["repository"] } = {}) {
     this.repository = options.repository ?? new SkillRepository();
@@ -51,9 +51,7 @@ export class SkillService {
   }
 
   async exportPackage(context: SkillDbContext, skillId: string): Promise<{ skillMd: string; graphJson?: SkillGraphTemplate }> {
-    const repository = this.repository as SkillService["repository"] & { getVersion?: SkillRepository["getVersion"] };
-    if (!repository.getVersion) throw new Error("SKILL_EXPORT_UNAVAILABLE");
-    const version = await repository.getVersion(context, skillId);
+    const version = await this.repository.getVersion(context, skillId);
     if (!version) throw new Error("SKILL_NOT_FOUND");
     const normalized = normalizeSkillSource(version.source);
     const skillMd = version.markdown?.trim() || serializeSkillMarkdown({
@@ -85,8 +83,8 @@ export class SkillService {
       usageScenarios: "通过 Skill 目录或触发词使用",
     };
     const valid = skillSourceSchema.parse(source);
-    if (pkg.graphJson !== undefined) validateSkillGraphTemplate(pkg.graphJson);
-    return this.repository.createDraft(context, valid);
+    const graphJson = pkg.graphJson === undefined ? null : validateSkillGraphTemplate(pkg.graphJson);
+    return this.repository.createDraft(context, valid, { graphJson });
   }
 
   async duplicate(context: SkillDbContext, skillId: string, source: SkillSource) {

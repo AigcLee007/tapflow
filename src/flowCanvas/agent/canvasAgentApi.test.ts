@@ -5,6 +5,8 @@ import {
   approveAgentToolCallStream,
   createAgentTurn,
   executeAgentTurnStream,
+  listAgentSkills,
+  openAgentV2TurnStream,
   readAgentSseStream,
 } from "./canvasAgentApi";
 
@@ -182,6 +184,24 @@ describe("canvasAgentApi", () => {
 
     expect(String(calls[0]?.input)).toBe("/api/v2/agent/sessions/session-1/turns/execute/stream");
     expect(calls[0]?.init?.method).toBe("POST");
+  });
+
+  it("lists skills and opens the flag-gated v2 stream", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    try {
+      await listAgentSkills({ scope: "available", modality: "text" });
+      await openAgentV2TurnStream("session-1", { prompt: "hello", snapshot: { ...emptySnapshot, flowId: "flow-1" }, idempotencyKey: "turn-1" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(String(calls[0]?.input)).toBe("/api/v2/agent/skills?scope=available&modality=text");
+    expect(String(calls[1]?.input)).toBe("/api/v2/agent/sessions/session-1/v2-turns/stream");
+    expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({ idempotencyKey: "turn-1" });
   });
 
   it("opens the tool approval stream endpoint", async () => {

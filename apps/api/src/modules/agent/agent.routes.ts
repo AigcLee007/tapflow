@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import { requireAuth, requirePermission, requireTenant } from "../../http/auth-middleware.js";
 import {
@@ -374,7 +374,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const body = parseBody<CreateAgentTurnInput & { routeKey?: string; idempotencyKey?: string }>(request, createAgentTurnSchema.extend({ routeKey: z.string().trim().max(200).optional(), idempotencyKey: z.string().trim().max(200).optional() }));
         startAgentSse(reply);
         try {
-          await app.agentService.streamV2TurnEvents(getAgentContext(request), params.sessionId, body, (chunk) => reply.raw.write(chunk));
+          await app.agentService.streamV2TurnEvents(getAgentContext(request), params.sessionId, body, (chunk) => { reply.raw.write(chunk); });
         } catch (streamError) {
           writeAgentSseFailure(streamError, request, reply);
         } finally {
