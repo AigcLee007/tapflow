@@ -465,7 +465,7 @@ export function CanvasAgentPanel(props: {
 
           {skillPickerOpen ? (
             <div style={{ display: "grid", gap: 7, padding: "0 16px 10px" }}>
-              {!skillUiEnabled ? <div role="status" style={{ color: "#fbbf24", fontSize: 11, padding: "8px 2px" }}>Skill 暂不可用</div> : null}
+              {!skillUiEnabled ? <div role="status" style={{ color: "#fbbf24", fontSize: 11, padding: "8px 2px" }}>当前运行环境未启用 Skill</div> : null}
               {skillUiEnabled ? <>
               {skillView === "picker" ? <>
                 <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr" }}>
