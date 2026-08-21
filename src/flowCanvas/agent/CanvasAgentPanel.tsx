@@ -4,7 +4,7 @@ import { AGENT_REFERENCE_LIMIT, buildAgentReferenceContext } from "./agentRefere
 import { buildAgentArtifactRefChips } from "./agentArtifactRefs";
 import { buildAgentWorkspaceTimeline } from "./agentWorkspaceTimeline";
 import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from "./agentSessionEvents";
-import { getAgentCapabilities, getAgentImageRunSettings, listAgentSessions, listAgentSkills, type AgentCapabilities, type AgentSkillPreview } from "./canvasAgentApi";
+import { approveAgentSkillRun, cancelAgentSkillRun, getAgentCapabilities, getAgentImageRunSettings, getAgentSkillRun, listAgentSessions, listAgentSkills, type AgentCapabilities, type AgentSkillPreview, type AgentSkillRun } from "./canvasAgentApi";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
@@ -90,6 +90,35 @@ function buildSelectedCanvasReferenceChips(): AgentReferenceChip[] {
     });
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function findSkillRunId(input: {
+  pendingApproval: Record<string, unknown> | null;
+  toolTimeline: Array<{ result?: unknown; toolName: string }>;
+}): string | null {
+  const pending = input.pendingApproval;
+  if (pending) {
+    const pendingName = readId(pending.name);
+    const pendingResult = readRecord(pending.result);
+    const pendingId = readId(pending.skillRunId) ?? readId(pending.approvalId) ?? readId(pendingResult?.skillRunId) ?? readId(pendingResult?.approvalId);
+    if (pendingId && (pendingName === "skill.run" || pendingName?.startsWith("skill."))) return pendingId;
+  }
+
+  for (const item of [...input.toolTimeline].reverse()) {
+    if (item.toolName !== "skill.run") continue;
+    const result = readRecord(item.result);
+    const runId = readId(result?.skillRunId) ?? readId(result?.approvalId);
+    if (runId) return runId;
+  }
+  return null;
+}
+
 export function CanvasAgentPanel(props: {
   initialSessionId?: string | null;
   onClose: () => void;
@@ -158,26 +187,34 @@ export function CanvasAgentPanel(props: {
   const busy = isCanvasAgentBusyState(sessionActions.workspaceState);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
 
-  const skillPlan = React.useMemo<AgentSkillPlan | null>(() => {
-    if (!selectedSkillId || !sessionActions.currentPlan) return null;
-    const plan = sessionActions.currentPlan;
-    const isRunning = sessionActions.workspaceState === "running_workflow" || sessionActions.workspaceState === "applying_canvas_ops";
-    const isFailed = sessionActions.workspaceState === "failed";
-    const status = isFailed ? "failed" : isRunning ? "running" : "waiting_for_approval";
-    return {
-      id: plan.turnId ?? `skill-plan-${plan.sessionId ?? "current"}`,
-      status,
-      estimatedCredits: plan.costEstimate?.totalCredits,
-      steps: plan.plan.map((step, index) => ({
-        id: `${plan.turnId ?? "skill"}-step-${index}`,
-        index,
-        action: "review" as const,
-        label: step.step,
-        status: status === "failed" ? "failed" : status === "running" ? "running" : "waiting_for_approval",
-        error: isFailed ? sessionActions.error ?? undefined : undefined,
-      })),
-    };
-  }, [selectedSkillId, sessionActions.currentPlan, sessionActions.error, sessionActions.workspaceState]);
+  const skillRunId = React.useMemo(
+    () => findSkillRunId({ pendingApproval: sessionActions.pendingApproval, toolTimeline: sessionActions.toolTimeline }),
+    [sessionActions.pendingApproval, sessionActions.toolTimeline],
+  );
+  const [skillRun, setSkillRun] = React.useState<AgentSkillRun | null>(null);
+  const [skillRunError, setSkillRunError] = React.useState<string | null>(null);
+
+  const refreshSkillRun = React.useCallback(async (runId: string) => {
+    try {
+      const next = await getAgentSkillRun(runId);
+      setSkillRun(next);
+      setSkillRunError(null);
+    } catch (error) {
+      setSkillRun(null);
+      setSkillRunError(error instanceof Error ? error.message : "Skill 执行状态暂不可用");
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!skillRunId) {
+      setSkillRun(null);
+      setSkillRunError(null);
+      return;
+    }
+    void refreshSkillRun(skillRunId);
+  }, [refreshSkillRun, skillRunId]);
+
+  const skillPlan: AgentSkillPlan | null = skillRun;
 
   React.useEffect(() => {
     void getAgentCapabilities().then(setServerCapabilities).catch(() => setServerCapabilities(null));
@@ -403,11 +440,31 @@ export function CanvasAgentPanel(props: {
           {skillPlan ? (
             <div style={{ padding: "0 16px 12px" }}>
               <CanvasAgentSkillPlan
-                onApprove={() => { void sessionActions.executeCurrentPlan(props.onConfirmPlan); }}
-                onCancel={sessionActions.cancelCurrentPlan}
+                onApprove={async () => {
+                  if (!skillRunId || !sessionActions.sessionId) return;
+                  try {
+                    const response = await approveAgentSkillRun(sessionActions.sessionId, skillRunId);
+                    if (!response.ok) throw new Error(`Skill 批准失败（${response.status}）`);
+                    await refreshSkillRun(skillRunId);
+                  } catch (error) {
+                    setSkillRunError(error instanceof Error ? error.message : "Skill 批准失败");
+                  }
+                }}
+                onCancel={async () => {
+                  if (!skillRunId || !sessionActions.sessionId) return;
+                  try {
+                    await cancelAgentSkillRun(sessionActions.sessionId, skillRunId, "用户取消 Skill 执行");
+                    await refreshSkillRun(skillRunId);
+                  } catch (error) {
+                    setSkillRunError(error instanceof Error ? error.message : "Skill 取消失败");
+                  }
+                }}
                 plan={skillPlan}
               />
+              {skillRunError ? <div role="alert" style={{ color: "#fca5a5", fontSize: 11, paddingTop: 6 }}>{skillRunError}</div> : null}
             </div>
+          ) : skillRunId && skillRunError ? (
+            <div role="alert" style={{ color: "#fca5a5", fontSize: 11, padding: "0 16px 12px" }}>{skillRunError}</div>
           ) : sessionActions.currentPlan ? (
             <div style={{ padding: "0 16px 12px" }}>
               <CanvasAgentPlanCard

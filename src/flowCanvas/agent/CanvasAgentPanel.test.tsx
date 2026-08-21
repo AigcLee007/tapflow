@@ -6,10 +6,13 @@ import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { CanvasAgentPanel } from "./CanvasAgentPanel";
 
 const mockApproveAgentToolCallStream = vi.fn();
+const mockApproveAgentSkillRun = vi.fn();
+const mockCancelAgentSkillRun = vi.fn();
 const mockCreateAgentSession = vi.fn();
 const mockCreateAgentTurn = vi.fn();
 const mockExecuteAgentTurnStream = vi.fn();
 const mockGetAgentImageRunSettings = vi.fn();
+const mockGetAgentSkillRun = vi.fn();
 const mockGetAgentCapabilities = vi.fn();
 const mockGetAgentSessionEvents = vi.fn();
 const mockGetAgentSessionHistory = vi.fn();
@@ -22,15 +25,18 @@ const mockUploadAssetFile = vi.fn();
 
 vi.mock("./canvasAgentApi", () => ({
   approveAgentToolCallStream: (...args: unknown[]) => mockApproveAgentToolCallStream(...args),
+  approveAgentSkillRun: (...args: unknown[]) => mockApproveAgentSkillRun(...args),
   createAgentSession: (...args: unknown[]) => mockCreateAgentSession(...args),
   createAgentTurn: (...args: unknown[]) => mockCreateAgentTurn(...args),
   executeAgentTurnStream: (...args: unknown[]) => mockExecuteAgentTurnStream(...args),
   getAgentImageRunSettings: (...args: unknown[]) => mockGetAgentImageRunSettings(...args),
+  getAgentSkillRun: (...args: unknown[]) => mockGetAgentSkillRun(...args),
   getAgentCapabilities: (...args: unknown[]) => mockGetAgentCapabilities(...args),
   getAgentSessionEvents: (...args: unknown[]) => mockGetAgentSessionEvents(...args),
   getAgentSessionHistory: (...args: unknown[]) => mockGetAgentSessionHistory(...args),
   listAgentSessions: (...args: unknown[]) => mockListAgentSessions(...args),
   listAgentSkills: (...args: unknown[]) => mockListAgentSkills(...args),
+  cancelAgentSkillRun: (...args: unknown[]) => mockCancelAgentSkillRun(...args),
   openAgentSessionEventStream: (...args: unknown[]) => mockOpenAgentSessionEventStream(...args),
   openAgentTurnStream: (...args: unknown[]) => mockOpenAgentTurnStream(...args),
   readAgentSseStream: (...args: unknown[]) => mockReadAgentSseStream(...args),
@@ -68,10 +74,13 @@ describe("CanvasAgentPanel", () => {
     vi.unstubAllEnvs();
     useFlowCanvasStore.getState().newProject();
     mockApproveAgentToolCallStream.mockReset();
+    mockApproveAgentSkillRun.mockReset();
+    mockCancelAgentSkillRun.mockReset();
     mockCreateAgentSession.mockReset();
     mockCreateAgentTurn.mockReset();
     mockExecuteAgentTurnStream.mockReset();
     mockGetAgentImageRunSettings.mockReset();
+    mockGetAgentSkillRun.mockReset();
     mockGetAgentCapabilities.mockReset();
     mockGetAgentSessionEvents.mockReset();
     mockGetAgentSessionHistory.mockReset();
@@ -126,6 +135,8 @@ describe("CanvasAgentPanel", () => {
       skillRuntimeEnabled: false,
       skillsEnabled: false,
     });
+    mockApproveAgentSkillRun.mockResolvedValue({ ok: true, status: 200 });
+    mockCancelAgentSkillRun.mockResolvedValue({ cancelled: true });
     mockGetAgentSessionEvents.mockResolvedValue({ events: [] });
     mockGetAgentSessionHistory.mockResolvedValue({
       messages: [],
@@ -174,6 +185,64 @@ describe("CanvasAgentPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "选择一个创作 Skill" }));
     expect(await screen.findByText("Skill 暂不可用")).toBeTruthy();
     expect(mockCreateAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it("projects a product-safe Skill Run from a V2 approval and uses Skill Run controls", async () => {
+    vi.stubEnv("VITE_AGENT_V2_ENABLED", "true");
+    vi.stubEnv("VITE_AGENT_SKILLS_ENABLED", "true");
+    mockGetAgentCapabilities.mockResolvedValue({
+      agentV2Enabled: true,
+      agentV2RuntimeEnabled: true,
+      skillAuthoringEnabled: false,
+      skillRuntimeEnabled: true,
+      skillsEnabled: true,
+    });
+    mockListAgentSessions.mockResolvedValue([buildSessionSummary()]);
+    mockGetAgentSkillRun.mockResolvedValue({
+      approvalState: "pending",
+      estimatedCredits: 6,
+      id: "skill-run-1",
+      status: "waiting_for_approval",
+      steps: [{ action: "text", id: "step-1", index: 0, label: "生成文案", status: "waiting_for_approval" }],
+    });
+    mockGetAgentSessionEvents.mockResolvedValue({
+      events: [
+        {
+          createdAt: "2026-08-21T00:00:01Z",
+          eventJson: { callId: "call-1", name: "skill.run" },
+          eventType: "tool_started",
+          id: "event-1",
+          seq: 1,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: "turn-1",
+        },
+        {
+          createdAt: "2026-08-21T00:00:02Z",
+          eventJson: {
+            callId: "call-1",
+            name: "skill.run",
+            result: { approvalRequired: true, provider: "secret", routeKey: "internal", skillRunId: "skill-run-1", status: "waiting_for_approval" },
+          },
+          eventType: "tool_result",
+          id: "event-2",
+          seq: 2,
+          sessionId: "session-1",
+          taskId: null,
+          turnId: "turn-1",
+        },
+      ],
+    });
+
+    renderPanel();
+    expect(await screen.findByTestId("agent-skill-plan")).toBeTruthy();
+    expect(screen.getByText("生成文案")).toBeTruthy();
+    expect(screen.getByText("预计 6 积分")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "批准执行" }));
+    await waitFor(() => expect(mockApproveAgentSkillRun).toHaveBeenCalledWith("session-1", "skill-run-1"));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(mockCancelAgentSkillRun).toHaveBeenCalledWith("session-1", "skill-run-1", "用户取消 Skill 执行"));
+    expect(screen.getByTestId("agent-skill-plan").outerHTML).not.toMatch(/provider|routeKey|credential|baseUrl/);
   });
 
   it("loads conversation history scoped to the current project and flow", async () => {
