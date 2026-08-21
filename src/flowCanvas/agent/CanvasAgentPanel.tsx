@@ -16,6 +16,9 @@ import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
 import { CanvasAgentSkillAuthoring } from "./CanvasAgentSkillAuthoring";
 import { CanvasAgentSkillDetail } from "./CanvasAgentSkillDetail";
 import { CanvasAgentSkillPicker } from "./CanvasAgentSkillPicker";
+import { CanvasAgentSkillBar } from "./CanvasAgentSkillBar";
+import { CanvasAgentSkillPlan } from "./CanvasAgentSkillPlan";
+import type { AgentSkillPlan } from "./canvasAgentSkillTypes";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import { getCanvasAgentBusyHint, isCanvasAgentBusyState } from "./canvasAgentStateMachine";
 import { CanvasAgentWorkspaceShell } from "./CanvasAgentWorkspaceShell";
@@ -129,6 +132,9 @@ export function CanvasAgentPanel(props: {
   const [skillScope, setSkillScope] = React.useState<"available" | "mine">("available");
   const [skillView, setSkillView] = React.useState<"picker" | "detail" | "authoring">("picker");
   const [skillRefreshToken, setSkillRefreshToken] = React.useState(0);
+  const [skillPickerOpen, setSkillPickerOpen] = React.useState(false);
+  const [skillListLoading, setSkillListLoading] = React.useState(false);
+  const [skillListError, setSkillListError] = React.useState<string | null>(null);
   const [sessionList, setSessionList] = React.useState<Array<{
     createdAt: string;
     flowId: string | null;
@@ -151,6 +157,27 @@ export function CanvasAgentPanel(props: {
 
   const busy = isCanvasAgentBusyState(sessionActions.workspaceState);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
+
+  const skillPlan = React.useMemo<AgentSkillPlan | null>(() => {
+    if (!selectedSkillId || !sessionActions.currentPlan) return null;
+    const plan = sessionActions.currentPlan;
+    const isRunning = sessionActions.workspaceState === "running_workflow" || sessionActions.workspaceState === "applying_canvas_ops";
+    const isFailed = sessionActions.workspaceState === "failed";
+    const status = isFailed ? "failed" : isRunning ? "running" : "waiting_for_approval";
+    return {
+      id: plan.turnId ?? `skill-plan-${plan.sessionId ?? "current"}`,
+      status,
+      estimatedCredits: plan.costEstimate?.totalCredits,
+      steps: plan.plan.map((step, index) => ({
+        id: `${plan.turnId ?? "skill"}-step-${index}`,
+        index,
+        action: "review" as const,
+        label: step.step,
+        status: status === "failed" ? "failed" : status === "running" ? "running" : "waiting_for_approval",
+        error: isFailed ? sessionActions.error ?? undefined : undefined,
+      })),
+    };
+  }, [selectedSkillId, sessionActions.currentPlan, sessionActions.error, sessionActions.workspaceState]);
 
   React.useEffect(() => {
     void getAgentCapabilities().then(setServerCapabilities).catch(() => setServerCapabilities(null));
@@ -196,14 +223,17 @@ export function CanvasAgentPanel(props: {
   }, []);
 
   React.useEffect(() => {
-    if (!skillUiEnabled) return;
+    if (!skillPickerOpen || !skillUiEnabled) return;
+    setSkillListLoading(true);
+    setSkillListError(null);
     const timer = window.setTimeout(() => {
       void listAgentSkills({ modality: skillModality || undefined, q: skillQuery || undefined, scope: skillScope })
-        .then(setAvailableSkills)
-        .catch(() => setAvailableSkills([]));
+        .then((skills) => { setAvailableSkills(skills); setSkillListError(null); })
+        .catch(() => { setAvailableSkills([]); setSkillListError("Skill 暂不可用"); })
+        .finally(() => setSkillListLoading(false));
     }, 160);
     return () => window.clearTimeout(timer);
-  }, [skillModality, skillQuery, skillScope, skillRefreshToken, skillUiEnabled]);
+  }, [skillModality, skillQuery, skillScope, skillRefreshToken, skillPickerOpen, skillUiEnabled]);
 
   React.useEffect(() => {
     if (!sessionActions.sessionId) return;
@@ -370,7 +400,15 @@ export function CanvasAgentPanel(props: {
             }}
           />
 
-          {sessionActions.currentPlan ? (
+          {skillPlan ? (
+            <div style={{ padding: "0 16px 12px" }}>
+              <CanvasAgentSkillPlan
+                onApprove={() => { void sessionActions.executeCurrentPlan(props.onConfirmPlan); }}
+                onCancel={sessionActions.cancelCurrentPlan}
+                plan={skillPlan}
+              />
+            </div>
+          ) : sessionActions.currentPlan ? (
             <div style={{ padding: "0 16px 12px" }}>
               <CanvasAgentPlanCard
                 busy={busy}
@@ -416,21 +454,33 @@ export function CanvasAgentPanel(props: {
             </div>
           ) : null}
 
-          {skillUiEnabled ? (
+          <CanvasAgentSkillBar
+            enabled={skillUiEnabled}
+            onClear={() => { setSelectedSkillId(null); sessionActions.selectSkill(null); }}
+            onOpenPicker={() => setSkillPickerOpen((open) => !open)}
+            onRetry={() => { void getAgentCapabilities().then(setServerCapabilities).catch(() => setServerCapabilities(null)); }}
+            selectedSkill={availableSkills.find((skill) => skill.id === selectedSkillId) ?? null}
+            unavailableReason={!skillUiEnabled && skillPickerOpen ? "Skill 暂不可用" : undefined}
+          />
+
+          {skillPickerOpen ? (
             <div style={{ display: "grid", gap: 7, padding: "0 16px 10px" }}>
+              {!skillUiEnabled ? <div role="status" style={{ color: "#fbbf24", fontSize: 11, padding: "8px 2px" }}>Skill 暂不可用</div> : null}
+              {skillUiEnabled ? <>
               {skillView === "picker" ? <>
                 <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr" }}>
                   <MenuSelect fullWidth label="技能来源" onChange={(value) => setSkillScope(value === "mine" ? "mine" : "available")} options={[{ label: "技能库", value: "available" }, { label: "我的技能", value: "mine" }]} size="compact" value={skillScope} />
                   <MenuSelect fullWidth label="类型" onChange={(value) => setSkillModality(value as "" | AgentSkillPreview["modality"])} options={[{ label: "全部", value: "" }, { label: "文本", value: "text" }, { label: "图片", value: "image" }, { label: "视频", value: "video" }]} size="compact" value={skillModality} />
                 </div>
                 <input aria-label="搜索技能" onChange={(event) => setSkillQuery(event.target.value)} placeholder="搜索技能" style={{ background: "rgba(15,23,42,0.54)", border: "1px solid rgba(148,163,184,0.18)", borderRadius: 8, color: "#e2e8f0", fontSize: 12, height: 34, outline: "none", padding: "0 10px", width: "100%" }} value={skillQuery} />
-                <CanvasAgentSkillPicker canCreate={skillAuthoringUiEnabled} onCreate={() => setSkillView("authoring")} onOpenDetail={(skill) => { setSelectedSkillId(skill.id); setSkillView("detail"); }} onSelect={(skill) => { setSelectedSkillId(skill.id); sessionActions.selectSkill(skill); }} selectedId={selectedSkillId} skills={availableSkills} />
+                <CanvasAgentSkillPicker canCreate={skillAuthoringUiEnabled} loading={skillListLoading} onClose={() => setSkillPickerOpen(false)} onCreate={() => setSkillView("authoring")} onOpenDetail={(skill) => { setSelectedSkillId(skill.id); setSkillView("detail"); }} onRetry={() => setSkillRefreshToken((value) => value + 1)} onSelect={(skill) => { setSelectedSkillId(skill.id); sessionActions.selectSkill(skill); setSkillPickerOpen(false); }} selectedId={selectedSkillId} skills={availableSkills} unavailableReason={skillListError ?? undefined} />
               </> : null}
               {skillView === "detail" && selectedSkillId ? (() => {
                 const selected = availableSkills.find((skill) => skill.id === selectedSkillId);
                 return selected ? <CanvasAgentSkillDetail onBack={() => setSkillView("picker")} onSaved={() => { setSkillRefreshToken((value) => value + 1); setSkillView("picker"); }} skill={selected} /> : null;
               })() : null}
               {skillView === "authoring" && skillAuthoringUiEnabled ? <CanvasAgentSkillAuthoring onBack={() => setSkillView("picker")} onCreated={() => { setSkillRefreshToken((value) => value + 1); setSkillView("picker"); }} /> : null}
+              </> : null}
             </div>
           ) : null}
           <CanvasAgentComposer

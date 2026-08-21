@@ -21,4 +21,30 @@ describe("CanvasAgentSkillPicker", () => {
     expect(screen.queryByRole("button", { name: "创建 Skill" })).toBeNull();
     expect(screen.getByText("没有匹配的 Skill")).toBeTruthy();
   });
+
+  it("groups safe Skills by modality and supports retry states", () => {
+    render(
+      <CanvasAgentSkillPicker
+        onCreate={vi.fn()}
+        onOpenDetail={vi.fn()}
+        onSelect={vi.fn()}
+        skills={[
+          skill,
+          { ...skill, id: "skill-image", modality: "image", name: "封面图" },
+          { ...skill, id: "skill-video", modality: "video", name: "短视频" },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("region", { name: "文本" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "图片" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "视频" })).toBeTruthy();
+  });
+
+  it("shows unavailable state with retry", () => {
+    const onRetry = vi.fn();
+    render(<CanvasAgentSkillPicker onCreate={vi.fn()} onOpenDetail={vi.fn()} onRetry={onRetry} onSelect={vi.fn()} skills={[]} unavailableReason="Skill 暂不可用" />);
+    expect(screen.getByRole("alert").textContent).toContain("Skill 暂不可用");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });

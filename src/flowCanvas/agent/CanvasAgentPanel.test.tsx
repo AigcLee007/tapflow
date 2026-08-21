@@ -14,6 +14,7 @@ const mockGetAgentCapabilities = vi.fn();
 const mockGetAgentSessionEvents = vi.fn();
 const mockGetAgentSessionHistory = vi.fn();
 const mockListAgentSessions = vi.fn();
+const mockListAgentSkills = vi.fn();
 const mockOpenAgentSessionEventStream = vi.fn();
 const mockOpenAgentTurnStream = vi.fn();
 const mockReadAgentSseStream = vi.fn();
@@ -29,6 +30,7 @@ vi.mock("./canvasAgentApi", () => ({
   getAgentSessionEvents: (...args: unknown[]) => mockGetAgentSessionEvents(...args),
   getAgentSessionHistory: (...args: unknown[]) => mockGetAgentSessionHistory(...args),
   listAgentSessions: (...args: unknown[]) => mockListAgentSessions(...args),
+  listAgentSkills: (...args: unknown[]) => mockListAgentSkills(...args),
   openAgentSessionEventStream: (...args: unknown[]) => mockOpenAgentSessionEventStream(...args),
   openAgentTurnStream: (...args: unknown[]) => mockOpenAgentTurnStream(...args),
   readAgentSseStream: (...args: unknown[]) => mockReadAgentSseStream(...args),
@@ -74,6 +76,7 @@ describe("CanvasAgentPanel", () => {
     mockGetAgentSessionEvents.mockReset();
     mockGetAgentSessionHistory.mockReset();
     mockListAgentSessions.mockReset();
+    mockListAgentSkills.mockReset();
     mockOpenAgentSessionEventStream.mockReset();
     mockOpenAgentTurnStream.mockReset();
     mockReadAgentSseStream.mockReset();
@@ -130,6 +133,7 @@ describe("CanvasAgentPanel", () => {
       turns: [],
     });
     mockListAgentSessions.mockResolvedValue([]);
+    mockListAgentSkills.mockResolvedValue([]);
     mockOpenAgentSessionEventStream.mockResolvedValue({ ok: true, status: 200 });
     mockOpenAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
     mockUploadAssetFile.mockResolvedValue({
@@ -162,6 +166,14 @@ describe("CanvasAgentPanel", () => {
     expect(screen.queryByText("Classic Agent")).toBeNull();
     expect(screen.queryByText("Director Runtime (preview)")).toBeNull();
     expect(screen.queryByText("Replay Events")).toBeNull();
+  });
+
+  it("keeps the Skill workbench entry visible while runtime is disabled", async () => {
+    renderPanel();
+    expect(await screen.findByRole("button", { name: "选择一个创作 Skill" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "选择一个创作 Skill" }));
+    expect(await screen.findByText("Skill 暂不可用")).toBeTruthy();
+    expect(mockCreateAgentTurn).not.toHaveBeenCalled();
   });
 
   it("loads conversation history scoped to the current project and flow", async () => {
