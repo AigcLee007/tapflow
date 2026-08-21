@@ -11,6 +11,7 @@ import type { SkillRunService } from "./modules/agent/agent-skill-run.service.js
 import type { AuditApiService } from "./modules/audit/audit.service.js";
 import type { AuthService } from "./modules/auth/auth.service.js";
 import type { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
+import type { AiModelCatalogCache } from "./modules/ai-model-catalog/ai-model-catalog.cache.js";
 import type { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
 import type { AiModelConfigurationsService } from "./modules/ai-model-configurations/ai-model-configurations.service.js";
 import type { AiPluginService } from "./modules/ai-plugins/ai-plugins.service.js";
@@ -37,6 +38,7 @@ declare module "fastify" {
     skillService: SkillService;
     skillRunService: SkillRunService;
     aiGatewayService: AiGatewayAdminService;
+    aiModelCatalogCache: AiModelCatalogCache;
     aiModelCatalogService: AiModelCatalogService;
     aiModelConfigurationsService: AiModelConfigurationsService;
     aiPluginService: AiPluginService;

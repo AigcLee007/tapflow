@@ -6715,3 +6715,42 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Media steps now fail closed when pricing is missing, use stable `skill-step:<run>:<step>` billing idempotency keys, persist asset IDs only, and refund reserved credits on provider failure. Batch execution preserves per-step failures and reports `partial_success` when appropriate.
 - Focused API Agent/Skill contract validation passed: 9 files / 35 tests after the runner additions. Frontend Skill integration/state validation passed: 2 files / 3 tests. The API build and `git diff --check` passed.
 - This is contract coverage only; authenticated staging with PostgreSQL, Redis/BullMQ, S3-compatible storage, real model routes, and live reserve/settle/refund remains the release gate. `AGENT_V2_RUNTIME_ENABLED=false` and `AGENT_SKILL_RUNTIME_ENABLED=false` remain required defaults.
+## 2026-08-18 - Global One-Time Recharge Experience
+
+- replaced the narrow billing recharge panel with server-owned fixed-plan cards, stable desktop three-column/mobile one-column layout, a second-plan recommendation treatment, and explicit `一次购买，立即到账，不自动续费` copy without inventing bonus, discount, or subscription claims.
+- added a shared checkout hook and authenticated global recharge provider/dialog. Existing recharge-plan, checkout, payment-status, and billing-summary APIs remain unchanged; payment state is held in React state only, with `paymentId` recovery, 3-second polling, visibility rechecks, mobile checkout redirects, and paid-state balance invalidation.
+- made recharge reachable from the authenticated shell balance, account menu, billing page, canvas toolbar, and workbench desktop/mobile headers. Billing now presents recharge before activity, while creator surfaces retain their current draft/context after opening the dialog.
+- added fail-closed insufficient-credit prompts for canvas and workbench generation. The prompt dispatches a recharge request before reserve/run work and never auto-submits the blocked generation after payment.
+- focused validation passed for recharge cards, checkout hook, payment state, canvas toolbar, workbench pricing/page, and billing page compatibility suites; `npm run build` passed. The existing auth-router locale assertion remains unrelated and expects legacy English labels; Browserslist, React `act(...)`, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-18 - Recharge Layout And Payment Modal Follow-Up
+
+- desktop recharge plans now use a four-column grid, with four loading skeletons so the loading and ready states keep the same geometry; narrower viewports retain responsive two-column or single-column behavior.
+- checkout creation now opens the shared centered recharge dialog from the billing page and other entry points. Payment QR/status content is no longer rendered inline below the billing recharge section; existing polling, mobile redirect, and payment APIs are unchanged.
+- focused billing, recharge-panel, and payment-status validation passed with 23 tests; `npm run build` passed. Existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-19 - WeChat Scan-First Recharge Modal
+
+- redesigned the payment panel as a compact single-column scan-first checkout with a centered QR code, `微信扫码支付` heading, explicit `当前仅支持微信支付` copy, and a concise amount/credits/status summary.
+- removed the old nested payment-status card treatment; paid states now remain in the same modal with a success confirmation, while mobile checkout continues to use the existing redirect behavior.
+- focused recharge validation passed with 23 tests and `npm run build`; existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-19 - Recharge Copy And Hover Treatment
+
+- removed the verbose unit-price and renewal copy from recharge cards and the global recharge dialog, leaving the card hierarchy focused on total credits, price, validity, and the purchase action.
+- recharge cards now show baseline credits plus calculated bonus credits for qualifying plans; the ￥9.90 entry plan remains a simple 100-credit offer without an artificial `+1` bonus label.
+- added a restrained hover/focus lift and cyan shadow treatment with reduced-motion support; focused recharge validation passed after the copy and interaction update.
+
+## 2026-08-19 - User-Facing Recharge Plan Aliases
+
+- user recharge cards now map the four stable production plan keys to `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作` without changing administrator-owned plan names, database records, or payment snapshots; unknown plan keys continue to show the server-provided name.
+- corrected the `credits_100` presentation rule so a server-configured 120-credit entry plan displays `基础 100 + 加赠 20` instead of `基础 0 + 加赠 120`.
+
+## 2026-08-20 - Lovart-Inspired Recharge Experience
+
+- replaced the duplicated billing-page plan grid with one shared centered recharge modal. Workspace balance controls, insufficient-credit prompts, canvas/workbench entries, and `/billing` now open the same purchase flow.
+- added the approved four-plan presentation aliases: `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作`. The second plan remains `最受欢迎`; lime hover/focus emphasis follows the active card while the recommendation ribbon stays attached to that plan.
+- kept the server-owned plan amounts, credits, validity, checkout creation, payment polling, idempotency, and wallet ledger unchanged. The purchase UI identifies WeChat as the only supported payment method and centers the QR state inside the modal. No subscription copy, unit-price copy, fabricated QR countdown, payment API, or database table was added.
+- `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
+- the modal now traps keyboard focus, supports Shift+Tab/Tab cycling, and restores focus to the opening control when closed.
+- focused validation passed: 8 test files / 84 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.
