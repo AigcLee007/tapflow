@@ -12,6 +12,7 @@ import { AgentCanvasService } from "./agent-canvas.service.js";
 import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { AgentEventService, toAgentRepositoryError } from "./agent-event.service.js";
 import { sanitizeV2AgentEventForClient } from "./agent-redaction.js";
+import { buildSkillLaunchApprovalPlan, type SkillLaunchApprovalPlan } from "./agent-skill-approval-plan.js";
 import type { AgentRunSettingsService } from "./agent-run-settings.service.js";
 import { AgentSessionRepository } from "./agent-session.repository.js";
 import { buildScopedV2AgentContext } from "./agent-v2-context.js";
@@ -66,6 +67,30 @@ type AgentTurnRow = {
   updated_at: string;
   user_message_id: string | null;
 };
+
+function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
+  if (!value || typeof value !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
+  const input = value as Record<string, unknown>;
+  const targets = Array.isArray(input.targets) ? input.targets : [];
+  if (typeof input.flowId !== "string" || !Number.isSafeInteger(input.graphRevision) || input.graphRevision < 0 || targets.length === 0) {
+    throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
+  }
+  const normalizedTargets = targets.map((target) => {
+    if (!target || typeof target !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is invalid.");
+    const item = target as Record<string, unknown>;
+    if (typeof item.nodeId !== "string" || !["text", "image", "video"].includes(String(item.action)) || typeof item.priced !== "boolean") {
+      throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is invalid.");
+    }
+    return { nodeId: item.nodeId, action: item.action as "text" | "image" | "video", priced: item.priced };
+  });
+  return {
+    batch: normalizedTargets.length > 1,
+    flowId: input.flowId,
+    graphRevision: input.graphRevision,
+    requiresApproval: true,
+    targets: normalizedTargets,
+  };
+}
 
 const plannerItemSchema = z.object({
   credits: z.number().finite().nonnegative(),
@@ -342,7 +367,7 @@ export class AgentService {
   readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
   readonly flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
   readonly skillService: Pick<SkillService, "getPublishedVersion" | "getPublishedVersionByNumber"> | null;
-  readonly skillRunService: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "approve" | "cancel"> | null;
+  readonly skillRunService: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "replaceBudgetSnapshot" | "claimApprovalLaunch" | "approve" | "cancel"> | null;
   readonly workflowRunAdapter: V2WorkflowRunAdapter | null;
 
   constructor(options: {
@@ -356,7 +381,7 @@ export class AgentService {
     sessionRepository?: AgentSessionRepository;
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
     skillService?: Pick<SkillService, "getPublishedVersion" | "getPublishedVersionByNumber"> | null;
-    skillRunService?: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "approve" | "cancel"> | null;
+    skillRunService?: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "replaceBudgetSnapshot" | "claimApprovalLaunch" | "approve" | "cancel"> | null;
     workflowRunsService?: Pick<import("../workflow-runs/workflow-runs.service.js").WorkflowRunsService, "createWorkflowRun" | "getWorkflowRunStatus">;
   }) {
     this.env = options.env;
@@ -885,13 +910,29 @@ export class AgentService {
       requestedNodeIds.forEach((nodeId) => { if (!draftNodeById.has(nodeId)) throw new AgentApiError(400, "AGENT_CANVAS_NODE_NOT_FOUND", `Node ${nodeId} was not found in the flow draft.`); });
       const skillStepIds: Record<string, string> = {};
       if (skillRunId && this.skillRunService) {
-        for (const nodeId of requestedNodeIds) {
+        const nodes = requestedNodeIds.map((nodeId) => draftNodeById.get(nodeId)!);
+        const plan = buildSkillLaunchApprovalPlan({
+          flowId: snapshot.flowId!,
+          graphRevision: expectedRevision,
+          nodes: nodes.map((node) => {
+            const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
+            const kind = typeof data.kind === "string" ? data.kind : node.type;
+            return { id: String(node.id), type: kind, priced: data.priced !== false };
+          }),
+        });
+        if (plan.requiresApproval) {
+          await this.skillRunService.replaceBudgetSnapshot(context, skillRunId, { approvalPlan: plan });
+        }
+        for (const target of plan.targets) {
+          const nodeId = target.nodeId;
           const node = draftNodeById.get(nodeId);
-          const nodeData = node?.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
-          const kind = typeof nodeData.kind === "string" ? nodeData.kind : node?.type;
-          const action = kind === "video" || kind === "video.generate" ? "video" : kind === "image" || kind === "image.generate" ? "image" : "text";
-          const step = await this.skillRunService.createStep({ action, approvalState: "not_required", nodeId, skillRunId, stepIndex: Object.keys(skillStepIds).length, tenantId: context.tenantId });
+          const step = await this.skillRunService.createStep({ action: target.action, approvalState: plan.requiresApproval ? "pending" : "not_required", nodeId, skillRunId, stepIndex: Object.keys(skillStepIds).length, tenantId: context.tenantId });
           skillStepIds[nodeId] = step.id;
+          if (plan.requiresApproval) await this.skillRunService.updateStep(context, step.id, { approvalState: "pending", status: "waiting_for_approval" });
+        }
+        if (plan.requiresApproval) {
+          await this.skillRunService.transition(context, skillRunId, "planned", "waiting_for_approval", { approvalState: "pending" });
+          return { approvalId: skillRunId, nodeCount: plan.targets.length, status: "waiting_for_approval" };
         }
       }
       if (skillRunId && this.skillRunService) {
@@ -943,9 +984,44 @@ export class AgentService {
     return { cancelled, turnId: turn.id };
   }
 
-  async approveV2SkillRun(context: AgentContext, runId: string) {
+  async approveV2SkillRun(context: AgentContext, sessionId: string, runId: string) {
     if (!this.skillRunService) throw new AgentApiError(503, "SKILL_RUNTIME_NOT_CONFIGURED", "Skill runtime is not configured.");
-    return this.skillRunService.approve(context, runId);
+    const run = await this.skillRunService.getRun(context, runId);
+    if (!run) throw new AgentApiError(404, "SKILL_RUN_NOT_FOUND", "Skill run not found.");
+    if (run.sessionId !== sessionId) throw new AgentApiError(404, "SKILL_RUN_NOT_FOUND", "Skill run not found.");
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    if (run.flowId !== session.flowId || run.projectId !== session.projectId) throw new AgentApiError(409, "SKILL_RUN_SCOPE_MISMATCH", "Skill run is not bound to this Agent session.");
+    const plan = parseSkillLaunchApprovalPlan(run.budgetSnapshot.approvalPlan);
+    if (!this.workflowRunAdapter) throw new AgentApiError(503, "WORKFLOW_RUNNER_NOT_CONFIGURED", "Workflow runner is not configured.");
+    const draft = await this.flowsService.getFlowDraft(context, plan.flowId);
+    if (draft.revision !== plan.graphRevision) throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布已被其他修改，请刷新后重试。");
+    const approved = await this.skillRunService.approve(context, runId);
+    const existingRuns = approved.steps.filter((step) => step.workflowRunId);
+    if (existingRuns.length === plan.targets.length) return { status: "running", approvalId: runId, runs: existingRuns.map((step) => ({ nodeId: step.nodeId, runId: step.workflowRunId })) };
+    if (!await this.skillRunService.claimApprovalLaunch(context, runId)) {
+      const current = await this.skillRunService.getRun(context, runId);
+      return { status: "running", approvalId: runId, runs: current?.steps.filter((step) => step.workflowRunId).map((step) => ({ nodeId: step.nodeId, runId: step.workflowRunId })) ?? [] };
+    }
+    const skillStepIds = Object.fromEntries(approved.steps.filter((step) => step.nodeId).map((step) => [step.nodeId!, step.id]));
+    try {
+      const result = await this.workflowRunAdapter!.runNodes(context, {
+        flowId: plan.flowId,
+        graphRevision: plan.graphRevision,
+        idempotencyKey: `skill-approval:${run.id}`,
+        nodeIds: plan.targets.map((target) => target.nodeId),
+        skillRunId: run.id,
+        skillStepIds,
+        skillVersionId: run.skillVersionId,
+      });
+      await Promise.all(result.runs.map((item) => {
+        const stepId = skillStepIds[item.nodeId];
+        return stepId ? this.skillRunService!.updateStep(context, stepId, { status: "running", approvalState: "approved", workflowRunId: item.runId }) : Promise.resolve();
+      }));
+      return { ...result, status: "running", approvalId: runId };
+    } catch (error) {
+      await this.skillRunService.transition(context, runId, "running", "failed", { error: { code: error instanceof Error && error.message === "FLOW_DRAFT_REVISION_CONFLICT" ? "FLOW_DRAFT_REVISION_CONFLICT" : "SKILL_APPROVAL_LAUNCH_FAILED" } });
+      throw error;
+    }
   }
 
   async buildExecuteTurnStream(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {

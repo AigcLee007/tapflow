@@ -79,6 +79,12 @@ function safeV2ToolResult(value: unknown): Record<string, unknown> {
     const valueText = boundedString(input[key], key === "status" ? 80 : 1000);
     if (valueText) output[key] = valueText;
   }
+  for (const key of ["approvalId"]) {
+    const valueText = boundedString(input[key], 200);
+    if (valueText) output[key] = valueText;
+  }
+  if (typeof input.nodeCount === "number" && Number.isSafeInteger(input.nodeCount) && input.nodeCount >= 0) output.nodeCount = input.nodeCount;
+  if (typeof input.estimatedCredits === "number" && Number.isFinite(input.estimatedCredits) && input.estimatedCredits >= 0) output.estimatedCredits = input.estimatedCredits;
   if (typeof input.revision === "number" && Number.isSafeInteger(input.revision) && input.revision >= 0) output.revision = input.revision;
   if (isRecord(input.estimate) && typeof input.estimate.totalCredits === "number" && Number.isFinite(input.estimate.totalCredits)) output.estimate = { totalCredits: input.estimate.totalCredits };
   return output;

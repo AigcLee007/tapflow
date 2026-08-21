@@ -38,7 +38,7 @@ export type V2AgentEvent =
   | { type: "tool_started"; callId: string; name: V2AgentToolName }
   | { type: "tool_result"; callId: string; name: V2AgentToolName; result: unknown }
   | { type: "turn_completed"; text: string }
-  | { type: "turn_waiting"; reason: "workflow_results" | "user_input"; details?: unknown }
+  | { type: "turn_waiting"; reason: "workflow_results" | "user_input" | "approval"; details?: unknown }
   | { type: "turn_failed"; code: string; message: string };
 
 type V2TurnInput = {
@@ -156,6 +156,10 @@ export class V2AgentTurnLoop {
           };
           return;
         }
+        if (isWaitingApproval(safeResult)) {
+          yield { type: "turn_waiting", reason: "approval", details: safeResult };
+          return;
+        }
         if (tool.name === "canvas.await_results" && isWaitingResult(safeResult)) {
           yield { type: "turn_waiting", reason: "workflow_results", details: safeResult };
           return;
@@ -174,4 +178,8 @@ export class V2AgentTurnLoop {
 
 function isWaitingResult(value: unknown): boolean {
   return Boolean(value && typeof value === "object" && (value as Record<string, unknown>).allTerminal === false);
+}
+
+function isWaitingApproval(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && (value as Record<string, unknown>).status === "waiting_for_approval");
 }

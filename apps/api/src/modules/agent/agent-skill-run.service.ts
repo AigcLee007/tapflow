@@ -44,6 +44,8 @@ export type SkillRunRepository = {
   cancelRun(context: SkillRunContext, runId: string, reason?: string): Promise<SkillRunView>;
   createStep(input: { tenantId: string; skillRunId: string; stepIndex: number; action: SkillStepView["action"]; approvalState?: SkillStepView["approvalState"]; nodeId?: string | null }): Promise<SkillStepView>;
   updateStep(context: SkillRunContext, stepId: string, patch: { status?: SkillStepStatus; approvalState?: SkillStepView["approvalState"]; output?: Record<string, unknown>; error?: Record<string, unknown> | null; nodeId?: string | null; workflowRunId?: string | null; assetId?: string | null; retryCount?: number }): Promise<SkillStepView>;
+  replaceBudgetSnapshot?(context: SkillRunContext, runId: string, snapshot: Record<string, unknown>): Promise<SkillRunView>;
+  claimApprovalLaunch?(context: SkillRunContext, runId: string): Promise<boolean>;
 };
 
 export type SkillRunEventView = {
@@ -155,6 +157,23 @@ export class DatabaseSkillRunRepository implements SkillRunRepository {
       return mapStep(row);
     }, this.pool);
   }
+
+  async replaceBudgetSnapshot(context: SkillRunContext, runId: string, snapshot: Record<string, unknown>): Promise<SkillRunView> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query(`UPDATE agent_skill_runs SET budget_snapshot = $3::jsonb, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid RETURNING id`, [context.tenantId, runId, JSON.stringify(snapshot)]);
+      if (result.rowCount !== 1) throw new Error("SKILL_RUN_NOT_FOUND");
+      const run = await this.getRun(context, runId);
+      if (!run) throw new Error("SKILL_RUN_NOT_FOUND");
+      return run;
+    }, this.pool);
+  }
+
+  async claimApprovalLaunch(context: SkillRunContext, runId: string): Promise<boolean> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query(`UPDATE agent_skill_runs SET output_json = jsonb_set(COALESCE(output_json, '{}'::jsonb), '{approvalLaunchClaimed}', 'true'::jsonb), updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid AND status = 'running' AND approval_state = 'approved' AND COALESCE(output_json->>'approvalLaunchClaimed', 'false') <> 'true' RETURNING id`, [context.tenantId, runId]);
+      return result.rowCount === 1;
+    }, this.pool);
+  }
 }
 
 export class SkillRunService {
@@ -177,6 +196,8 @@ export class SkillRunService {
       listEvents: (...args) => getRepository().listEvents(...args),
       transitionRun: (...args) => getRepository().transitionRun(...args),
       updateStep: (...args) => getRepository().updateStep(...args),
+      replaceBudgetSnapshot: (...args) => getRepository().replaceBudgetSnapshot!(...args),
+      claimApprovalLaunch: (...args) => getRepository().claimApprovalLaunch!(...args),
     };
   }
 
@@ -202,6 +223,14 @@ export class SkillRunService {
   }
   createStep(input: Parameters<SkillRunRepository["createStep"]>[0]) { return this.repository.createStep(input); }
   updateStep(context: SkillRunContext, stepId: string, patch: Parameters<SkillRunRepository["updateStep"]>[2]) { return this.repository.updateStep(context, stepId, patch); }
+  replaceBudgetSnapshot(context: SkillRunContext, runId: string, snapshot: Record<string, unknown>) {
+    if (!this.repository.replaceBudgetSnapshot) throw new Error("SKILL_RUN_SNAPSHOT_NOT_CONFIGURED");
+    return this.repository.replaceBudgetSnapshot(context, runId, snapshot);
+  }
+  claimApprovalLaunch(context: SkillRunContext, runId: string) {
+    if (!this.repository.claimApprovalLaunch) throw new Error("SKILL_RUN_LAUNCH_CLAIM_NOT_CONFIGURED");
+    return this.repository.claimApprovalLaunch(context, runId);
+  }
 }
 
 type RunRow = { id: string; skill_version_id: string; session_id: string | null; turn_id: string | null; project_id: string | null; flow_id: string | null; status: SkillRunStatus; approval_state: SkillRunView["approvalState"]; idempotency_key: string; graph_revision: string | null; budget_snapshot: Record<string, unknown>; output_json: Record<string, unknown>; error_json: Record<string, unknown> | null };

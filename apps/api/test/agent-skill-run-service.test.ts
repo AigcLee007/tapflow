@@ -68,6 +68,18 @@ describe("SkillRunService", () => {
     expect(result.status).toBe("pending");
   });
 
+  it("replaces the durable budget snapshot for an approval plan", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const repository: SkillRunRepository = {
+      approveRun: async () => run("running"), cancelRun: async () => run("cancelled"), createRun: async () => ({ created: true, id: "run-1" }),
+      createStep: async () => ({ action: "image", approvalState: "pending", assetId: null, error: null, id: "step-1", nodeId: null, output: {}, retryCount: 0, status: "pending", stepIndex: 0, workflowRunId: null }),
+      getRun: async () => run(), listEvents: async () => [], transitionRun: async () => run(), updateStep: async () => { throw new Error("not used"); },
+      replaceBudgetSnapshot: async (_ctx, _runId, snapshot) => { captured = snapshot; return run(); },
+    };
+    await new SkillRunService(repository).replaceBudgetSnapshot({ tenantId: "tenant-1", userId: "user-1" }, "run-1", { approvalPlan: { flowId: "flow-1" } });
+    expect(captured).toEqual({ approvalPlan: { flowId: "flow-1" } });
+  });
+
   it("does not replay the draft transition when a duplicate idempotency request returns an existing run", async () => {
     const transition = vi.fn(async () => run("planned"));
     const getRun = vi.fn(async () => run("planned"));

@@ -759,6 +759,12 @@ New production docs added:
 Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized action mapping, priced media execution, stable per-step billing idempotency, provider-failure refunds, asset-ID-only write-back, and partial batch outcomes. Focused API Agent/Skill coverage is 35 tests across 9 files; frontend Skill integration/state coverage is 3 tests across 2 files. These tests do not replace staging acceptance with live infrastructure and provider routes.
 ## Agent + Skill Runtime Continuation (2026-08-21)
 
+### Approval gate continuation
+
+- The V2 `canvas.run_nodes` boundary now persists a product-safe approval plan for paid or batch Skill targets and returns `waiting_for_approval` without creating Workflow Runs or entering billing.
+- Approval is session/project/flow scoped and graph-revision checked. A database claim plus `skill-approval:<skillRunId>` idempotency prefix protects approved launches from duplicate Workflow Runs, and returned run IDs are written to the planned Skill steps.
+- Focused API approval tests and the API build pass. This is still a release-boundary implementation: `AGENT_V2_RUNTIME_ENABLED` and `AGENT_SKILL_RUNTIME_ENABLED` remain false pending pricing resolution, normalized-step dispatch, Worker delivery-check integration, and real staging acceptance.
+
 - Added `npm run dev:seed-agent-skills`, guarded to local development or explicit `DEV_SEED_ENABLED=true`. The seed contains seven provider-agnostic official text/image/video Skills, uses stable slug/checksum idempotency, writes platform-scoped records, and never updates private Skills.
 - Skill draft/publish persistence now keeps source JSON, canonical `SKILL.md`, parsed frontmatter, normalized projection, checksum, and graph data together. Publish supports revision CAS and rejects stale drafts.
 - V2 Skill turns now require the Skill runtime flags when a Skill is selected and enforce both flow and project binding against the session.

@@ -442,7 +442,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = z.object({ sessionId: z.string().uuid(), approvalId: z.string().uuid() }).parse(request.params);
         startAgentSse(reply);
         try {
-          const result = await app.agentService.approveV2SkillRun(getAgentContext(request), params.approvalId);
+          const result = await app.agentService.approveV2SkillRun(getAgentContext(request), params.sessionId, params.approvalId);
           reply.raw.write(formatStreamEvent("agent_v2_approval", result));
           reply.raw.write(formatStreamEvent("done", { sessionId: params.sessionId, approvalId: params.approvalId }));
         } catch (streamError) { writeAgentSseFailure(streamError, request, reply); }

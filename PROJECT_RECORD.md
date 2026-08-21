@@ -1,6 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
+
+## 2026-08-21 - Skill Approval Gate Runtime Boundary
+
+- Added a server-generated, redacted Skill launch approval plan for selected V2 canvas targets. The plan is persisted in `agent_skill_runs.budget_snapshot` and contains only flow/revision, action, node IDs, pricing flags, and batch metadata.
+- Paid and batch Skill `canvas.run_nodes` launches now create pending Skill steps and pause the V2 turn in `waiting_for_approval` before any Workflow Run or billing path is invoked. Approval results expose only the approval ID, node count, status, and optional estimated credits.
+- Approval validates authenticated session ownership, project/flow scope, and the saved graph revision. Approved launches use `skill-approval:<runId>` and a database claim to prevent duplicate Workflow Run creation; returned Workflow Run IDs are linked back to Skill steps.
+- Focused API validation passed for approval-plan, Skill run service, V2 turn loop, and Workflow adapter suites; API, DB, and AI Gateway Core builds passed; `git diff --check` passed.
+- Runtime flags remain disabled. Normalized Skill-step dispatch, pricing resolution, Worker delivery-check integration, and authenticated staging acceptance remain release gates.
 
 ## 2026-08-20 - Official Skill Seed And Version Projection
 

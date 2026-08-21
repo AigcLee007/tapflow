@@ -66,6 +66,16 @@ describe("V2AgentTurnLoop", () => {
     expect(events.at(-1)).toMatchObject({ type: "turn_waiting" });
   });
 
+  it("ends the stream as waiting when a Skill launch needs approval", async () => {
+    const events: unknown[] = [];
+    const loop = new V2AgentTurnLoop({
+      textRuntime: { async *streamText() { yield { type: "tool_call", callId: "call-approval", name: "canvas.run_nodes", arguments: JSON.stringify({ expectedRevision: 1, nodeIds: ["node-1"] }) }; } },
+      executeTool: async () => ({ approvalId: "skill-run-1", nodeCount: 1, status: "waiting_for_approval" }),
+    });
+    for await (const event of loop.run({ prompt: "run it", canvas: { revision: 1, nodes: [] } })) events.push(event);
+    expect(events.at(-1)).toMatchObject({ type: "turn_waiting", reason: "approval" });
+  });
+
   it("ends the stream as waiting for user input after ask_user", async () => {
     const events: unknown[] = [];
     const loop = new V2AgentTurnLoop({
