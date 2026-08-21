@@ -1,7 +1,78 @@
 ﻿# Project Record
 
-Last updated: 2026-08-15
+Last updated: 2026-08-21
+
+## 2026-08-21 - Canvas Skill Workbench UI Slice
+
+- Added a persistent LibTV-style Skill workbench bar to the right-side Canvas Agent. It remains visible when runtime flags are disabled and reports the unavailable state without hiding the normal composer.
+- Skill catalog responses are projected through a product-safe whitelist; the picker uses shared menu density, modality groups, loading/error/empty/retry states, and Escape dismissal.
+- Added safe Skill Run read/approval/cancel adapters and a visible execution plan with estimates, ordered steps, approval/cancel controls, and redacted DOM-facing data. V2 approval events now load the durable Skill Run projection instead of exposing provider or route fields.
+- Selected Skill identity/version is restored from replay metadata and cleared on new-chat reset. Runtime flags remain disabled pending authenticated staging acceptance.
+- Validation: 30 focused frontend tests passed across API, picker, panel, and Skill plan suites; session/panel regression suite passed (35 tests); `npm run build` and `git diff --check` passed. Build warnings are existing Browserslist/mixed-import/chunk-size notices.
+
+## 2026-08-21 - Skill Approval Gate Runtime Boundary
+
+- Added a server-generated, redacted Skill launch approval plan for selected V2 canvas targets. The plan is persisted in `agent_skill_runs.budget_snapshot` and contains only flow/revision, action, node IDs, pricing flags, and batch metadata.
+- Paid and batch Skill `canvas.run_nodes` launches now create pending Skill steps and pause the V2 turn in `waiting_for_approval` before any Workflow Run or billing path is invoked. Approval results expose only the approval ID, node count, status, and optional estimated credits.
+- Approval validates authenticated session ownership, project/flow scope, and the saved graph revision. Approved launches use `skill-approval:<runId>` and a database claim to prevent duplicate Workflow Run creation; returned Workflow Run IDs are linked back to Skill steps.
+- Focused API validation passed for approval-plan, Skill run service, V2 turn loop, and Workflow adapter suites; API, DB, and AI Gateway Core builds passed; `git diff --check` passed.
+- Runtime flags remain disabled. Normalized Skill-step dispatch, pricing resolution, Worker delivery-check integration, and authenticated staging acceptance remain release gates.
+
+## 2026-08-20 - Official Skill Seed And Version Projection
+
+- Added the guarded `npm run dev:seed-agent-skills` command for the seven provider-agnostic official text/image/video Skills. It writes only platform-scoped (`tenant_id IS NULL`) records, uses stable slugs and normalized checksums, creates immutable versions on content changes, and never selects private Skills for updates.
+- Skill draft and publish persistence now writes the creator source, canonical `SKILL.md`, parsed frontmatter, normalized projection, checksum, and optional graph template together. Publish accepts an optional revision CAS and returns `SKILL_VERSION_CONFLICT` for stale drafts.
+- V2 turns now reject selected Skills when Skill runtime flags are disabled and reject snapshots whose project binding differs from the session's project binding.
+- Fresh validation: official Skill and repository tests passed (7 tests), API build passed, and `git diff --check` passed. Real staging acceptance with PostgreSQL, Redis/BullMQ, S3, provider routes, billing, and authenticated browser flows remains pending; all Agent/Skill flags remain disabled by default.
+- Full `npm test` completed with `380` passing, `22` skipped, and `32` failing across `15` files plus `4` unhandled legacy runtime errors. The failures are pre-existing migration, billing/UI fixture, Canvas Agent test-id, production-studio, video-reference, and multipart transport suites; no new Agent/Skill focused failure appeared.
+- Pre-merge review corrected the V2 turn status migration to replace the legacy named check constraint and made official Skill seeding enter an explicit system-admin RLS transaction. The migration and seed regression tests pass.
+- Important pre-staging runtime work remains: the selected-Skill V2 node path must enforce the durable approval gate, dispatch normalized Skill steps rather than only arbitrary canvas nodes, and run immutable delivery checks before a Skill Run can reach terminal success. Keep every V2/Skill flag disabled until those integrations and the staging acceptance checklist are complete.
+
+## 2026-08-20 - Agent + Skill Runtime Hardening
+
+- V2 Agent turns now resolve the exact requested published Skill version when `selectedSkillVersion` is supplied; version lookup remains tenant/visibility scoped and rejects a version without a selected Skill.
+- V2 canvas mutations and Skill result placement use strict revision CAS and reject stale writes without silently rebasing; legacy canvas operations retain their bounded retry behavior.
+- Worker Skill terminal synchronization now appends Skill step/run transition events with Skill version, turn, idempotency, graph revision, and redaction metadata so replay remains complete after asynchronous generation.
+- Added server capability gating to the existing Agent panel and propagated selected Skill version through the V2 session facade and turn request.
+- Added the guarded `/api/v2/agent/skill-runs/:runId/place-results` write-back endpoint and frontend client. It verifies the run is terminal/reviewable and bound to the same session, turn, and flow before strict-revision canvas placement; media results remain `assetId`-only.
+- Validation passed: focused API Skill/V2/canvas suites (28 tests), focused Worker Skill output suites (40 passed, 18 skipped), frontend Skill/session/API suites, API/Worker builds, and `npm run build`; `git diff --check` passed. Staging authenticated E2E, real provider/billing/object-storage acceptance remains pending, and all V2/Skill flags stay disabled by default.
 Maintainers: project team + Codex sessions
+
+## 2026-08-20 - Agent + Skill Context and Runtime Observability Hardening
+
+- V2 context now includes tenant/flow-scoped, product-safe model availability, capabilities, explicit pricing (missing pricing remains `null`), active-route price ranges, and bounded recent Skill run summaries with node/asset references.
+- V2 turns emit server-side `turn_observability` metadata for Skill ID/version, run duration, first-event latency, failed-step placeholder, retry count, and redaction-hit count; provider internals remain excluded from client events.
+- Skill persisted actions map explicitly to runtime operations (`create_canvas`, `generate_text`, `generate_image`, `generate_video`) while preserving the normalized v1 contract.
+- Canvas Agent “查看运行” now preserves the selected workflow run ID when opening logs for concrete run inspection.
+- Fresh validation passed: API build, root production build, focused context/normalizer/text-step tests (8 tests), and `git diff --check`. Authenticated staging E2E with real Postgres/Redis/object storage/provider/billing remains the only acceptance gate; flags stay disabled by default.
+
+## 2026-08-20 - Agent + Skill Product UI Slice
+
+- Added the LibTV-style Skill surface inside the existing right-side Agent panel: official/private scope, search, modality filters, Skill cards, selection for the next conversation, detail navigation, and version/visibility-aware source fields.
+- Added conversational Skill authoring with an editable draft preview, server-backed draft creation, and revision-aware private draft save/publish. Official details load the published creator-facing source without exposing provider, route, or credential fields.
+- Frontend focused validation passed: `CanvasAgentSkillPicker` (2), `CanvasAgentSkillAuthoring` (1), and `CanvasAgentSkillDetail` (1); `npm run build` passed with existing Browserslist, mixed-import, and chunk-size warnings.
+- Staging authenticated E2E, real database/Redis/object storage, billing reserve/settle/refund, and real provider-route acceptance remain pending; all V2/Skill flags stay disabled by default.
+
+## 2026-08-20 - Agent + Skill Runtime Completion Slice
+
+- Fixed Skill step persistence to retain the canvas node ID and load the published normalized Skill projection into the V2 loop; Skill Runs now persist the active session/turn linkage.
+- Added formal V2 compatibility endpoints for `/turns/v2/stream`, session cancel, and Skill approval streaming while keeping the existing `/v2-turns/stream` client path compatible.
+- Connected V2 target-node workflow runs to Skill steps, propagated workflow terminal success/failure back to Skill step/run state, and added delivery checks requiring real text output or asset IDs.
+- Added validated Skill graph-template instantiation with fresh node IDs and declared input bindings, plus a protected API endpoint for server-side instantiation.
+- Expanded the canvas Skill picker with official/private scope, modality filtering, search, and selected Skill summary.
+- Made default Skill and Skill Run service repositories lazy, so disabled Skill feature flags do not require `DATABASE_URL` during application initialization.
+- Fixed combined Skill catalog modality/search SQL parameter binding and added a regression test.
+- Added visible Canvas Agent activity states for V2 `canvas.await_results` waiting and terminal result events.
+- Validation passed: frontend production build; API and Worker builds; API Skill/Agent focused tests (20 passed); Worker focused tests (40 passed/18 skipped); frontend Canvas Agent session tests (20). API full suite reached 359 passed and 121 skipped; only the existing syntax errors in `apps/api/test/admin.test.ts` and `apps/api/test/queues.test.ts` block a zero exit. Full staging/browser/E2E acceptance remains pending; all V2/Skill flags remain disabled by default.
+
+## 2026-08-20 - Agent + Skill V2 API Slice
+
+- Added strict conversational Skill authoring output parsing with a bounded fenced-JSON normalization path; unknown provider, route, executable, and other non-Skill fields are rejected by the authoring schema.
+- Added LibTV-style Skill package API support for `SKILL.md` import/export, validated optional declarative `graph.json`, and private Skill duplication. Import/export responses contain only creator-facing Skill content.
+- Added feature-flag enforcement to Skill catalog, authoring, draft, publish, import, export, and duplicate routes. Flags remain disabled by default.
+- Added the first native-stream V2 canvas Agent turn loop and `/api/v2/agent/sessions/:sessionId/v2-turns/stream`. It persists v2 turn metadata/idempotency, replays session events, and exposes only canvas-bound tools with flow/session checks.
+- Focused validation passed: API Skill/V2 tests (`8` passed), workflow-core build, API build, and `git diff --check`. Full staging/browser/e2e acceptance remains pending; V2 runtime flags stay disabled until that acceptance.
+- V2 turns now accept `selectedSkillId`, load the tenant-authorized published Skill version server-side, include it as untrusted context for the native loop, and use the current remote flow revision for turn metadata and canvas CAS. The canvas Agent panel exposes the available Skill catalog through the shared TapNow-style menu and routes V2 stream events into the existing timeline.
 
 ## 2026-08-19 - Canvas-first Agent + Skill Product Design
 
@@ -6644,3 +6715,58 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Image model options now fail closed against the active server catalog: no local fallback models or fallback runtime routes are injected, disabled saved models do not request routes, and their generation button remains disabled.
 - Image model menus explicitly show loading, empty, and retryable-error states.
 - Validation passed: 8 focused test files / 37 tests and `npm run build`. The image-node suite emitted existing jsdom media and React `act(...)` warnings; the build emitted existing Browserslist, dynamic-import, and chunk-size warnings.
+## 2026-08-20 - Agent + Skill V2 Safety and Replay Verification
+
+- Corrected V2 `ask_user` handling so the native turn loop emits durable `turn_waiting` with `reason: user_input` and the question payload instead of falsely completing the turn.
+- Added browser-side V2 tool-result redaction. The replay/live reducer now retains only bounded product fields such as status, messages, run IDs/status, node IDs, workflow/Skill references, estimates, and `assetId`-based refs; provider credentials, route keys, URLs, signed URLs, and preview data are discarded.
+- Added regression coverage for both behaviors. Focused validation passed: frontend Agent/Skill suites (40 tests), API V2/config/replay/contract suites (26 tests), Worker Skill suites (3 tests), AI Gateway Core (175 tests), and DB metadata (1 test).
+- Fresh builds passed for frontend, API, Worker, AI Gateway Core, and DB. `git diff --check` passed. Existing non-blocking build warnings remain (Browserslist freshness, mixed import, large chunks).
+- Staging authenticated E2E with real database, Redis, object storage, billing, and provider routes remains pending; all V2/Skill flags stay disabled by default.
+- Added fail-closed route capability enforcement for native text streaming/tool calling and a scoped V2 context builder covering selected, viewport, upstream, and downstream graph context with bounded untrusted Skill/prompt projection.
+- Completed Skill run/step transition invariants, idempotent approval/cancellation behavior, and frontend Skill run state/timeline coverage. Focused API and frontend suites remain green; full repository tests still contain the unrelated historical failures reported in the handoff.
+
+## 2026-08-20 - Skill Step Execution Contract Completion
+
+- Completed the Skill step runner contract for normalized `analyze/canvas/text/image/video/review/deliver` action mapping, with text write-back and media execution delegated to the existing runtime boundary.
+- Media steps now fail closed when pricing is missing, use stable `skill-step:<run>:<step>` billing idempotency keys, persist asset IDs only, and refund reserved credits on provider failure. Batch execution preserves per-step failures and reports `partial_success` when appropriate.
+- Focused API Agent/Skill contract validation passed: 9 files / 35 tests after the runner additions. Frontend Skill integration/state validation passed: 2 files / 3 tests. The API build and `git diff --check` passed.
+- This is contract coverage only; authenticated staging with PostgreSQL, Redis/BullMQ, S3-compatible storage, real model routes, and live reserve/settle/refund remains the release gate. `AGENT_V2_RUNTIME_ENABLED=false` and `AGENT_SKILL_RUNTIME_ENABLED=false` remain required defaults.
+## 2026-08-18 - Global One-Time Recharge Experience
+
+- replaced the narrow billing recharge panel with server-owned fixed-plan cards, stable desktop three-column/mobile one-column layout, a second-plan recommendation treatment, and explicit `一次购买，立即到账，不自动续费` copy without inventing bonus, discount, or subscription claims.
+- added a shared checkout hook and authenticated global recharge provider/dialog. Existing recharge-plan, checkout, payment-status, and billing-summary APIs remain unchanged; payment state is held in React state only, with `paymentId` recovery, 3-second polling, visibility rechecks, mobile checkout redirects, and paid-state balance invalidation.
+- made recharge reachable from the authenticated shell balance, account menu, billing page, canvas toolbar, and workbench desktop/mobile headers. Billing now presents recharge before activity, while creator surfaces retain their current draft/context after opening the dialog.
+- added fail-closed insufficient-credit prompts for canvas and workbench generation. The prompt dispatches a recharge request before reserve/run work and never auto-submits the blocked generation after payment.
+- focused validation passed for recharge cards, checkout hook, payment state, canvas toolbar, workbench pricing/page, and billing page compatibility suites; `npm run build` passed. The existing auth-router locale assertion remains unrelated and expects legacy English labels; Browserslist, React `act(...)`, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-18 - Recharge Layout And Payment Modal Follow-Up
+
+- desktop recharge plans now use a four-column grid, with four loading skeletons so the loading and ready states keep the same geometry; narrower viewports retain responsive two-column or single-column behavior.
+- checkout creation now opens the shared centered recharge dialog from the billing page and other entry points. Payment QR/status content is no longer rendered inline below the billing recharge section; existing polling, mobile redirect, and payment APIs are unchanged.
+- focused billing, recharge-panel, and payment-status validation passed with 23 tests; `npm run build` passed. Existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-19 - WeChat Scan-First Recharge Modal
+
+- redesigned the payment panel as a compact single-column scan-first checkout with a centered QR code, `微信扫码支付` heading, explicit `当前仅支持微信支付` copy, and a concise amount/credits/status summary.
+- removed the old nested payment-status card treatment; paid states now remain in the same modal with a success confirmation, while mobile checkout continues to use the existing redirect behavior.
+- focused recharge validation passed with 23 tests and `npm run build`; existing Browserslist, mixed-import, and chunk-size warnings remain non-blocking.
+
+## 2026-08-19 - Recharge Copy And Hover Treatment
+
+- removed the verbose unit-price and renewal copy from recharge cards and the global recharge dialog, leaving the card hierarchy focused on total credits, price, validity, and the purchase action.
+- recharge cards now show baseline credits plus calculated bonus credits for qualifying plans; the ￥9.90 entry plan remains a simple 100-credit offer without an artificial `+1` bonus label.
+- added a restrained hover/focus lift and cyan shadow treatment with reduced-motion support; focused recharge validation passed after the copy and interaction update.
+
+## 2026-08-19 - User-Facing Recharge Plan Aliases
+
+- user recharge cards now map the four stable production plan keys to `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作` without changing administrator-owned plan names, database records, or payment snapshots; unknown plan keys continue to show the server-provided name.
+- corrected the `credits_100` presentation rule so a server-configured 120-credit entry plan displays `基础 100 + 加赠 20` instead of `基础 0 + 加赠 120`.
+
+## 2026-08-20 - Lovart-Inspired Recharge Experience
+
+- replaced the duplicated billing-page plan grid with one shared centered recharge modal. Workspace balance controls, insufficient-credit prompts, canvas/workbench entries, and `/billing` now open the same purchase flow.
+- added the approved four-plan presentation aliases: `轻量尝鲜`, `日常创作`, `高频创作`, and `专业创作`. The second plan remains `最受欢迎`; lime hover/focus emphasis follows the active card while the recommendation ribbon stays attached to that plan.
+- kept the server-owned plan amounts, credits, validity, checkout creation, payment polling, idempotency, and wallet ledger unchanged. The purchase UI identifies WeChat as the only supported payment method and centers the QR state inside the modal. No subscription copy, unit-price copy, fabricated QR countdown, payment API, or database table was added.
+- `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
+- the modal now traps keyboard focus, supports Shift+Tab/Tab cycling, and restores focus to the opening control when closed.
+- focused validation passed: 8 test files / 84 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.

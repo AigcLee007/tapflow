@@ -13,6 +13,7 @@ function getStatusText(status: CanvasAgentToolTimelineItem["status"]) {
   if (status === "running") return "Running";
   if (status === "awaiting_approval") return "Waiting for approval";
   if (status === "failed") return "Failed";
+  if (status === "partial_success") return "Partial success";
   return "Completed";
 }
 
@@ -57,8 +58,8 @@ export function CanvasAgentToolCard(props: {
 }) {
   const { item } = props;
   const approval = item.status === "awaiting_approval";
-  const canPlaceAssets = item.status === "succeeded" && item.assetRefs.length > 0;
-  const canContinue = item.status === "succeeded" && item.assetRefs.length > 0;
+  const canPlaceAssets = (item.status === "succeeded" || item.status === "partial_success") && item.assetRefs.length > 0;
+  const canContinue = (item.status === "succeeded" || item.status === "partial_success") && item.assetRefs.length > 0;
   const approvalModels = item.estimate?.imageRunSettings ?? [];
   const runSummary = buildRunSummary(item);
   const primaryAsset = item.assetRefs.find((asset) => asset.refId === item.activeAssetRefId)
@@ -140,7 +141,7 @@ export function CanvasAgentToolCard(props: {
         ) : null}
       </div>
 
-      {item.error ? <div style={{ color: "#fb7185", fontSize: 12 }}>{item.error}</div> : null}
+      {item.error ? <div style={{ color: item.status === "partial_success" ? "#facc15" : "#fb7185", fontSize: 12 }}>{item.error}</div> : null}
       {item.placedNodeIds?.length ? <div style={{ color: "#86efac", fontSize: 12 }}>Placed on canvas.</div> : null}
 
       {approval && approvalModels.length > 0 ? (

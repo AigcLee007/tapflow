@@ -170,6 +170,47 @@ Perform these checks after a performance-related deployment:
 4. Re-enable cache and refresh the same tab. Confirm the first image uses the bounded session cache and no unavailable image delays the other eleven.
 5. Capture `canvas-draft-ready`, `canvas-thumb-signing-start`, `canvas-thumb-signing-end`, `canvas-first-thumb-visible`, `canvas-visible-thumbs-90pct`, and `canvas-preview-upgrade-visible` from the Performance API. Record cold and same-tab timing/transfer measurements before accepting the rollout.
 
+## Agent + Skill V2 Staging Rollout
+
+Deploy the code and migrations with all Agent/Skill flags disabled, then stop
+the Worker and run the compiled migration before starting services. The
+staging env template is the source of truth for defaults; do not put secrets
+in this document or in a frontend build.
+
+```bash
+cd /opt/aittco/tapflow
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+```
+
+Roll out in this order: V2 panel for an internal user, Skill catalog, Skill
+authoring, then Skill runtime for one canary tenant. Enable matching server and
+`VITE_*` flags together; a missing server capability or disabled runtime must
+fall back to the current Agent panel. Legacy sessions are not migrated, every
+turn records `agent_version`, and a turn lease prevents legacy/V2 concurrent
+execution.
+
+Staging acceptance checklist:
+
+- `GET /api/v2/agent/capabilities` reports the expected safe booleans.
+- Text Skill authoring creates a private draft only after explicit save.
+- Text, image, and video Skills require approval before paid execution.
+- Text output writes to a text node; media outputs persist tenant assets and
+  remain after canvas and `/assets` refresh.
+- Cancellation prevents later tool mutations; `afterSeq` replay has no gaps.
+- Incomplete delivery is `reviewing`; complete delivery is `succeeded`.
+- Billing reserve/settle/refund is idempotent and failed runs leave no reserve.
+- Logs include Skill/version/run/step, duration, first-event latency, retry,
+  failure, and redaction counters without credentials or upstream internals.
+
+Rollback for staging is flag-first: disable `AGENT_V2_RUNTIME_ENABLED`, then
+`AGENT_SKILL_RUNTIME_ENABLED`, authoring, and catalog flags as needed. Stop the
+Worker before a schema rollback only when explicitly approved. Preserve Skill
+and version history, runs/events, generated assets, drafts, and billing ledger;
+set an unsafe AI route to `inactive` instead of deleting it.
+
 ## TapFlow Agent Smoke
 
 Use this after deploying the agent bridge package and before broader manual testing:

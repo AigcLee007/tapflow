@@ -1,8 +1,273 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { AiModelCatalogService } from "../src/modules/ai-model-catalog/ai-model-catalog.service.js";
+import { modelCatalogBundleQuerySchema } from "../src/modules/ai-model-catalog/ai-model-catalog.schemas.js";
+import type { AiModelCatalogCache } from "../src/modules/ai-model-catalog/ai-model-catalog.cache.js";
 
 describe("AiModelCatalogService route list", () => {
+  test("parses bundle queries", () => {
+    expect(modelCatalogBundleQuerySchema.parse({ modality: "image" })).toEqual({ modality: "image", environment: "production" });
+    expect(() => modelCatalogBundleQuerySchema.parse({ modality: "audio" })).toThrow();
+  });
+
+  test("returns a cached bundle without opening a database transaction", async () => {
+    const cachedBundle = { models: [], routesByModelKey: {} };
+    const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
+      get: vi.fn(async () => cachedBundle),
+      set: vi.fn(async () => undefined),
+    };
+    const pool = { connect: vi.fn() };
+    const service = new AiModelCatalogService({ pool, cache } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listBundle(
+      { tenantId: "tenant-1", userId: "user-1" },
+      { modality: "image", environment: "production" },
+    )).resolves.toBe(cachedBundle);
+    expect(cache.get).toHaveBeenCalledWith({
+      environment: "production",
+      modality: "image",
+      tenantId: "tenant-1",
+    });
+    expect(pool.connect).not.toHaveBeenCalled();
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  test("reports a cache hit with the cached bundle", async () => {
+    const cachedBundle = { models: [], routesByModelKey: {} };
+    const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
+      get: vi.fn(async () => cachedBundle),
+      set: vi.fn(async () => undefined),
+    };
+    const pool = { connect: vi.fn() };
+    const service = new AiModelCatalogService({ pool, cache } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listBundleWithDiagnostics(
+      { tenantId: "tenant-1", userId: "user-1" },
+      { modality: "image", environment: "production" },
+    )).resolves.toEqual({ bundle: cachedBundle, cacheStatus: "HIT" });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test("writes a database bundle after a cache miss", async () => {
+    const cache: Pick<AiModelCatalogCache, "get" | "set"> = {
+      get: vi.fn(async () => null),
+      set: vi.fn(async () => undefined),
+    };
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool, cache } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+    const context = { tenantId: "tenant-1", userId: "user-1" };
+    const query = { modality: "video", environment: "staging" };
+
+    await expect(service.listBundle(context, query)).resolves.toEqual({ models: [], routesByModelKey: {} });
+    expect(cache.get).toHaveBeenCalledWith({ ...query, tenantId: context.tenantId });
+    expect(cache.set).toHaveBeenCalledWith(
+      { ...query, tenantId: context.tenantId },
+      { models: [], routesByModelKey: {} },
+    );
+  });
+
+  test("groups a model catalog bundle from exactly two queries", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return { rows: [
+            { capabilities: {}, default_route_key: "route-a", display_name: "Model A", id: "catalog-a", modality: "image", model_family: "model-a", model_id: null, model_key: "model-a", sort_order: 1, status: "active", ui_schema: {} },
+            { capabilities: {}, default_route_key: "route-b", display_name: "Model B", id: "catalog-b", modality: "image", model_family: "model-b", model_id: null, model_key: "model-b", sort_order: 2, status: "active", ui_schema: {} },
+          ] };
+        }
+        return { rows: [
+          { capabilities: {}, estimated_credits: "1", min_charge_credits: "1", modality: "image", model_capabilities: {}, model_family: "model-a", model_key: "model-a", pricing_unit: "image_generation", pricing_metadata: null, pricing_fallback_level: 1, provider_key: "provider", provider_name: "Provider", request_config: {}, route_id: "route-a-id", route_key: "route-a", route_label: "Route A" },
+          { capabilities: {}, estimated_credits: "2", min_charge_credits: "2", modality: "image", model_capabilities: {}, model_family: "model-a", model_key: "model-a", pricing_unit: "image_generation", pricing_metadata: null, pricing_fallback_level: 1, provider_key: "provider", provider_name: "Provider", request_config: {}, route_id: "route-a-2-id", route_key: "route-a-2", route_label: "Route A2" },
+          { capabilities: {}, estimated_credits: "3", min_charge_credits: "3", modality: "image", model_capabilities: {}, model_family: "model-b", model_key: "model-b", pricing_unit: "image_generation", pricing_metadata: null, pricing_fallback_level: 1, provider_key: "provider", provider_name: "Provider", request_config: {}, route_id: "route-b-id", route_key: "route-b", route_label: "Route B" },
+        ] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listBundle({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, { modality: "image", environment: "production" })).resolves.toEqual({
+      models: [expect.objectContaining({ modelKey: "model-a" }), expect.objectContaining({ modelKey: "model-b" })],
+      routesByModelKey: {
+        "model-a": [expect.objectContaining({
+          routeKey: "route-a",
+          pricing: {
+            billingBasis: null,
+            exact: true,
+            minChargeCredits: 1,
+            unit: "image_generation",
+            unitCredits: 1,
+          },
+        }), expect.objectContaining({ routeKey: "route-a-2" })],
+        "model-b": [expect.objectContaining({ routeKey: "route-b" })],
+      },
+    });
+    expect(client.query.mock.calls.filter(([sql]) => typeof sql === "string" && sql.includes("FROM ai_model_catalog AS catalog") || typeof sql === "string" && sql.includes("FROM ai_routes AS route")).length).toBe(2);
+    const sqlText = client.query.mock.calls.map(([sql]) => String(sql)).join("\n");
+    expect(sqlText).toContain("route_install.status = 'published'");
+    expect(sqlText).toContain("available_install.status = 'published'");
+    expect(sqlText).toContain("available_provider.status = 'active'");
+    expect(sqlText).toContain("available_model.status = 'active'");
+    expect(sqlText).toContain("route.environment = $3::text");
+  });
+
+  test("shares catalog visibility filters for model lists", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await service.listModels({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, {
+      modality: "image",
+      environment: "staging",
+    });
+
+    const [sql, params] = client.query.mock.calls.find(([candidate]) => String(candidate).includes("FROM ai_model_catalog AS catalog")) ?? [];
+    expect(String(sql)).toContain("route.environment = $4::text");
+    expect(String(sql)).toContain("available_provider.status = 'active'");
+    expect(String(sql)).toContain("available_model.status = 'active'");
+    expect(String(sql)).toContain("available_install.status = 'published'");
+    expect(params).toEqual(["11111111-1111-1111-1111-111111111111", "image", null, "staging"]);
+    expect(String(sql)).toContain("available_route.model_family = catalog.model_family");
+    expect(String(sql)).not.toContain("available_route.model_id = catalog.model_id");
+  });
+
+  test("preserves catalog duplicate-family ordering modes across endpoints", async () => {
+    const client = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+    const context = { tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" };
+
+    await service.listModels(context, { modality: "image", environment: "production" });
+    const listSql = String(client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_model_catalog AS catalog"))?.[0]);
+    expect(listSql).toContain("CASE WHEN catalog.tenant_id IS NULL THEN 0 ELSE 1 END ASC");
+
+    client.query.mockClear();
+    await service.listBundle(context, { modality: "image", environment: "production" });
+    const bundleSql = String(client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_model_catalog AS catalog"))?.[0]);
+    expect(bundleSql).toContain("CASE WHEN catalog.tenant_id = $1::uuid THEN 0 ELSE 1 END ASC");
+  });
+
+  test("shares route visibility and stable ordering filters", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return { rows: [{
+            id: "catalog-1",
+            model_id: null,
+            model_key: "model-a",
+            modality: "image",
+            model_family: "model-a",
+          }] };
+        }
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await service.listRoutesForModel({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, "model-a", {
+      environment: "staging",
+    });
+
+    const routeSql = client.query.mock.calls.map(([sql]) => String(sql)).find((sql) => sql.includes("FROM ai_routes AS route"));
+    expect(routeSql).toContain("route.environment = $3::text");
+    expect(routeSql).toContain("route.status = 'active'");
+    expect(routeSql).toContain("provider.status = 'active'");
+    expect(routeSql).toContain("model.status = 'active'");
+    expect(routeSql).toContain("route_install.status = 'published'");
+    expect(routeSql).toContain("pricing.pricing_fallback_level");
+    expect(routeSql).toContain("COALESCE(model.model_key, $7::text, route.model_family)");
+    expect(routeSql).toContain("route.route_key ASC");
+    const routeCall = client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_routes AS route"));
+    expect(routeCall?.[1]).toEqual([
+      "11111111-1111-1111-1111-111111111111",
+      "image",
+      "staging",
+      "model-a",
+      null,
+      "model-a",
+      "model-a",
+    ]);
+  });
+
+  test("returns no routes for an active catalog model when the requested environment has none", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => sql.includes("FROM ai_model_catalog AS catalog")
+        ? { rows: [{ id: "catalog-1", model_id: null, model_key: "model-a", modality: "image", model_family: "model-a" }] }
+        : { rows: [] }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    await expect(service.listRoutesForModel({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, "model-a", {
+      environment: "staging",
+    })).resolves.toEqual([]);
+
+    const catalogCall = client.query.mock.calls.find(([sql]) => String(sql).includes("FROM ai_model_catalog AS catalog"));
+    expect(String(catalogCall?.[0])).not.toContain("EXISTS (");
+    expect(catalogCall?.[1]).toEqual(["11111111-1111-1111-1111-111111111111", null, "model-a"]);
+  });
+
+  test("keeps catalog model-key pricing fallback for model-id-less routes", async () => {
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("FROM ai_model_catalog AS catalog")) {
+          return { rows: [{
+            id: "catalog-1",
+            model_id: null,
+            model_key: "catalog-model",
+            modality: "image",
+            model_family: "shared-family",
+          }] };
+        }
+        return { rows: [{
+          estimated_credits: "4.5",
+          min_charge_credits: "1",
+          modality: "image",
+          model_capabilities: {},
+          model_family: "shared-family",
+          model_key: null,
+          pricing_metadata: null,
+          pricing_fallback_level: 1,
+          pricing_unit: "image_generation",
+          provider_key: "provider",
+          provider_name: "Provider",
+          request_config: {},
+          route_id: "route-1",
+          route_key: "route-1",
+          route_label: "Route 1",
+        }] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    const service = new AiModelCatalogService({ pool } as ConstructorParameters<typeof AiModelCatalogService>[0]);
+
+    const routes = await service.listRoutesForModel({ tenantId: "11111111-1111-1111-1111-111111111111", userId: "user-1" }, "catalog-model", {});
+
+    expect(routes[0]?.pricing).toEqual({
+      billingBasis: null,
+      exact: true,
+      minChargeCredits: 1,
+      unit: "image_generation",
+      unitCredits: 4.5,
+    });
+    const routeSql = client.query.mock.calls.map(([sql]) => String(sql)).find((sql) => sql.includes("FROM ai_routes AS route"));
+    expect(routeSql).toContain("COALESCE(model.model_key, $7::text, route.model_family)");
+  });
+
   test("preserves established safe image catalog capabilities while excluding unknown values", async () => {
     const client = {
       query: vi.fn(async () => ({

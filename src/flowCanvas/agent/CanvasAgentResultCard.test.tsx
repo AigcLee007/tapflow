@@ -46,4 +46,28 @@ describe("CanvasAgentResultCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "放到画布" }));
     expect(onPlaceAssets).toHaveBeenCalled();
   });
+
+  it("keeps partial results actionable and exposes retry and the concrete run", () => {
+    const onRetry = vi.fn();
+    const onViewRun = vi.fn();
+    const onContinueFromAsset = vi.fn();
+    render(
+      <CanvasAgentResultCard
+        assets={[{ assetId: "asset-1", kind: "image", label: "部分结果", promptSummary: "", refId: "ref-1" }]}
+        onContinueFromAsset={onContinueFromAsset}
+        onPlaceAssets={vi.fn()}
+        onRetry={onRetry}
+        onViewRun={onViewRun}
+        status="partial_success"
+        workflowRunId="workflow-run-42"
+      />,
+    );
+
+    expect(screen.getByText("部分完成")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "重试失败步骤" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看运行" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onViewRun).toHaveBeenCalledWith("workflow-run-42");
+    expect(screen.getByRole("button", { name: "继续编辑" })).toBeTruthy();
+  });
 });

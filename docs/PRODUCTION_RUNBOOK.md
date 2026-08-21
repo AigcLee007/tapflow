@@ -53,7 +53,73 @@ Branch: production-readiness
 7. Start worker.
 8. Run smoke tests.
 
-## D1.1 GPT-Image-2 Route Import
+## D1.1 Agent + Skill V2 Rollout
+
+Agent V2 and Skill runtime are deployed dark. Keep all server and frontend V2
+flags `false` while shipping the backward-compatible API, frontend bundle,
+Worker image, and migrations. Production migrations run from the compiled
+image, and the Worker stays stopped during the migration:
+
+```bash
+cd /opt/aittco/tapflow
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml build
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml stop tapflow-worker
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-api node packages/db/dist/cli.js
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml up -d tapflow-redis tapflow-api tapflow-worker tapflow-frontend
+```
+
+Enable in stages, recording the change and smoke result at each gate:
+
+1. Enable V2 server and matching Vite panel flags for an internal tenant (or
+   an isolated internal environment); leave Skill authoring/runtime disabled.
+2. Enable `AGENT_SKILLS_ENABLED` plus its matching Vite flag and verify catalog
+   browse/select and immutable Skill version binding.
+3. Enable authoring for the internal cohort, then enable Skill runtime for one
+   canary tenant only after approval, billing, text, image, and video smoke
+   tests pass.
+4. Complete staging acceptance, then expand the canary in controlled batches.
+
+The V2 panel requires both server and Vite flags. Every turn records
+`agent_version`; legacy sessions are not force-migrated. A lease prevents a
+legacy and V2 runtime from executing the same turn concurrently. When V2 is
+disabled, the UI falls back to the existing Agent panel and existing sessions
+remain readable.
+
+### Observability And Acceptance
+
+Dashboards and structured logs must retain `requestId`, `agentVersion`,
+`turnId`, `skillId`, immutable `skillVersionId`, `skillRunId`, `skillStepId`,
+`durationMs`, `firstEventLatencyMs`, `failedStep`, `retryCount`,
+`redactionHits`, and final delivery status (`reviewing`/`succeeded`/`failed`).
+Alert on repeated failed steps, lease conflicts, replay sequence gaps,
+unexpected `409` rates, provider timeout/429 spikes, and non-zero reserved
+credits after failed runs. Creator-facing logs must not contain provider
+credentials, authorization headers, upstream route configuration, or raw
+secret-bearing prompt/context fields.
+
+Before expanding beyond the canary, verify: text Skill output is written to a
+text node; image/video outputs create tenant assets and survive refresh;
+approval is required before paid execution; cancellation stops later steps;
+`afterSeq` replay is monotonic; incomplete delivery enters `reviewing`; billing
+reserve/settle/refund is idempotent; and no secret material appears in API
+responses, drafts, events, or logs.
+
+### Rollback
+
+Rollback is flag-first and preserves data:
+
+1. Set `AGENT_V2_RUNTIME_ENABLED=false` and its Vite runtime flag; restart API,
+   Worker, and frontend as applicable.
+2. Set `AGENT_SKILL_RUNTIME_ENABLED=false`, then disable authoring and Skill
+   catalog flags if required. Existing legacy/V2 history remains readable.
+3. Stop the Worker before any schema rollback is explicitly approved. Prefer
+   redeploying the previous API/frontend/Worker image; do not delete Skill,
+   Skill-version, Skill-run, generated Asset, flow-draft, or immutable billing
+   ledger rows.
+4. Re-enable only after a forward fix and a fresh migration/smoke pass. If a
+   provider route is unsafe, set that route `inactive` rather than deleting it.
+
+## D1.2 GPT-Image-2 Route Import
 
 Use this only after deploying the release containing `scripts/import-gpt-image-2-routes.mjs`. The two API keys stay in `/opt/aittco/env/tapflow.staging.env`; the normal API and Worker services do not receive them as environment variables.
 

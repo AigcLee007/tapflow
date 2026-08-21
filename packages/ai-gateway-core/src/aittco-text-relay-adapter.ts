@@ -1,5 +1,6 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import { readTextServerSentEvents, type ProviderTextStreamEvent } from "./text-streaming-contract.js";
 import type {
   AssetReferenceInput,
   AiGatewayUsage,
@@ -190,11 +191,183 @@ async function readJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
+function streamToolDefinitions(request: TextGenerationRequest, protocol: AittcoTextProtocol): Array<Record<string, unknown>> | undefined {
+  if (!request.tools?.length) return undefined;
+  return request.tools.map((tool) => protocol === "claude"
+    ? { name: tool.name, description: tool.description, input_schema: tool.inputSchema }
+    : protocol === "responses"
+      ? { name: tool.name, description: tool.description, parameters: tool.inputSchema, type: "function" }
+      : { function: { name: tool.name, description: tool.description, parameters: tool.inputSchema }, type: "function" });
+}
+
+function streamToolChoice(choice: TextGenerationRequest["toolChoice"], protocol: AittcoTextProtocol): unknown {
+  if (!choice) return undefined;
+  if (typeof choice === "string") return protocol === "claude" ? { type: choice } : choice;
+  return protocol === "responses"
+    ? { name: choice.function.name, type: "function" }
+    : protocol === "claude"
+      ? { name: choice.function.name, type: "tool" }
+      : choice;
+}
+
+function readRelayStreamRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function readRelayChatToolDeltas(event: Record<string, unknown>, knownCallIds: Map<number, string>): Array<{ argumentsDelta: string; callId: string; name?: string }> {
+  const choices = Array.isArray(event.choices) ? event.choices : [];
+  const choice = readRelayStreamRecord(choices[0]);
+  const delta = readRelayStreamRecord(choice.delta);
+  const calls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
+  return calls.flatMap((item, index) => {
+    const call = readRelayStreamRecord(item);
+    const fn = readRelayStreamRecord(call.function);
+    const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
+    const callIndex = typeof call.index === "number" ? call.index : index;
+    const explicitId = typeof call.id === "string" && call.id ? call.id : null;
+    if (explicitId) knownCallIds.set(callIndex, explicitId);
+    const callId = explicitId ?? knownCallIds.get(callIndex) ?? `tool-call-${callIndex}`;
+    if (!argumentsDelta && typeof fn.name !== "string") return [];
+    return [{ argumentsDelta, callId, ...(typeof fn.name === "string" && fn.name ? { name: fn.name } : {}) }];
+  });
+}
+
 export class AittcoTextRelayAdapter implements ProviderAdapter {
   private readonly fetchImplementation: FetchLike;
 
   constructor(options?: { fetchImplementation?: FetchLike }) {
     this.fetchImplementation = options?.fetchImplementation ?? fetch;
+  }
+
+  async *streamText(
+    context: ProviderCallContext,
+    request: TextGenerationRequest,
+  ): AsyncGenerator<ProviderTextStreamEvent> {
+    const requestConfig = asRecord(context.requestConfig);
+    const protocol = resolveProtocol(requestConfig);
+    const model = resolveUpstreamModel(requestConfig, context.modelKey);
+    const { messages, system } = splitSystemMessages(request.messages);
+    const images = readImageInputs(request.inputAssets);
+    const basePayload = this.buildPayload(
+      protocol,
+      model,
+      messages,
+      system,
+      resolveMaxTokens(request, requestConfig),
+      resolveTemperature(request, requestConfig),
+      images,
+    );
+    const tools = streamToolDefinitions(request, protocol);
+    const toolChoice = streamToolChoice(request.toolChoice, protocol);
+    const payload: Record<string, unknown> = {
+      ...basePayload,
+      ...(protocol === "gemini" ? {} : { stream: true }),
+      ...(tools && protocol !== "gemini" ? { tools } : {}),
+      ...(toolChoice && protocol !== "gemini" ? { tool_choice: toolChoice } : {}),
+    };
+    const path = this.resolvePath(protocol, requestConfig, model);
+    const providerRequest = {
+      body: { messageCount: request.messages.length, model, protocol, routeKey: context.routeKey },
+      headers: { Authorization: `Bearer ${context.apiKey}`, "Content-Type": "application/json" },
+      method: "POST",
+      url: buildUrl(context.baseUrl, path),
+    };
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(providerRequest.url, {
+        body: JSON.stringify(payload),
+        headers: providerRequest.headers,
+        method: "POST",
+        signal: request.signal ?? AbortSignal.timeout(context.timeoutMs),
+      });
+    } catch (error) {
+      const timeout = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+      throw new AiGatewayError({
+        code: timeout ? "PROVIDER_TIMEOUT" : "PROVIDER_INTERNAL_ERROR",
+        message: timeout ? "The text provider stream timed out" : "The text provider stream failed before a response was received",
+        providerRequest,
+        statusCode: timeout ? 504 : 502,
+      });
+    }
+    if (!response.ok) {
+      const body = await readJsonResponse(response);
+      throw new AiGatewayError({
+        code: mapProviderStatus(response.status),
+        message: "The text provider rejected the streaming request",
+        providerRequest,
+        providerResponse: { requestId: readRequestId(body), status: response.status },
+        statusCode: response.status,
+      });
+    }
+
+    let finishReason: string | undefined;
+    const knownCallIds = new Map<number, string>();
+    for await (const raw of readTextServerSentEvents(response)) {
+      const event = readRelayStreamRecord(raw);
+      if (protocol === "gemini") {
+        const candidates = Array.isArray(event.candidates) ? event.candidates : [];
+        const candidate = readRelayStreamRecord(candidates[0]);
+        const content = readRelayStreamRecord(candidate.content);
+        const parts = Array.isArray(content.parts) ? content.parts : [];
+        for (const part of parts) {
+          const text = readRelayStreamRecord(part).text;
+          if (typeof text === "string" && text) yield { type: "text_delta", text };
+        }
+        const usage = readRelayStreamRecord(event.usageMetadata);
+        if (Object.keys(usage).length > 0) {
+          yield { type: "usage", usage: {
+            inputTokens: asNumber(usage.promptTokenCount),
+            outputTokens: asNumber(usage.candidatesTokenCount),
+            totalTokens: asNumber(usage.totalTokenCount),
+          } };
+        }
+        continue;
+      }
+      const eventType = typeof event.type === "string" ? event.type : "";
+      if (protocol === "claude") {
+        const delta = readRelayStreamRecord(event.delta);
+        if (eventType === "content_block_delta" && typeof delta.text === "string" && delta.text) {
+          yield { type: "text_delta", text: delta.text };
+        }
+        if (eventType === "content_block_delta" && typeof delta.partial_json === "string") {
+          yield { type: "tool_call_delta", callId: typeof event.index === "number" ? `tool-call-${event.index}` : "tool-call-0", argumentsDelta: delta.partial_json };
+        }
+        const block = readRelayStreamRecord(event.content_block);
+        if (eventType === "content_block_start" && block.type === "tool_use" && typeof block.name === "string") {
+          yield { type: "tool_call_delta", callId: typeof block.id === "string" ? block.id : "tool-call-0", name: block.name, argumentsDelta: "" };
+        }
+        if (eventType === "message_delta") {
+          finishReason = typeof delta.stop_reason === "string" ? delta.stop_reason : finishReason;
+          const usage = readRelayStreamRecord(delta.usage);
+          if (Object.keys(usage).length > 0) {
+            yield { type: "usage", usage: { inputTokens: asNumber(usage.input_tokens), outputTokens: asNumber(usage.output_tokens), totalTokens: asNumber(usage.input_tokens) !== null && asNumber(usage.output_tokens) !== null ? asNumber(usage.input_tokens)! + asNumber(usage.output_tokens)! : null } };
+          }
+        }
+        continue;
+      }
+      if (protocol === "responses") {
+        if (eventType === "response.output_text.delta" && typeof event.delta === "string") yield { type: "text_delta", text: event.delta };
+        if (eventType === "response.function_call_arguments.delta" && typeof event.delta === "string") yield { type: "tool_call_delta", callId: typeof event.item_id === "string" ? event.item_id : "tool-call-0", argumentsDelta: event.delta };
+        if (eventType === "response.output_item.added") {
+          const item = readRelayStreamRecord(event.item);
+          if (item.type === "function_call" && typeof item.name === "string") yield { type: "tool_call_delta", callId: typeof item.call_id === "string" ? item.call_id : "tool-call-0", name: item.name, argumentsDelta: "" };
+        }
+        if (eventType === "response.completed") {
+          finishReason = "stop";
+          const usage = readRelayStreamRecord(readRelayStreamRecord(event.response).usage);
+          if (Object.keys(usage).length > 0) yield { type: "usage", usage: { inputTokens: asNumber(usage.input_tokens), outputTokens: asNumber(usage.output_tokens), totalTokens: asNumber(usage.total_tokens) } };
+        }
+        continue;
+      }
+      const text = readRelayStreamRecord(readRelayStreamRecord(Array.isArray(event.choices) ? event.choices[0] : null).delta).content;
+      if (typeof text === "string" && text) yield { type: "text_delta", text };
+      for (const tool of readRelayChatToolDeltas(event, knownCallIds)) yield { type: "tool_call_delta", ...tool };
+      const choice = readRelayStreamRecord(Array.isArray(event.choices) ? event.choices[0] : null);
+      if (typeof choice.finish_reason === "string") finishReason = choice.finish_reason;
+      const usage = readRelayStreamRecord(event.usage);
+      if (Object.keys(usage).length > 0) yield { type: "usage", usage: parseUsage(protocol, event) };
+    }
+    yield { type: "done", ...(finishReason ? { finishReason } : {}) };
   }
 
   async generateText(

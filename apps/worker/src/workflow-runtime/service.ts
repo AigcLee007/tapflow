@@ -76,6 +76,25 @@ type WorkflowRunRecord = {
   tenant_id: string;
 };
 
+export type AgentSkillWorkerMetadata = {
+  agentSkillRunId: string | null;
+  agentSkillStepId: string | null;
+  agentSkillVersionId: string | null;
+};
+
+/** Keep the worker/provider boundary limited to durable Skill identifiers. */
+export function extractAgentSkillMetadata(input: Record<string, unknown> | null | undefined): AgentSkillWorkerMetadata {
+  const readId = (key: string): string | null => {
+    const value = input?.[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+  return {
+    agentSkillRunId: readId("agentSkillRunId"),
+    agentSkillStepId: readId("agentSkillStepId"),
+    agentSkillVersionId: readId("agentSkillVersionId"),
+  };
+}
+
 type NodeRunRecord = {
   attempt: number;
   cost_json: Record<string, unknown>;
@@ -2649,6 +2668,7 @@ export class WorkflowNodeExecutionService {
     context: WorkflowExecutionContext,
     logger: WorkerLogger,
   ): Promise<ProviderExecutionOutcome> {
+    const skillMetadata = extractAgentSkillMetadata(workflowRun.input_json);
     if (node.type === "input") {
       return {
         outputJson: resolveInputNodeOutput(workflowRun.input_json ?? {}, node.config ?? {}),
@@ -2697,6 +2717,7 @@ export class WorkflowNodeExecutionService {
         {
           nodeRunId: nodeRun.id,
           workflowRunId: workflowRun.id,
+          ...skillMetadata,
         },
       );
 
@@ -2778,6 +2799,7 @@ export class WorkflowNodeExecutionService {
           {
             nodeRunId: nodeRun.id,
             workflowRunId: workflowRun.id,
+            ...skillMetadata,
           },
         );
       } finally {
@@ -2843,6 +2865,7 @@ export class WorkflowNodeExecutionService {
           {
             nodeRunId: nodeRun.id,
             workflowRunId: workflowRun.id,
+            ...skillMetadata,
           },
         );
       } finally {
@@ -3258,36 +3281,7 @@ export class WorkflowNodeExecutionService {
     nodeRun: NodeRunRecord,
     outputJson: Record<string, unknown>,
   ): Record<string, unknown> | null {
-    const assets = Array.isArray(outputJson.assets) ? outputJson.assets : [];
-    const primaryAsset = assets.find((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string");
-    const aiRuntime = isPlainObject(outputJson.aiRuntime) ? outputJson.aiRuntime : null;
-    if (!primaryAsset) {
-      return null;
-    }
-    if (currentNode.type !== "image.generate" && currentNode.type !== "video.generate") {
-      return null;
-    }
-
-    return {
-      assetId: primaryAsset.assetId,
-      assetIds: assets
-        .filter((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string")
-        .map((asset) => asset.assetId),
-      errorMessage: null,
-      generationStatus: "done",
-      latestNodeRunId: nodeRun.id,
-      latestWorkflowRunId: workflowRun.id,
-      ...(aiRuntime ? { aiRuntime } : {}),
-      mimeType: typeof primaryAsset.mimeType === "string" ? primaryAsset.mimeType : undefined,
-      naturalHeight: typeof primaryAsset.height === "number" ? primaryAsset.height : undefined,
-      naturalWidth: typeof primaryAsset.width === "number" ? primaryAsset.width : undefined,
-      progress: 100,
-      projectId: runtimeFlow.project_id,
-      source: "generated",
-      status: "success",
-      targetNodeId: currentNode.id,
-      workflowRunId: workflowRun.id,
-    };
+    return buildDraftOutputPatchForNode(currentNode, nodeRun, workflowRun, outputJson, runtimeFlow.project_id);
   }
 
   private async isLatestTargetNodeRun(
@@ -4108,6 +4102,8 @@ export class WorkflowNodeExecutionService {
       [currentNodeRun.id, JSON.stringify(outputJson)],
     );
 
+    await this.syncAgentSkillStepSucceeded(client, workflowRun.id, currentNode.id, outputJson);
+
     await this.patchTargetNodeOutputIntoDraft(
       client,
       currentNode,
@@ -4355,6 +4351,7 @@ export class WorkflowNodeExecutionService {
       `,
       [nodeRunId, JSON.stringify(normalized)],
     );
+    await this.syncAgentSkillStepFailed(client, workflowRunId, normalized);
     await client.query(
       `
         UPDATE workflow_runs
@@ -4380,6 +4377,92 @@ export class WorkflowNodeExecutionService {
       tenantId,
       workflowRunId,
     });
+  }
+
+  private async syncAgentSkillStepSucceeded(
+    client: PoolClient,
+    workflowRunId: string,
+    nodeId: string,
+    outputJson: Record<string, unknown>,
+  ): Promise<void> {
+    const assetId = extractAgentSkillAssetId(outputJson);
+    const step = await client.query<{ id: string; skill_run_id: string; step_index: number; action: string; previous_status: string; skill_version_id: string; turn_id: string | null; idempotency_key: string; graph_revision: string | null }>(
+      `WITH current AS (SELECT id, skill_run_id, status AS previous_status FROM agent_skill_step_runs WHERE workflow_run_id = $1::uuid AND node_id = $2)
+       UPDATE agent_skill_step_runs SET status = 'succeeded', output_json = $3::jsonb, asset_id = CASE WHEN COALESCE($4, $3::jsonb->>'assetId') ~ '^[0-9a-fA-F-]{36}$' THEN COALESCE($4, $3::jsonb->>'assetId')::uuid ELSE asset_id END, updated_at = now()
+       FROM current WHERE agent_skill_step_runs.id = current.id
+       RETURNING agent_skill_step_runs.id::text AS id, agent_skill_step_runs.skill_run_id::text AS skill_run_id, agent_skill_step_runs.step_index, agent_skill_step_runs.action, current.previous_status,
+         (SELECT skill_version_id::text FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS skill_version_id,
+         (SELECT turn_id::text FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS turn_id,
+         (SELECT idempotency_key FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS idempotency_key,
+         (SELECT graph_revision::text FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS graph_revision`,
+      [workflowRunId, nodeId, JSON.stringify(outputJson), assetId],
+    );
+    for (const row of step.rows) {
+      await this.appendAgentSkillStepEvent(client, row, { output: outputJson });
+      await this.refreshAgentSkillRunStatus(client, row.skill_run_id);
+    }
+  }
+
+  private async syncAgentSkillStepFailed(
+    client: PoolClient,
+    workflowRunId: string,
+    error: { code: string; details?: unknown; message: string },
+  ): Promise<void> {
+    const step = await client.query<{ id: string; skill_run_id: string; step_index: number; action: string; previous_status: string; skill_version_id: string; turn_id: string | null; idempotency_key: string; graph_revision: string | null }>(
+      `WITH current AS (SELECT id, skill_run_id, status AS previous_status FROM agent_skill_step_runs WHERE workflow_run_id = $1::uuid)
+       UPDATE agent_skill_step_runs SET status = 'failed', error_json = $2::jsonb, updated_at = now() FROM current WHERE agent_skill_step_runs.id = current.id
+       RETURNING agent_skill_step_runs.id::text AS id, agent_skill_step_runs.skill_run_id::text AS skill_run_id, agent_skill_step_runs.step_index, agent_skill_step_runs.action, current.previous_status,
+         (SELECT skill_version_id::text FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS skill_version_id,
+         (SELECT turn_id::text FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS turn_id,
+         (SELECT idempotency_key FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS idempotency_key,
+         (SELECT graph_revision::text FROM agent_skill_runs WHERE id = agent_skill_step_runs.skill_run_id) AS graph_revision`,
+      [workflowRunId, JSON.stringify(error)],
+    );
+    for (const row of step.rows) {
+      await this.appendAgentSkillStepEvent(client, row, { error });
+      await this.refreshAgentSkillRunStatus(client, row.skill_run_id);
+    }
+  }
+
+  private async refreshAgentSkillRunStatus(client: PoolClient, skillRunId: string): Promise<void> {
+    const result = await client.query<{ total: string; succeeded: string; failed: string; pending: string; invalid: string }>(
+      `SELECT COUNT(*)::text AS total, COUNT(*) FILTER (WHERE status = 'succeeded')::text AS succeeded, COUNT(*) FILTER (WHERE status = 'failed')::text AS failed, COUNT(*) FILTER (WHERE status IN ('pending','running','waiting_for_approval'))::text AS pending, COUNT(*) FILTER (WHERE status = 'succeeded' AND ((action = 'text' AND COALESCE(output_json->>'text', '') = '') OR (action IN ('image','video') AND asset_id IS NULL AND COALESCE(output_json->>'assetId', '') = '')))::text AS invalid FROM agent_skill_step_runs WHERE skill_run_id = $1::uuid`,
+      [skillRunId],
+    );
+    const row = result.rows[0];
+    if (!row || Number(row.total) === 0 || Number(row.pending) > 0) return;
+    const status = Number(row.failed) > 0 || Number(row.invalid) > 0 ? (Number(row.succeeded) > 0 ? "reviewing" : "failed") : "succeeded";
+    const updated = await client.query<{ id: string; previous_status: string; skill_version_id: string; turn_id: string | null; idempotency_key: string; graph_revision: string | null }>(
+      `WITH current AS (SELECT status AS previous_status, skill_version_id, turn_id, idempotency_key, graph_revision FROM agent_skill_runs WHERE id = $1::uuid)
+       UPDATE agent_skill_runs SET status = $2, output_json = jsonb_build_object('completedSteps', $3::int, 'failedSteps', $4::int), updated_at = now()
+       FROM current WHERE agent_skill_runs.id = $1::uuid AND agent_skill_runs.status NOT IN ('succeeded','partial_success','failed','cancelled')
+       RETURNING agent_skill_runs.id::text AS id, current.previous_status, current.skill_version_id::text AS skill_version_id, current.turn_id::text AS turn_id, current.idempotency_key, current.graph_revision::text AS graph_revision`,
+      [skillRunId, status, Number(row.succeeded), Number(row.failed)],
+    );
+    for (const changed of updated.rows) {
+      await client.query(
+        `INSERT INTO agent_skill_run_events (tenant_id, skill_run_id, seq, event_type, from_status, to_status, skill_version_id, turn_id, idempotency_key, graph_revision, redaction_version, event_json)
+         SELECT ar.tenant_id, $1::uuid, COALESCE(MAX(ev.seq), 0) + 1, 'skill_run.transition', $2, $3, $4::uuid, $5::uuid, $6, $7::bigint, 'v2', $8::jsonb
+         FROM agent_skill_runs ar LEFT JOIN agent_skill_run_events ev ON ev.tenant_id = ar.tenant_id AND ev.skill_run_id = $1::uuid
+         WHERE ar.id = $1::uuid GROUP BY ar.tenant_id`,
+        [changed.id, changed.previous_status, status, changed.skill_version_id, changed.turn_id, changed.idempotency_key, changed.graph_revision, JSON.stringify({ source: "worker", completedSteps: Number(row.succeeded), failedSteps: Number(row.failed) })],
+      );
+    }
+  }
+
+  private async appendAgentSkillStepEvent(
+    client: PoolClient,
+    step: { id: string; skill_run_id: string; step_index: number; action: string; previous_status: string; skill_version_id: string; turn_id: string | null; idempotency_key: string; graph_revision: string | null },
+    patch: { output?: Record<string, unknown>; error?: unknown },
+  ): Promise<void> {
+    if (step.previous_status === (patch.error ? "failed" : "succeeded")) return;
+    await client.query(
+      `INSERT INTO agent_skill_run_events (tenant_id, skill_run_id, seq, event_type, from_status, to_status, skill_version_id, turn_id, idempotency_key, graph_revision, redaction_version, event_json)
+       SELECT ar.tenant_id, $1::uuid, COALESCE(MAX(ev.seq), 0) + 1, 'skill_step.transition', $2, $3, $4::uuid, $5::uuid, $6, $7::bigint, 'v2', $8::jsonb
+       FROM agent_skill_runs ar LEFT JOIN agent_skill_run_events ev ON ev.tenant_id = ar.tenant_id AND ev.skill_run_id = $1::uuid
+       WHERE ar.id = $1::uuid GROUP BY ar.tenant_id`,
+      [step.skill_run_id, step.previous_status, patch.error ? "failed" : "succeeded", step.skill_version_id, step.turn_id, step.idempotency_key, step.graph_revision, JSON.stringify({ source: "worker", stepId: step.id, stepIndex: step.step_index, action: step.action, ...patch })],
+    );
   }
 
   private async failGroupNodeAndBlockDescendants(
@@ -4549,4 +4632,64 @@ export class WorkflowNodeExecutionService {
       [workflowRunId],
     );
   }
+}
+
+/** Convert a persisted target-node result into safe, editable canvas data. */
+export function buildDraftOutputPatchForNode(
+  currentNode: { id: string; type: string },
+  nodeRun: { id: string },
+  workflowRun: { id: string; flow_id: string; tenant_id: string },
+  outputJson: Record<string, unknown>,
+  projectId: string | null = null,
+): Record<string, unknown> | null {
+  const assets = Array.isArray(outputJson.assets) ? outputJson.assets : [];
+  const primaryAsset = assets.find((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string");
+  const aiRuntime = isPlainObject(outputJson.aiRuntime) ? outputJson.aiRuntime : null;
+  const text = typeof outputJson.text === "string" ? outputJson.text.trim() : "";
+
+  if (currentNode.type === "text.generate") {
+    if (!text) return null;
+    return {
+      errorMessage: null,
+      generationStatus: "done",
+      latestNodeRunId: nodeRun.id,
+      latestWorkflowRunId: workflowRun.id,
+      outputText: text,
+      progress: 100,
+      projectId,
+      source: "generated",
+      status: "success",
+      targetNodeId: currentNode.id,
+      text,
+      workflowRunId: workflowRun.id,
+    };
+  }
+
+  if (!primaryAsset || (currentNode.type !== "image.generate" && currentNode.type !== "video.generate")) return null;
+  return {
+    assetId: primaryAsset.assetId,
+    assetIds: assets
+      .filter((asset): asset is Record<string, unknown> => isPlainObject(asset) && typeof asset.assetId === "string")
+      .map((asset) => asset.assetId),
+    errorMessage: null,
+    generationStatus: "done",
+    latestNodeRunId: nodeRun.id,
+    latestWorkflowRunId: workflowRun.id,
+    ...(aiRuntime ? { aiRuntime } : {}),
+    mimeType: typeof primaryAsset.mimeType === "string" ? primaryAsset.mimeType : undefined,
+    naturalHeight: typeof primaryAsset.height === "number" ? primaryAsset.height : undefined,
+    naturalWidth: typeof primaryAsset.width === "number" ? primaryAsset.width : undefined,
+    progress: 100,
+    projectId,
+    source: "generated",
+    status: "success",
+    targetNodeId: currentNode.id,
+    workflowRunId: workflowRun.id,
+  };
+}
+
+export function extractAgentSkillAssetId(outputJson: Record<string, unknown>): string | null {
+  const assets = Array.isArray(outputJson.assets) ? outputJson.assets : [];
+  const primary = assets.find((asset) => isPlainObject(asset) && typeof asset.assetId === "string" && asset.assetId.trim());
+  return primary && isPlainObject(primary) ? String(primary.assetId).trim() : null;
 }

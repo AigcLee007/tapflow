@@ -1,5 +1,9 @@
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import {
+  assertTextStreamingCapabilities,
+  type TextStreamEvent,
+} from "./text-streaming-contract.js";
 import type {
   AiGatewayUsage,
   AiGatewayMediaResult,
@@ -150,6 +154,124 @@ export class AiGateway {
       status: "succeeded",
       usage: result.usage,
     };
+  }
+
+  /**
+   * Stream the Agent control-plane text response. This intentionally has a
+   * separate contract from generateText: callers receive only normalized text
+   * and tool-call events, never provider-specific SSE frames.
+   */
+  async *streamText(options: {
+    apiKey: string;
+    request: TextGenerationRequest;
+    route: ResolvedRoute;
+  }): AsyncGenerator<TextStreamEvent> {
+    const { adapter, context } = this.createProviderContext(
+      options.apiKey,
+      options.route,
+      options.request.model ?? null,
+      "text streaming",
+    );
+    assertTextStreamingCapabilities(options.route, {
+      toolCalling: Boolean(options.request.tools?.length),
+    });
+    if (!adapter.streamText) {
+      throw this.unsupportedOperationError(context.adapterKind, "text streaming");
+    }
+
+    const toolCalls = new Map<string, { arguments: string; name: string | null }>();
+    const completedToolCalls = new Set<string>();
+    const flushToolCalls = function* (): Generator<TextStreamEvent> {
+      for (const [callId, call] of toolCalls.entries()) {
+        if (completedToolCalls.has(callId) || !call.name) continue;
+        completedToolCalls.add(callId);
+        yield {
+          type: "tool_call",
+          callId,
+          name: call.name,
+          arguments: call.arguments,
+        };
+      }
+    };
+
+    try {
+      if (options.request.signal?.aborted) {
+        yield { type: "cancelled" };
+        return;
+      }
+      const providerEvents = await adapter.streamText(context, options.request);
+      for await (const event of providerEvents) {
+        if (options.request.signal?.aborted) {
+          yield { type: "cancelled" };
+          return;
+        }
+        if (event.type === "tool_call_delta") {
+          const current = toolCalls.get(event.callId) ?? { arguments: "", name: null };
+          current.arguments += event.argumentsDelta;
+          if (event.name) current.name = event.name;
+          toolCalls.set(event.callId, current);
+          yield {
+            type: "tool_call_delta",
+            callId: event.callId,
+            ...(event.name ? { name: event.name } : {}),
+            argumentsDelta: event.argumentsDelta,
+          };
+          continue;
+        }
+        if (event.type === "tool_call") {
+          completedToolCalls.add(event.callId);
+          toolCalls.set(event.callId, { arguments: event.arguments, name: event.name });
+          yield {
+            type: "tool_call",
+            callId: event.callId,
+            name: event.name,
+            arguments: event.arguments,
+          };
+          continue;
+        }
+        if (event.type === "usage") {
+          yield* flushToolCalls();
+          yield { type: "usage", usage: event.usage };
+          continue;
+        }
+        if (event.type === "done") {
+          yield* flushToolCalls();
+          yield { type: "done", ...(event.finishReason ? { finishReason: event.finishReason } : {}) };
+          continue;
+        }
+        if (event.type === "text_delta") {
+          yield { type: "text_delta", text: event.text };
+          continue;
+        }
+        if (event.type === "error") {
+          yield { type: "error", error: { code: event.error.code, message: event.error.message } };
+          continue;
+        }
+        if (event.type === "cancelled") {
+          yield { type: "cancelled" };
+        }
+      }
+      yield* flushToolCalls();
+    } catch (error) {
+      if (
+        options.request.signal?.aborted ||
+        (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
+      ) {
+        yield { type: "cancelled" };
+        return;
+      }
+      const normalized = error instanceof AiGatewayError
+        ? error
+        : new AiGatewayError({
+          code: "PROVIDER_INTERNAL_ERROR",
+          message: "The text provider stream failed",
+          statusCode: 502,
+        });
+      yield {
+        type: "error",
+        error: { code: normalized.code, message: normalized.message },
+      };
+    }
   }
 
   async generateImage(options: {

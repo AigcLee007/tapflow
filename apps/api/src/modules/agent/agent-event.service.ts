@@ -17,11 +17,15 @@ type AgentContext = {
 
 export class AgentEventService {
   readonly pool: Pool;
-  readonly repository: Pick<AgentSessionRepository, "appendSessionEvent" | "getSessionEvents">;
+  readonly repository: Pick<AgentSessionRepository, "appendSessionEvent" | "getSessionEvents"> & {
+    assertTurnActive?: AgentSessionRepository["assertTurnActive"];
+  };
 
   constructor(options: {
     pool?: Pool;
-    repository: Pick<AgentSessionRepository, "appendSessionEvent" | "getSessionEvents">;
+    repository: Pick<AgentSessionRepository, "appendSessionEvent" | "getSessionEvents"> & {
+      assertTurnActive?: AgentSessionRepository["assertTurnActive"];
+    };
   }) {
     this.pool = options.pool ?? createPgPool();
     this.repository = options.repository;
@@ -41,6 +45,9 @@ export class AgentEventService {
   }
 
   async appendToolEvent(context: AgentContext, sessionId: string, event: AgentToolEvent) {
+    if (event.agentVersion === "v2" && event.turnId && this.repository.assertTurnActive) {
+      await this.repository.assertTurnActive(context, event.turnId);
+    }
     const persisted = mapToolEventToSessionEvent(sessionId, event);
     if (!persisted) return null;
     return this.repository.appendSessionEvent(context, persisted);
@@ -55,7 +62,8 @@ function mapToolEventToSessionEvent(
   sessionId: string,
   event: AgentToolEvent,
 ): AppendAgentSessionEventInput | null {
-  switch (event.type) {
+  const persisted = (() => {
+    switch (event.type) {
     case "message_delta":
     case "thinking_status":
       return null;
@@ -189,9 +197,29 @@ function mapToolEventToSessionEvent(
         sessionId,
         turnId: event.turnId ?? null,
       };
-    default:
-      return null;
-  }
+      default:
+        return null;
+    }
+  })();
+  if (!persisted || !event.agentVersion) return persisted;
+  const metadata = {
+    agentNamespace: event.agentNamespace ?? null,
+    agentVersion: event.agentVersion,
+    graphRevision: event.graphRevision ?? null,
+    idempotencyKey: event.idempotencyKey ?? null,
+    redactionVersion: event.redactionVersion ?? null,
+    skillVersionId: event.skillVersionId ?? null,
+  };
+  return {
+    ...persisted,
+    agentNamespace: event.agentNamespace ?? null,
+    agentVersion: event.agentVersion,
+    eventJson: { ...persisted.eventJson, ...metadata },
+    graphRevision: event.graphRevision ?? null,
+    idempotencyKey: event.idempotencyKey ?? null,
+    taskId: persisted.taskId ?? event.taskId ?? null,
+    turnId: persisted.turnId ?? event.turnId ?? null,
+  };
 }
 
 function getTaskIdFromToolResult(result: unknown): string | null {

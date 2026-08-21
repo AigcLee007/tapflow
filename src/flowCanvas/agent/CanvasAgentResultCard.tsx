@@ -29,6 +29,10 @@ export function CanvasAgentResultCard(props: {
     assets?: AgentResultAsset[],
   ) => void;
   onPlaceAssets?: () => void;
+  onRetry?: () => void;
+  onViewRun?: (workflowRunId?: string) => void;
+  status?: "partial_success" | "succeeded";
+  workflowRunId?: string;
 }) {
   const primaryAsset = props.assets[0] ?? null;
   if (!primaryAsset) return null;
@@ -48,8 +52,11 @@ export function CanvasAgentResultCard(props: {
     >
       <div style={{ display: "grid", gap: 4 }}>
         <div style={{ color: "#f8fafc", fontSize: 14, fontWeight: 800 }}>生成结果</div>
+        {props.status === "partial_success" ? (
+          <div style={{ color: "#facc15", fontSize: 12, fontWeight: 800 }}>部分完成</div>
+        ) : null}
         <div style={{ color: "rgba(226,232,240,0.7)", fontSize: 12 }}>
-          共返回 {props.assets.length} 个可继续生产的结果。
+          {props.status === "partial_success" ? "部分完成，仍有失败步骤。" : `共返回 ${props.assets.length} 个可继续生产的结果。`}
         </div>
       </div>
 
@@ -108,6 +115,11 @@ export function CanvasAgentResultCard(props: {
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {props.status === "partial_success" && props.onRetry ? (
+          <button onClick={props.onRetry} style={actionButtonStyle()} type="button">
+            重试失败步骤
+          </button>
+        ) : null}
         {alreadyPlaced ? (
           <span style={{ color: "#86efac", fontSize: 12, fontWeight: 700 }}>已放到画布</span>
         ) : (
@@ -125,6 +137,7 @@ export function CanvasAgentResultCard(props: {
             {item.label}
           </button>
         ))}
+        {props.onViewRun ? <button onClick={() => props.onViewRun?.(props.workflowRunId)} style={actionButtonStyle(false)} type="button">查看运行</button> : null}
       </div>
     </article>
   );

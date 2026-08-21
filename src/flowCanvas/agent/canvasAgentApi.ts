@@ -4,6 +4,14 @@ import type { CanvasAgentPlannerOutput, CanvasAgentSnapshot } from "./canvasAgen
 import type { AgentImageRunSettingsResponse, AgentImageRunSettingsSelection } from "./agentRunSettings";
 import type { AgentReferenceContext } from "./agentReferenceContext";
 import type { CanvasAgentContinuationAction } from "./canvasAgentToolTypes";
+import type {
+  AgentSkillInputHint,
+  AgentSkillPickerItem,
+  AgentSkillPlan,
+  AgentSkillPlanAction,
+  AgentSkillPlanStatus,
+  AgentSkillStepStatus,
+} from "./canvasAgentSkillTypes";
 
 export type AgentSessionView = {
   createdAt: string;
@@ -67,6 +75,31 @@ export type AgentImageRunSettingsEstimateResponse = {
   size: "1K" | "2K" | "4K";
 };
 
+export type AgentSkillPreview = {
+  category?: string;
+  id: string;
+  inputHints?: AgentSkillInputHint[];
+  modality: "text" | "image" | "video";
+  name: string;
+  ownerUserId?: string | null;
+  status?: string;
+  summary: string;
+  version: number;
+  visibility: "official" | "private";
+};
+
+export type AgentCapabilities = {
+  agentV2Enabled: boolean;
+  agentV2RuntimeEnabled: boolean;
+  skillAuthoringEnabled: boolean;
+  skillRuntimeEnabled: boolean;
+  skillsEnabled: boolean;
+};
+
+export function getAgentCapabilities() {
+  return apiGet<AgentCapabilities>("/agent/capabilities");
+}
+
 export type AgentContinuationContext = {
   action: CanvasAgentContinuationAction;
   assetId: string;
@@ -79,7 +112,11 @@ export type AgentContinuationContext = {
 
 export type AgentTurnRequestInput = {
   continuationContext?: AgentContinuationContext | null;
+  expectedGraphRevision?: number;
+  idempotencyKey?: string;
   prompt: string;
+  selectedSkillId?: string | null;
+  selectedSkillVersion?: number;
   referenceContext?: AgentReferenceContext;
   snapshot: CanvasAgentSnapshot;
 };
@@ -112,6 +149,23 @@ export type AgentCanvasApplyResponse = {
   };
   event: AgentSessionEvent | null;
 };
+
+export type SkillRunResultInput = {
+  assetId?: string;
+  kind: "text" | "image" | "video";
+  text?: string;
+  title?: string;
+};
+
+export function placeSkillRunResults(runId: string, input: {
+  expectedRevision: number;
+  flowId: string;
+  results: SkillRunResultInput[];
+  sessionId: string;
+  turnId: string;
+}) {
+  return apiPost<AgentCanvasApplyResponse>(`/agent/skill-runs/${encodeURIComponent(runId)}/place-results`, input);
+}
 
 export function createAgentSession(input: {
   flowId: string | null;
@@ -149,6 +203,10 @@ export function getAgentSessionEvents(sessionId: string, input?: { afterSeq?: nu
   return apiGet<AgentSessionEventsResponse>(`/agent/sessions/${sessionId}/events${suffix}`);
 }
 
+export function cancelAgentTurn(sessionId: string, reason?: string) {
+  return apiPost<{ cancelled: boolean; turnId?: string }>(`/agent/sessions/${sessionId}/cancel`, { reason });
+}
+
 export function createAgentMessage(sessionId: string, input: {
   content: string;
   metadata?: Record<string, unknown>;
@@ -158,6 +216,128 @@ export function createAgentMessage(sessionId: string, input: {
 
 export function createAgentTurn(sessionId: string, input: AgentTurnRequestInput) {
   return apiPost<CreateAgentTurnResponse>(`/agent/sessions/${sessionId}/turns`, input);
+}
+
+export function listAgentSkills(input?: { modality?: AgentSkillPreview["modality"]; q?: string; scope?: "available" | "mine" }) {
+  const query = new URLSearchParams({ scope: input?.scope ?? "available" });
+  if (input?.modality) query.set("modality", input.modality);
+  if (input?.q) query.set("q", input.q);
+  return apiGet<unknown>(`/agent/skills?${query.toString()}`).then((payload) => {
+    if (!Array.isArray(payload)) return [];
+    return payload
+      .map((item) => normalizeAgentSkillPickerItem(item))
+      .filter((item): item is AgentSkillPreview => item !== null);
+  });
+}
+
+const skillModalities = new Set<AgentSkillPickerItem["modality"]>(["text", "image", "video"]);
+const skillInputKinds = new Set<AgentSkillInputHint["kind"]>(["asset", "choice", "number", "text"]);
+const planStatuses = new Set<AgentSkillPlanStatus>(["draft", "waiting_for_approval", "running", "succeeded", "partial_success", "failed", "cancelled"]);
+const stepStatuses = new Set<AgentSkillStepStatus>(["pending", "waiting_for_approval", "running", "succeeded", "failed", "cancelled"]);
+const planActions = new Set<AgentSkillPlanAction>(["text", "image", "video", "canvas", "review", "deliver"]);
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function normalizeAgentSkillPickerItem(value: unknown): AgentSkillPreview | null {
+  const item = record(value);
+  if (!item || typeof item.id !== "string" || typeof item.name !== "string" || typeof item.summary !== "string" || typeof item.version !== "number" || !Number.isInteger(item.version) || typeof item.modality !== "string" || !skillModalities.has(item.modality as AgentSkillPickerItem["modality"]) || (item.visibility !== "official" && item.visibility !== "private")) return null;
+  const hints = Array.isArray(item.inputHints) ? item.inputHints.flatMap((hint): AgentSkillInputHint[] => {
+    const input = record(hint);
+    if (!input || typeof input.label !== "string" || typeof input.kind !== "string" || !skillInputKinds.has(input.kind as AgentSkillInputHint["kind"]) || typeof input.required !== "boolean") return [];
+    return [{ kind: input.kind as AgentSkillInputHint["kind"], label: input.label, required: input.required }];
+  }) : [];
+  return {
+    ...(typeof item.category === "string" && item.category.trim() ? { category: item.category } : {}),
+    id: item.id,
+    inputHints: hints,
+    modality: item.modality as AgentSkillPickerItem["modality"],
+    name: item.name,
+    summary: item.summary,
+    version: item.version,
+    visibility: item.visibility,
+  };
+}
+
+export type AgentSkillRun = AgentSkillPlan & {
+  approvalState: "not_required" | "pending" | "approved" | "rejected";
+};
+
+const actionLabels: Record<AgentSkillPlanAction, string> = { canvas: "更新画布", deliver: "交付结果", image: "生成图片", review: "检查结果", text: "生成文本", video: "生成视频" };
+
+function normalizeAgentSkillRun(value: unknown): AgentSkillRun | null {
+  const run = record(value);
+  if (!run || typeof run.id !== "string" || typeof run.status !== "string" || !planStatuses.has(run.status as AgentSkillPlanStatus) || typeof run.approvalState !== "string" || !["not_required", "pending", "approved", "rejected"].includes(run.approvalState)) return null;
+  const steps = Array.isArray(run.steps) ? run.steps.flatMap((stepValue, fallbackIndex): AgentSkillPlan["steps"] => {
+    const step = record(stepValue);
+    if (!step || typeof step.id !== "string" || typeof step.status !== "string" || !stepStatuses.has(step.status as AgentSkillStepStatus) || typeof step.action !== "string") return [];
+    const action = step.action === "analyze" ? "review" : step.action;
+    if (!planActions.has(action as AgentSkillPlanAction)) return [];
+    const index = typeof step.stepIndex === "number" && Number.isInteger(step.stepIndex) ? step.stepIndex : fallbackIndex;
+    return [{
+      action: action as AgentSkillPlanAction,
+      ...(typeof step.assetId === "string" || step.assetId === null ? { assetId: step.assetId } : {}),
+      id: step.id,
+      index,
+      label: typeof step.label === "string" ? step.label : actionLabels[action as AgentSkillPlanAction],
+      ...(typeof step.nodeId === "string" || step.nodeId === null ? { nodeId: step.nodeId } : {}),
+      status: step.status as AgentSkillStepStatus,
+      ...(record(step.error) && typeof record(step.error)?.message === "string" ? { error: record(step.error)!.message as string } : {}),
+    }];
+  }) : [];
+  const estimatedCredits = record(run.budgetSnapshot)?.estimatedCredits;
+  return {
+    approvalState: run.approvalState as AgentSkillRun["approvalState"],
+    ...(typeof estimatedCredits === "number" && Number.isFinite(estimatedCredits) ? { estimatedCredits } : {}),
+    id: run.id,
+    status: run.status as AgentSkillPlanStatus,
+    steps,
+  };
+}
+
+export function getAgentSkillRun(runId: string): Promise<AgentSkillRun> {
+  return apiGet<unknown>(`/agent/skill-runs/${encodeURIComponent(runId)}`).then((payload) => {
+    const run = normalizeAgentSkillRun(payload);
+    if (!run) throw new Error("INVALID_SKILL_RUN_RESPONSE");
+    return run;
+  });
+}
+
+export async function approveAgentSkillRun(sessionId: string, runId: string) {
+  const token = getStoredAccessToken();
+  return fetch(`/api/v2/agent/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(runId)}/stream`, {
+    body: JSON.stringify({}),
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}) },
+    method: "POST",
+  });
+}
+
+export function cancelAgentSkillRun(_sessionId: string, runId: string, reason?: string) {
+  return apiPost<unknown>(`/agent/skill-runs/${encodeURIComponent(runId)}/cancel`, reason ? { reason } : {});
+}
+
+export function getAgentSkill(skillId: string) {
+  return apiGet<{ id: string; ownerUserId: string; revision: number; source: Record<string, unknown> }>(`/agent/skills/${skillId}`);
+}
+
+export function authorAgentSkillTurn(input: { draft: Record<string, unknown>; userMessage: string }) {
+  return apiPost<Record<string, unknown>>("/agent/skills/authoring/turn", input);
+}
+
+export async function openAgentV2TurnStream(sessionId: string, input: AgentTurnRequestInput & { routeKey?: string }) {
+  const token = getStoredAccessToken();
+  const request = { ...input, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() };
+  return fetch(`/api/v2/agent/sessions/${sessionId}/v2-turns/stream`, {
+    body: JSON.stringify(request),
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
 }
 
 export function applyAgentCanvasOps(
@@ -247,6 +427,7 @@ export async function openAgentSessionEventStream(sessionId: string, input?: { a
 export async function readAgentSseStream(
   response: Response,
   handlers: {
+    onAgentV2?: (eventName: string, data: unknown) => void;
     onEvent?: (data: unknown) => void;
     onDone?: (data: unknown) => void;
     onError?: (data: unknown) => void;
@@ -273,6 +454,7 @@ export async function readAgentSseStream(
       if (event === "plan") handlers.onPlan?.(data);
       if (event === "done") handlers.onDone?.(data);
       if (event === "error") handlers.onError?.(data);
+      if (event?.startsWith("agent_v2_")) handlers.onAgentV2?.(event, data);
     }
   }
 }

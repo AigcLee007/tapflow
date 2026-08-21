@@ -295,6 +295,19 @@ Relay D:
 
 ## 9.1 Agent Planner
 
+- `AGENT_V2_ENABLED = false`
+- `AGENT_V2_RUNTIME_ENABLED = false`
+- `AGENT_SKILLS_ENABLED = false`
+- `AGENT_SKILL_AUTHORING_ENABLED = false`
+- `AGENT_SKILL_RUNTIME_ENABLED = false`
+- `AGENT_SKILL_MAX_SOURCE_CHARS = 24000`
+- `AGENT_SKILL_MAX_STEPS = 12`
+- `AGENT_SKILL_REPAIR_ATTEMPTS = 1`
+- `VITE_AGENT_V2_ENABLED = false`
+- `VITE_AGENT_SKILLS_ENABLED = false`
+- `VITE_AGENT_SKILL_AUTHORING_ENABLED = false`
+- `VITE_AGENT_SKILL_RUNTIME_ENABLED = false`
+- `Agent v2 rollout note = enable API/runtime flags only after migration and focused smoke tests; enable the matching Vite flags in the same frontend build. Keep all flags false for rollback.`
 - `AGENT_PLANNER_ENABLED = false`
 - `AGENT_DIRECTOR_ENABLED = false`
 - `VITE_AGENT_DIRECTOR_ENABLED = false`

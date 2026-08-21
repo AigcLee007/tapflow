@@ -1,6 +1,7 @@
 import { DatabaseTextGenerationRuntime } from "@aigc-flow/ai-gateway-core";
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type { Pool, PoolClient } from "pg";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import type { ApiEnv } from "../../config/env.js";
@@ -10,8 +11,11 @@ import { AgentReferenceResolutionError } from "./agent-reference-context.js";
 import { AgentCanvasService } from "./agent-canvas.service.js";
 import { isProductionImageAgentPrompt } from "./agent-production-intent.js";
 import { AgentEventService, toAgentRepositoryError } from "./agent-event.service.js";
+import { sanitizeV2AgentEventForClient } from "./agent-redaction.js";
+import { buildSkillLaunchApprovalPlan, type SkillLaunchApprovalPlan } from "./agent-skill-approval-plan.js";
 import type { AgentRunSettingsService } from "./agent-run-settings.service.js";
 import { AgentSessionRepository } from "./agent-session.repository.js";
+import { buildScopedV2AgentContext } from "./agent-v2-context.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
 import type { AiModelCatalogService } from "../ai-model-catalog/ai-model-catalog.service.js";
 import type { FlowsService } from "../flows/flows.service.js";
@@ -21,12 +25,24 @@ import type {
   CreateAgentSessionInput,
   CreateAgentTurnInput,
 } from "./agent.schemas.js";
+import { V2AgentTurnLoop, type V2AgentToolExecution } from "./v2/agent-turn-loop.js";
+import { V2WorkflowRunAdapter } from "./v2/v2-workflow-run-adapter.js";
+import type { SkillService } from "./skill.service.js";
+import type { SkillRunService } from "./agent-skill-run.service.js";
 
 type PgPool = Pool;
 
 type AgentContext = {
   tenantId: string;
   userId: string | null;
+};
+
+type V2AgentStreamingRuntime = {
+  getTextStreamingCapabilities?: (
+    context: AgentContext,
+    routeKey: string | null,
+  ) => Promise<{ supportsTextStreaming: boolean; supportsToolCalling: boolean }>;
+  streamText?: (...args: never[]) => unknown;
 };
 
 type AgentSessionRow = {
@@ -51,6 +67,30 @@ type AgentTurnRow = {
   updated_at: string;
   user_message_id: string | null;
 };
+
+function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
+  if (!value || typeof value !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
+  const input = value as Record<string, unknown>;
+  const targets = Array.isArray(input.targets) ? input.targets : [];
+  if (typeof input.flowId !== "string" || !Number.isSafeInteger(input.graphRevision) || input.graphRevision < 0 || targets.length === 0) {
+    throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
+  }
+  const normalizedTargets = targets.map((target) => {
+    if (!target || typeof target !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is invalid.");
+    const item = target as Record<string, unknown>;
+    if (typeof item.nodeId !== "string" || !["text", "image", "video"].includes(String(item.action)) || typeof item.priced !== "boolean") {
+      throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is invalid.");
+    }
+    return { nodeId: item.nodeId, action: item.action as "text" | "image" | "video", priced: item.priced };
+  });
+  return {
+    batch: normalizedTargets.length > 1,
+    flowId: input.flowId,
+    graphRevision: input.graphRevision,
+    requiresApproval: true,
+    targets: normalizedTargets,
+  };
+}
 
 const plannerItemSchema = z.object({
   credits: z.number().finite().nonnegative(),
@@ -259,6 +299,47 @@ function formatStreamEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/**
+ * Keep the V2 entrypoint fail-closed even when a custom runtime is injected in
+ * tests or another deployment. The route-specific checker is deliberately
+ * required: a stream function alone cannot prove native tool support.
+ */
+export async function assertV2AgentStreamingCapabilities(
+  runtime: V2AgentStreamingRuntime,
+  context: AgentContext,
+  routeKey: string | null | undefined,
+): Promise<void> {
+  if (typeof runtime.streamText !== "function" || typeof runtime.getTextStreamingCapabilities !== "function") {
+    throw new AgentApiError(
+      400,
+      "AGENT_ROUTE_CAPABILITY_REQUIRED",
+      "The selected AI route does not support native Agent streaming.",
+    );
+  }
+
+  try {
+    const capabilities = await runtime.getTextStreamingCapabilities(context, routeKey?.trim() || null);
+    if (!capabilities.supportsTextStreaming || !capabilities.supportsToolCalling) {
+      throw new AgentApiError(
+        400,
+        "AGENT_ROUTE_CAPABILITY_REQUIRED",
+        "The selected AI route does not support native Agent streaming.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof AgentApiError) throw error;
+    // Never forward gateway route/provider details to creator-facing API/SSE.
+    if (error && typeof error === "object" && "code" in error && ["AGENT_ROUTE_CAPABILITY_REQUIRED", "ROUTE_NOT_FOUND"].includes(String((error as { code?: unknown }).code))) {
+      throw new AgentApiError(
+        400,
+        "AGENT_ROUTE_CAPABILITY_REQUIRED",
+        "The selected AI route does not support native Agent streaming.",
+      );
+    }
+    throw error;
+  }
+}
+
 export class AgentApiError extends Error {
   readonly code: string;
   readonly details?: unknown;
@@ -277,13 +358,17 @@ export class AgentService {
   readonly env: ApiEnv;
   readonly eventService: AgentEventService;
   readonly canvasService: AgentCanvasService;
+  readonly aiModelCatalogService: Pick<AiModelCatalogService, "listModels" | "listRoutesForModel"> | null;
   readonly executorService: Pick<AgentExecutorService, "approveToolCall" | "executeTurn"> | null;
   readonly plannerService: AgentPlannerService<PlannerOutput>;
   readonly pool: PgPool;
   readonly runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
   readonly sessionRepository: AgentSessionRepository;
-  readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText">;
+  readonly textRuntime: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
   readonly flowsService: Pick<FlowsService, "getFlowDraft" | "saveFlowDraft">;
+  readonly skillService: Pick<SkillService, "getPublishedVersion" | "getPublishedVersionByNumber"> | null;
+  readonly skillRunService: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "replaceBudgetSnapshot" | "claimApprovalLaunch" | "approve" | "cancel"> | null;
+  readonly workflowRunAdapter: V2WorkflowRunAdapter | null;
 
   constructor(options: {
     aiModelCatalogService?: Pick<AiModelCatalogService, "listModels" | "listRoutesForModel">;
@@ -294,9 +379,13 @@ export class AgentService {
     runSettingsService: Pick<AgentRunSettingsService, "estimateImageRunSettings" | "listImageRunSettings">;
     canvasService?: AgentCanvasService;
     sessionRepository?: AgentSessionRepository;
-    textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText">;
+    textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
+    skillService?: Pick<SkillService, "getPublishedVersion" | "getPublishedVersionByNumber"> | null;
+    skillRunService?: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "replaceBudgetSnapshot" | "claimApprovalLaunch" | "approve" | "cancel"> | null;
+    workflowRunsService?: Pick<import("../workflow-runs/workflow-runs.service.js").WorkflowRunsService, "createWorkflowRun" | "getWorkflowRunStatus">;
   }) {
     this.env = options.env;
+    this.aiModelCatalogService = options.aiModelCatalogService ?? null;
     this.executorService = options.executorService ?? null;
     this.flowsService = options.flowsService;
     this.pool = options.pool ?? createPgPool();
@@ -321,6 +410,14 @@ export class AgentService {
         } as never,
         pool: this.pool,
       });
+    this.skillService = options.skillService ?? null;
+    this.skillRunService = options.skillRunService ?? null;
+    this.workflowRunAdapter = options.workflowRunsService
+      ? new V2WorkflowRunAdapter({
+        getFlowRevision: async (ctx, flowId) => (await this.flowsService.getFlowDraft(ctx, flowId)).revision,
+        workflowRuns: options.workflowRunsService,
+      })
+      : null;
     this.plannerService = new AgentPlannerService(this.env, this.textRuntime, plannerOutputSchema);
   }
 
@@ -543,6 +640,390 @@ export class AgentService {
       formatStreamEvent("plan", result),
       formatStreamEvent("done", { sessionId: result.sessionId, turnId: result.turnId }),
     ].join("");
+  }
+
+  async streamV2TurnEvents(
+    context: AgentContext,
+    sessionId: string,
+    input: CreateAgentTurnInput & { routeKey?: string; idempotencyKey?: string },
+    writeChunk: (chunk: string) => void | Promise<void>,
+  ) {
+    if (!this.env.agentV2Enabled || !this.env.agentV2RuntimeEnabled) {
+      throw new AgentApiError(404, "AGENT_V2_DISABLED", "Canvas Agent v2 is disabled.");
+    }
+    if (input.selectedSkillId && (!this.env.agentSkillsEnabled || !this.env.agentSkillRuntimeEnabled)) {
+      throw new AgentApiError(404, "SKILL_RUNTIME_DISABLED", "Skill runtime is disabled.");
+    }
+    await assertV2AgentStreamingCapabilities(this.textRuntime, context, input.routeKey);
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    if (!session.flowId || input.snapshot.flowId !== session.flowId || (session.projectId && input.snapshot.projectId !== session.projectId)) {
+      throw new AgentApiError(400, "AGENT_CANVAS_FLOW_MISMATCH", "Agent session is not bound to the requested flow.");
+    }
+    const idempotencyKey = input.idempotencyKey?.trim() || `agent-v2:${sessionId}:${randomUUID()}`;
+    const existingTurn = await this.sessionRepository.getV2TurnByIdempotency(context, idempotencyKey);
+    if (existingTurn) {
+      if (["succeeded", "failed", "cancelled"].includes(existingTurn.status) || existingTurn.cancelledAt) {
+        await this.replayV2Turn(context, sessionId, existingTurn.id, writeChunk);
+        return;
+      }
+      throw new AgentApiError(409, "AGENT_TURN_IN_PROGRESS", "This Agent turn is already running.");
+    }
+    const currentDraft = await this.flowsService.getFlowDraft(context, session.flowId);
+    if (input.expectedGraphRevision !== undefined && input.expectedGraphRevision !== currentDraft.revision) {
+      throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布已被其他修改，请刷新后重试。");
+    }
+    const graphRevision = input.expectedGraphRevision ?? currentDraft.revision;
+    const userMessage = await this.sessionRepository.appendUserMessage(context, sessionId, { content: input.prompt, metadata: { agentVersion: "v2", selectedSkillId: input.selectedSkillId ?? null, selectedSkillVersion: input.selectedSkillVersion ?? null, idempotencyKey } });
+    if (!input.selectedSkillId && input.selectedSkillVersion !== undefined) {
+      throw new AgentApiError(400, "SKILL_VERSION_REQUIRES_SKILL", "A Skill version requires a selected Skill.");
+    }
+    const skill = input.selectedSkillId && this.skillService
+      ? input.selectedSkillVersion === undefined
+        ? await this.skillService.getPublishedVersion(context, input.selectedSkillId)
+        : await this.skillService.getPublishedVersionByNumber(context, input.selectedSkillId, input.selectedSkillVersion)
+      : null;
+    const turnId = await this.createV2TurnRecord(context, sessionId, userMessage.id, input.snapshot, idempotencyKey, graphRevision);
+    const leaseOwner = `agent-v2:${randomUUID()}`;
+    const lease = await this.sessionRepository.acquireTurnLease(context, { leaseOwner, turnId });
+    if (!lease) throw new AgentApiError(409, "AGENT_TURN_IN_PROGRESS", "This Agent turn is already running.");
+    const skillRunId = skill && this.skillRunService
+      ? await this.ensureSkillRun(context, session, skill.id, idempotencyKey, graphRevision, turnId)
+      : undefined;
+    const loop = new V2AgentTurnLoop({
+      textRuntime: { streamText: (request) => this.textRuntime.streamText!(context, request) },
+      executeTool: async (tool) => {
+        await this.sessionRepository.assertTurnActive(context, turnId);
+        return this.executeV2Tool(context, sessionId, turnId, input.snapshot, tool, graphRevision, skillRunId, skill?.id, skill ? { id: skill.skillId, version: skill.version, source: skill.source, normalized: skill.normalized } : null);
+      },
+    });
+    const contextAddenda = await this.loadV2ContextAddenda(context, input.snapshot);
+    let eventIndex = 0;
+    let waitingForResults = false;
+    const startedAt = Date.now();
+    let firstEventLatencyMs: number | null = null;
+    let redactionHits = 0;
+    const observability = () => ({
+      skillId: skill?.skillId ?? null,
+      skillVersion: skill?.version ?? null,
+      runDurationMs: Date.now() - startedAt,
+      firstEventLatencyMs,
+      failedStep: null,
+      retryCount: 0,
+      redactionHits,
+    });
+    const renewTimer = setInterval(() => {
+      void this.sessionRepository.renewTurnLease(context, { leaseOwner, turnId });
+    }, 10_000);
+    try {
+      for await (const event of loop.run({ canvas: { ...input.snapshot, revision: graphRevision }, prompt: input.prompt, routeKey: input.routeKey, context: buildScopedV2AgentContext({ canvas: input.snapshot, graphRevision, prompt: input.prompt, skill: skill ? { id: skill.id, version: skill.version, source: skill.source, normalized: skill.normalized } : undefined, ...contextAddenda }), skill: skill ? { id: skill.id, version: skill.version, source: skill.source, normalized: skill.normalized } : undefined })) {
+        await this.sessionRepository.assertTurnActive(context, turnId);
+        waitingForResults = event.type === "turn_waiting";
+        eventIndex += 1;
+        if (firstEventLatencyMs === null) firstEventLatencyMs = Date.now() - startedAt;
+        const safeEvent = sanitizeV2AgentEventForClient(event);
+        const rawEventText = JSON.stringify(event);
+        const safeEventText = JSON.stringify(safeEvent);
+        if (rawEventText.length > safeEventText.length) redactionHits += 1;
+        await this.sessionRepository.appendSessionEvent(context, {
+          agentNamespace: "canvas",
+          agentVersion: "v2",
+          eventJson: safeEvent,
+          eventType: event.type,
+          graphRevision,
+          idempotencyKey: `${idempotencyKey}:event:${eventIndex}`,
+          sessionId,
+          turnId,
+        });
+        await writeChunk(formatStreamEvent(`agent_v2_${event.type}`, { ...safeEvent, turnId }));
+      }
+      await this.sessionRepository.appendSessionEvent(context, {
+        agentNamespace: "canvas",
+        agentVersion: "v2",
+        eventJson: observability(),
+        eventType: "turn_observability",
+        graphRevision,
+        idempotencyKey: `${idempotencyKey}:observability`,
+        sessionId,
+        turnId,
+      });
+      if (!waitingForResults) await this.finishV2TurnRecord(context, turnId, "succeeded", null);
+      await writeChunk(formatStreamEvent("done", { sessionId, turnId, waitingForResults }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const cancelled = message === "AGENT_TURN_CANCELLED";
+      await this.finishV2TurnRecord(context, turnId, cancelled ? "cancelled" : "failed", cancelled ? null : { code: "AGENT_V2_TURN_FAILED", message });
+      if (!cancelled) {
+        await this.sessionRepository.appendSessionEvent(context, {
+          agentNamespace: "canvas",
+          agentVersion: "v2",
+          eventJson: { code: "AGENT_V2_TURN_FAILED", graphRevision, message },
+          eventType: "turn_failed",
+          graphRevision,
+          idempotencyKey: `${idempotencyKey}:failed`,
+          sessionId,
+          turnId,
+        });
+      }
+      await this.sessionRepository.appendSessionEvent(context, {
+        agentNamespace: "canvas",
+        agentVersion: "v2",
+        eventJson: observability(),
+        eventType: "turn_observability",
+        graphRevision,
+        idempotencyKey: `${idempotencyKey}:observability`,
+        sessionId,
+        turnId,
+      });
+      throw error;
+    } finally {
+      clearInterval(renewTimer);
+      await this.sessionRepository.releaseTurnLease(context, { leaseOwner, turnId });
+    }
+  }
+
+  private async loadV2ContextAddenda(context: AgentContext, snapshot: CanvasAgentSnapshotInput): Promise<{ modelCatalog: unknown[]; recentRuns: unknown[] }> {
+    let modelCatalog: unknown[] = [];
+    if (this.aiModelCatalogService) {
+      try {
+        const models = await this.aiModelCatalogService.listModels(context, { environment: "production" });
+        modelCatalog = await Promise.all(models.slice(0, 12).map(async (model) => {
+          try {
+            const routes = await this.aiModelCatalogService!.listRoutesForModel(context, model.modelKey, { environment: "production" });
+            // Routes returned by the catalog are already active and product-visible;
+            // add an explicit status marker for the context projector without
+            // forwarding provider, route, or upstream identifiers.
+            return { displayName: model.displayName, modality: model.modality, status: model.status, capabilities: model.capabilities, routes: routes.map((route) => ({ status: "active", estimatedCredits: route.estimatedCredits, pricing: route.pricing })) };
+          } catch {
+            return { displayName: model.displayName, modality: model.modality, status: model.status, capabilities: model.capabilities, routes: [] };
+          }
+        }));
+      } catch {
+        modelCatalog = [];
+      }
+    }
+    let recentRuns: unknown[] = [];
+    if (snapshot.flowId) {
+      try {
+        const result = await withTenantTransaction(context, (client) => client.query(`
+          SELECT
+            run.id::text AS id,
+            run.status,
+            run.output_json,
+            run.created_at,
+            COALESCE(array_agg(DISTINCT step.node_id) FILTER (WHERE step.node_id IS NOT NULL), '{}') AS node_ids,
+            COALESCE(jsonb_agg(DISTINCT jsonb_build_object('assetId', step.asset_id::text)) FILTER (WHERE step.asset_id IS NOT NULL), '[]'::jsonb) AS asset_refs
+          FROM agent_skill_runs AS run
+          LEFT JOIN agent_skill_step_runs AS step
+            ON step.tenant_id = run.tenant_id AND step.skill_run_id = run.id
+          WHERE run.tenant_id = $1::uuid AND run.flow_id = $2::uuid
+          GROUP BY run.id, run.status, run.output_json, run.created_at
+          ORDER BY run.created_at DESC
+          LIMIT 8`, [context.tenantId, snapshot.flowId]), this.pool);
+        recentRuns = result.rows.map((row: Record<string, unknown>) => {
+          const output = row.output_json && typeof row.output_json === "object" ? row.output_json as Record<string, unknown> : {};
+          return {
+            id: row.id,
+            modality: typeof output.modality === "string" ? output.modality : undefined,
+            status: row.status,
+            summary: typeof output.summary === "string" ? output.summary : undefined,
+            createdAt: row.created_at,
+            nodeIds: Array.isArray(row.node_ids) ? row.node_ids : [],
+            assetRefs: Array.isArray(row.asset_refs) ? row.asset_refs : [],
+          };
+        });
+      } catch {
+        recentRuns = [];
+      }
+    }
+    return { modelCatalog, recentRuns };
+  }
+
+  private async replayV2Turn(context: AgentContext, sessionId: string, turnId: string, writeChunk: (chunk: string) => void | Promise<void>) {
+    const events = await this.sessionRepository.getSessionEvents(context, sessionId, 0);
+    for (const event of events.filter((candidate) => candidate.turnId === turnId)) {
+      await writeChunk(formatStreamEvent(`agent_v2_${event.eventType}`, { ...event.eventJson, turnId, seq: event.seq }));
+    }
+    await writeChunk(formatStreamEvent("done", { replayed: true, sessionId, turnId }));
+  }
+
+  private async createV2TurnRecord(context: AgentContext, sessionId: string, userMessageId: string, snapshot: CanvasAgentSnapshotInput, idempotencyKey: string, graphRevision: number): Promise<string> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ id: string }>(`
+        INSERT INTO agent_turns (tenant_id, session_id, user_message_id, status, snapshot_json, plan_json, error_json, agent_version, graph_revision, idempotency_key, updated_at)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, 'running', $4::jsonb, '{}'::jsonb, NULL, 'v2', $6, $5, now())
+        ON CONFLICT DO NOTHING
+        RETURNING id::text AS id`, [context.tenantId, sessionId, userMessageId, JSON.stringify(snapshot), idempotencyKey, graphRevision]);
+      if (result.rows[0]) return result.rows[0].id;
+      const existing = await client.query<{ id: string }>(`SELECT id::text AS id FROM agent_turns WHERE tenant_id = $1::uuid AND agent_version = 'v2' AND idempotency_key = $2 LIMIT 1`, [context.tenantId, idempotencyKey]);
+      if (!existing.rows[0]) throw new Error("AGENT_TURN_IDEMPOTENCY_CONFLICT");
+      return existing.rows[0].id;
+    }, this.pool);
+  }
+
+  private async finishV2TurnRecord(context: AgentContext, turnId: string, status: "succeeded" | "failed" | "cancelled", errorJson: Record<string, string> | null) {
+    await withTenantTransaction(context, async (client) => {
+      await client.query(`UPDATE agent_turns SET status = CASE WHEN cancelled_at IS NOT NULL THEN 'cancelled' ELSE $3 END, error_json = CASE WHEN cancelled_at IS NOT NULL THEN COALESCE(error_json, $4::jsonb) ELSE $4::jsonb END, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid AND agent_version = 'v2'`, [context.tenantId, turnId, status, errorJson ? JSON.stringify(errorJson) : null]);
+    }, this.pool);
+  }
+
+  private async ensureSkillRun(context: AgentContext, session: { id: string; projectId: string | null; flowId: string | null }, skillVersionId: string, idempotencyKey: string, graphRevision: number, turnId?: string): Promise<string> {
+    if (!this.skillRunService) throw new Error("SKILL_RUNTIME_NOT_CONFIGURED");
+    const created = await this.skillRunService.createRun({
+      flowId: session.flowId,
+      graphRevision,
+      idempotencyKey: `${idempotencyKey}:skill-run`,
+      projectId: session.projectId,
+      skillVersionId,
+      sessionId: session.id,
+      tenantId: context.tenantId,
+      turnId: turnId ?? null,
+    });
+    const current = await this.skillRunService.getRun(context, created.id);
+    if (current?.status === "draft") await this.skillRunService.transition(context, created.id, "draft", "planned");
+    return created.id;
+  }
+
+  private async executeV2Tool(context: AgentContext, sessionId: string, turnId: string, snapshot: CanvasAgentSnapshotInput, tool: V2AgentToolExecution, graphRevision: number, skillRunId?: string, skillVersionId?: string, selectedSkill?: { id: string; version: number; source: unknown; normalized: unknown } | null) {
+    if (tool.name === "canvas.get_context") {
+      const current = snapshot.flowId ? await this.flowsService.getFlowDraft(context, snapshot.flowId) : null;
+      return current
+        ? { revision: current.revision, nodes: current.graph.nodes, edges: current.graph.edges, viewport: current.graph.viewport }
+        : { revision: graphRevision, nodes: snapshot.nodes, edges: snapshot.edges };
+    }
+    if (tool.name === "skill.load") return selectedSkill ? { status: "loaded", skill: selectedSkill } : { status: "no_skill_selected" };
+    if (tool.name === "canvas.apply_ops") {
+      const ops = tool.arguments.ops as Array<Record<string, unknown>>;
+      const mapped = ops.map((op) => {
+        if (op.type === "add_text" || op.type === "add_image" || op.type === "add_video") return { type: "add_node", kind: op.type === "add_text" ? "text" : op.type === "add_image" ? "image" : "video", data: { text: typeof op.text === "string" ? op.text.slice(0, 12000) : "", title: op.type, agentMetadata: { source: "agent_v2" } }, position: op.position && typeof op.position === "object" ? { x: Number((op.position as Record<string, unknown>).x), y: Number((op.position as Record<string, unknown>).y) } : { x: 0, y: 0 } } as const;
+        if (op.type === "update_node") return { type: "update_node_data", nodeId: String(op.nodeId), patch: { text: op.text ?? "" } } as const;
+        return { type: "connect_nodes", source: String(op.source), target: String(op.target) } as const;
+      });
+      return this.canvasService.applyOps(context, sessionId, { expectedRevision: Number(tool.arguments.expectedRevision), strictRevision: true, flowId: snapshot.flowId!, ops: mapped, turnId });
+    }
+    if (tool.name === "canvas.run_nodes") {
+      if (!this.workflowRunAdapter) throw new AgentApiError(503, "WORKFLOW_RUNNER_NOT_CONFIGURED", "Workflow runner is not configured.");
+      const currentDraft = await this.flowsService.getFlowDraft(context, snapshot.flowId!);
+      const expectedRevision = Number(tool.arguments.expectedRevision);
+      if (currentDraft.revision !== expectedRevision) throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布已被其他修改，请刷新后重试。");
+      const requestedNodeIds = tool.arguments.nodeIds as string[];
+      const draftNodeById = new Map(currentDraft.graph.nodes.map((node) => [String(node.id), node]));
+      requestedNodeIds.forEach((nodeId) => { if (!draftNodeById.has(nodeId)) throw new AgentApiError(400, "AGENT_CANVAS_NODE_NOT_FOUND", `Node ${nodeId} was not found in the flow draft.`); });
+      const skillStepIds: Record<string, string> = {};
+      if (skillRunId && this.skillRunService) {
+        const nodes = requestedNodeIds.map((nodeId) => draftNodeById.get(nodeId)!);
+        const plan = buildSkillLaunchApprovalPlan({
+          flowId: snapshot.flowId!,
+          graphRevision: expectedRevision,
+          nodes: nodes.map((node) => {
+            const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
+            const kind = typeof data.kind === "string" ? data.kind : node.type;
+            // Pricing is resolved by the server-side Workflow Run path. Never
+            // trust graph JSON to mark a Skill target as free.
+            return { id: String(node.id), type: kind, priced: true };
+          }),
+        });
+        if (plan.requiresApproval) {
+          await this.skillRunService.replaceBudgetSnapshot(context, skillRunId, { approvalPlan: plan });
+        }
+        for (const target of plan.targets) {
+          const nodeId = target.nodeId;
+          const node = draftNodeById.get(nodeId);
+          const step = await this.skillRunService.createStep({ action: target.action, approvalState: plan.requiresApproval ? "pending" : "not_required", nodeId, skillRunId, stepIndex: Object.keys(skillStepIds).length, tenantId: context.tenantId });
+          skillStepIds[nodeId] = step.id;
+          if (plan.requiresApproval) await this.skillRunService.updateStep(context, step.id, { approvalState: "pending", status: "waiting_for_approval" });
+        }
+        if (plan.requiresApproval) {
+          await this.skillRunService.transition(context, skillRunId, "planned", "waiting_for_approval", { approvalState: "pending" });
+          return { approvalId: skillRunId, nodeCount: plan.targets.length, status: "waiting_for_approval" };
+        }
+      }
+      if (skillRunId && this.skillRunService) {
+        const current = await this.skillRunService.getRun(context, skillRunId);
+        if (current?.status === "planned") await this.skillRunService.transition(context, skillRunId, "planned", "running");
+      }
+      const result = await this.workflowRunAdapter.runNodes(context, {
+        flowId: snapshot.flowId!,
+        graphRevision: expectedRevision,
+        idempotencyKey: `${turnId}:${tool.callId}`,
+        nodeIds: requestedNodeIds,
+        skillRunId,
+        skillStepIds,
+        skillVersionId,
+      });
+      if (skillRunId && this.skillRunService) {
+        await Promise.all(result.runs.map((run) => {
+          const stepId = skillStepIds[run.nodeId];
+          return stepId ? this.skillRunService!.updateStep(context, stepId, { workflowRunId: run.runId, status: "running" }) : Promise.resolve();
+        }));
+      }
+      return result;
+    }
+    if (tool.name === "canvas.await_results") {
+      if (!this.workflowRunAdapter) throw new AgentApiError(503, "WORKFLOW_RUNNER_NOT_CONFIGURED", "Workflow runner is not configured.");
+      const runIds = [
+        ...(Array.isArray(tool.arguments.runIds) ? tool.arguments.runIds as string[] : []),
+        ...(typeof tool.arguments.runId === "string" ? [tool.arguments.runId] : []),
+      ];
+      if (runIds.length === 0) return { allTerminal: false, runs: [], status: "waiting", nodeIds: tool.arguments.nodeIds };
+      return this.workflowRunAdapter.awaitResults(context, runIds);
+    }
+    if (tool.name === "ask_user") return { status: "waiting_for_input", question: tool.arguments.question };
+    return { status: tool.arguments.status, summary: tool.arguments.summary };
+  }
+
+  async cancelV2Turn(context: AgentContext, sessionId: string, reason?: string) {
+    const history = await this.sessionRepository.getSessionHistory(context, sessionId);
+    const turn = [...history.turns].reverse().find((item) => item.status === "running" || item.status === "planned");
+    if (!turn) return { cancelled: false };
+    const cancelled = await this.sessionRepository.cancelTurn(context, { turnId: turn.id, reason });
+    if (cancelled && this.skillRunService) {
+      const runs = await withTenantTransaction(context, async (client) => {
+        const result = await client.query<{ id: string }>(`SELECT id::text AS id FROM agent_skill_runs WHERE tenant_id = $1::uuid AND session_id = $2::uuid AND turn_id = $3::uuid AND status NOT IN ('succeeded','partial_success','failed','cancelled')`, [context.tenantId, sessionId, turn.id]);
+        return result.rows.map((row) => row.id);
+      }, this.pool);
+      await Promise.all(runs.map((runId) => this.skillRunService!.cancel(context, runId, reason)));
+    }
+    return { cancelled, turnId: turn.id };
+  }
+
+  async approveV2SkillRun(context: AgentContext, sessionId: string, runId: string) {
+    if (!this.skillRunService) throw new AgentApiError(503, "SKILL_RUNTIME_NOT_CONFIGURED", "Skill runtime is not configured.");
+    const run = await this.skillRunService.getRun(context, runId);
+    if (!run) throw new AgentApiError(404, "SKILL_RUN_NOT_FOUND", "Skill run not found.");
+    if (run.sessionId !== sessionId) throw new AgentApiError(404, "SKILL_RUN_NOT_FOUND", "Skill run not found.");
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    if (run.flowId !== session.flowId || run.projectId !== session.projectId) throw new AgentApiError(409, "SKILL_RUN_SCOPE_MISMATCH", "Skill run is not bound to this Agent session.");
+    const plan = parseSkillLaunchApprovalPlan(run.budgetSnapshot.approvalPlan);
+    if (!this.workflowRunAdapter) throw new AgentApiError(503, "WORKFLOW_RUNNER_NOT_CONFIGURED", "Workflow runner is not configured.");
+    const draft = await this.flowsService.getFlowDraft(context, plan.flowId);
+    if (draft.revision !== plan.graphRevision) throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布已被其他修改，请刷新后重试。");
+    const approved = await this.skillRunService.approve(context, runId);
+    const existingRuns = approved.steps.filter((step) => step.workflowRunId);
+    if (existingRuns.length === plan.targets.length) return { status: "running", approvalId: runId, runs: existingRuns.map((step) => ({ nodeId: step.nodeId, runId: step.workflowRunId })) };
+    if (!await this.skillRunService.claimApprovalLaunch(context, runId)) {
+      const current = await this.skillRunService.getRun(context, runId);
+      return { status: "running", approvalId: runId, runs: current?.steps.filter((step) => step.workflowRunId).map((step) => ({ nodeId: step.nodeId, runId: step.workflowRunId })) ?? [] };
+    }
+    const skillStepIds = Object.fromEntries(approved.steps.filter((step) => step.nodeId).map((step) => [step.nodeId!, step.id]));
+    try {
+      const result = await this.workflowRunAdapter!.runNodes(context, {
+        flowId: plan.flowId,
+        graphRevision: plan.graphRevision,
+        idempotencyKey: `skill-approval:${run.id}`,
+        nodeIds: plan.targets.map((target) => target.nodeId),
+        skillRunId: run.id,
+        skillStepIds,
+        skillVersionId: run.skillVersionId,
+      });
+      await Promise.all(result.runs.map((item) => {
+        const stepId = skillStepIds[item.nodeId];
+        return stepId ? this.skillRunService!.updateStep(context, stepId, { status: "running", approvalState: "approved", workflowRunId: item.runId }) : Promise.resolve();
+      }));
+      return { ...result, status: "running", approvalId: runId };
+    } catch (error) {
+      await this.skillRunService.transition(context, runId, "running", "failed", { error: { code: error instanceof Error && error.message === "FLOW_DRAFT_REVISION_CONFLICT" ? "FLOW_DRAFT_REVISION_CONFLICT" : "SKILL_APPROVAL_LAUNCH_FAILED" } });
+      throw error;
+    }
   }
 
   async buildExecuteTurnStream(context: AgentContext, sessionId: string, input: CreateAgentTurnInput) {

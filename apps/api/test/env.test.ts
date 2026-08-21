@@ -72,6 +72,39 @@ describe("getApiEnv", () => {
     expect(env.agentExecutorAllowVideo).toBe(false);
   });
 
+  test("keeps V2 Agent and Skill features disabled by default and reads explicit flags", () => {
+    withRequiredProductionEnv({
+      AGENT_V2_ENABLED: "true",
+      AGENT_V2_RUNTIME_ENABLED: "true",
+      AGENT_SKILLS_ENABLED: "true",
+      AGENT_SKILL_AUTHORING_ENABLED: "true",
+      AGENT_SKILL_RUNTIME_ENABLED: "true",
+      AGENT_SKILL_MAX_SOURCE_CHARS: "12000",
+      AGENT_SKILL_MAX_STEPS: "8",
+    });
+    const enabled = getApiEnv();
+    expect(enabled.agentV2Enabled).toBe(true);
+    expect(enabled.agentV2RuntimeEnabled).toBe(true);
+    expect(enabled.agentSkillsEnabled).toBe(true);
+    expect(enabled.agentSkillAuthoringEnabled).toBe(true);
+    expect(enabled.agentSkillRuntimeEnabled).toBe(true);
+    expect(enabled.agentSkillMaxSourceChars).toBe(12000);
+    expect(enabled.agentSkillMaxSteps).toBe(8);
+
+    withRequiredProductionEnv();
+    const disabled = getApiEnv();
+    expect(disabled.agentV2Enabled).toBe(false);
+    expect(disabled.agentSkillsEnabled).toBe(false);
+  });
+
+  test.each(["AGENT_SKILL_MAX_SOURCE_CHARS", "AGENT_SKILL_MAX_STEPS", "AGENT_SKILL_REPAIR_ATTEMPTS"])(
+    "rejects non-positive %s",
+    (variable) => {
+      withRequiredProductionEnv({ [variable]: "0" });
+      expect(() => getApiEnv()).toThrow(`${variable} must be a positive integer when provided`);
+    },
+  );
+
   test("reads the complete Resend sender configuration", () => {
     withRequiredProductionEnv({
       RESEND_API_KEY: "  re_test_api_key  ",

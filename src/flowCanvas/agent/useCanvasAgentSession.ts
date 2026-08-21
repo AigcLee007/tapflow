@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { V2HttpError } from "../../services/v2HttpClient";
 import { flushRemoteDraftBeforeRun } from "../runtime/remoteDraftSaveBarrier";
+import { pauseRemoteDraftAutosave } from "../runtime/remoteDraftSaveBarrier";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { buildCanvasAgentSnapshot } from "./canvasAgentSnapshot";
 import {
@@ -11,6 +12,7 @@ import {
   executeAgentTurnStream,
   getAgentImageRunSettings,
   openAgentTurnStream,
+  openAgentV2TurnStream,
   readAgentSseStream,
   type AgentContinuationContext,
   type AgentSessionEvent,
@@ -45,11 +47,15 @@ export type CanvasAgentMessage = {
 type PendingContinuation = AgentContinuationContext;
 
 type UseCanvasAgentSessionOptions = {
+  v2Enabled?: boolean;
+  onAgentV2Event?: (eventName: string, data: unknown) => void;
   onServerDraftApplied?: () => void | Promise<void>;
 };
 
 type SendPromptOptions = {
   referenceContext?: AgentReferenceContext;
+  selectedSkillId?: string | null;
+  selectedSkillVersion?: number;
 };
 
 type ApplyResult = {
@@ -172,6 +178,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
   const [activityTimeline, setActivityTimeline] = useState<CanvasAgentActivityItem[]>([]);
   const [pendingContinuation, setPendingContinuation] = useState<PendingContinuation | null>(null);
   const [lastContinuation, setLastContinuation] = useState<PendingContinuation | null>(null);
+  const lastPromptRef = useRef<string | null>(null);
 
   const appendActivity = useCallback((item: CanvasAgentActivityItem) => {
     setActivityTimeline((current) => [...current, item]);
@@ -206,6 +213,8 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
   }, []);
 
   const onServerDraftApplied = options.onServerDraftApplied;
+  const onAgentV2Event = options.onAgentV2Event;
+  const v2Enabled = options.v2Enabled;
 
   const applyToolEvent = useCallback((event: CanvasAgentToolEvent) => {
     if (event.type === "thinking_status") {
@@ -275,6 +284,9 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
         label: "正在等待模型返回结果",
         state: "active",
       });
+      setToolTimeline((current) => current.map((item) => item.toolCallKey === event.toolCallKey
+        ? { ...item, result: { ...(item.result && typeof item.result === "object" ? item.result : {}), workflowRunId: event.workflowRunId } }
+        : item));
       return;
     }
 
@@ -374,6 +386,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       const result = event.result && typeof event.result === "object" ? (event.result as Record<string, unknown>) : {};
       const assetRefs = Array.isArray(result.assetRefs) ? (result.assetRefs as CanvasAgentToolTimelineItem["assetRefs"]) : [];
       const failed = result.status === "failed";
+      const partialSuccess = result.status === "partial_success";
 
       appendActivity({
         detail: failed ? "上游生成步骤没有返回可用结果。" : "结果已返回，正在保存并准备放入画布。",
@@ -398,16 +411,19 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
           return {
             ...item,
             activeAssetRefId: item.activeAssetRefId ?? assetRefs[assetRefs.length - 1]?.refId,
-            assetRefs,
+            assetRefs: assetRefs.length > 0 ? assetRefs : item.assetRefs,
             estimate: item.estimate,
             placedNodeIds: placed?.createdNodeIds ?? item.placedNodeIds,
-            result: event.result,
+                result: {
+                  ...(item.result && typeof item.result === "object" ? item.result : {}),
+                  ...(event.result && typeof event.result === "object" ? event.result : {}),
+                },
             selectedAssetRefIds: item.selectedAssetRefIds?.length
               ? item.selectedAssetRefIds
               : assetRefs.length > 0
                 ? [assetRefs[0]!.refId]
                 : [],
-            status: failed ? "failed" : "succeeded",
+            status: failed ? "failed" : partialSuccess ? "partial_success" : "succeeded",
             taskId: typeof result.toolCallId === "string" ? result.toolCallId : item.taskId,
             turnId: item.turnId,
           };
@@ -436,7 +452,8 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       if (highlightedIds.length > 0) {
         state.selectNodesByIds(highlightedIds);
       }
-      void onServerDraftApplied?.();
+      const resumeAutosave = pauseRemoteDraftAutosave();
+      void Promise.resolve(onServerDraftApplied?.()).finally(resumeAutosave);
       return;
     }
 
@@ -476,6 +493,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
   const sendPrompt = useCallback(async (prompt: string, options?: SendPromptOptions) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
+    lastPromptRef.current = trimmed;
     const allowOfflineFallback = import.meta.env.VITE_AGENT_OFFLINE_FALLBACK === "true";
     const requiresProductionExecutor = isProductionImageAgentPrompt(trimmed);
     const useStreaming = import.meta.env.VITE_AGENT_STREAMING !== "false";
@@ -566,6 +584,8 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
             continuationContext: activeContinuation,
             prompt: trimmed,
             referenceContext: options?.referenceContext,
+            selectedSkillId: options?.selectedSkillId,
+            selectedSkillVersion: options?.selectedSkillVersion,
             snapshot,
           });
           if (response.ok) {
@@ -589,10 +609,13 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
 
         try {
           let receivedPlan = false;
-          const response = await openAgentTurnStream(resolvedSessionId, {
+          const streamOpener = (v2Enabled ?? import.meta.env.VITE_AGENT_V2_ENABLED === "true") ? openAgentV2TurnStream : openAgentTurnStream;
+          const response = await streamOpener(resolvedSessionId, {
             continuationContext: activeContinuation,
             prompt: trimmed,
             referenceContext: options?.referenceContext,
+            selectedSkillId: options?.selectedSkillId,
+            selectedSkillVersion: options?.selectedSkillVersion,
             snapshot,
           });
           if (!response.ok) {
@@ -614,6 +637,31 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
               receivedPlan = true;
               applyPlan(data as CanvasAgentPlannerOutput);
             },
+            onAgentV2: (eventName, data) => {
+              onAgentV2Event?.(eventName, data);
+              receivedPlan = true;
+              if (eventName === "agent_v2_text_delta" && typeof data === "object" && data && "text" in data) {
+                const text = String((data as { text: unknown }).text);
+                setMessages((current) => [...current, createMessage("assistant", text)]);
+              }
+              if (eventName === "agent_v2_tool_result" && typeof data === "object" && data) {
+                const event = data as { name?: unknown; result?: unknown };
+                const result = event.result && typeof event.result === "object" ? event.result as { allTerminal?: unknown; runs?: unknown } : null;
+                if (event.name === "canvas.await_results" && result) {
+                  const allTerminal = result.allTerminal === true;
+                  appendActivity({
+                    detail: allTerminal ? "工作流已返回可交付结果。" : "工作流仍在运行，Agent 会继续等待状态更新。",
+                    id: `v2-await-results-${allTerminal ? "complete" : "waiting"}-${Date.now()}`,
+                    label: allTerminal ? "生成结果已完成" : "正在等待模型返回结果",
+                    state: allTerminal ? "completed" : "active",
+                  });
+                }
+              }
+              if (eventName === "agent_v2_turn_completed" && typeof data === "object" && data && "text" in data) {
+                setMessages((current) => [...current, createMessage("assistant", String((data as { text: unknown }).text))]);
+                transitionWorkspaceState({ type: "turn_completed" });
+              }
+            },
           });
 
           if (receivedPlan) {
@@ -632,6 +680,8 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
             continuationContext: activeContinuation,
             prompt: trimmed,
             referenceContext: options?.referenceContext,
+            selectedSkillId: options?.selectedSkillId,
+            selectedSkillVersion: options?.selectedSkillVersion,
             snapshot,
           });
           applyPlan(plan);
@@ -653,13 +703,18 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       const message = planError instanceof Error ? planError.message : String(planError);
       failSession(message);
     }
-  }, [appendActivity, applyToolEvent, failSession, pendingContinuation, sessionId, transitionWorkspaceState, usedOfflineFallback]);
+  }, [appendActivity, applyToolEvent, failSession, onAgentV2Event, pendingContinuation, sessionId, transitionWorkspaceState, usedOfflineFallback, v2Enabled]);
 
   const cancelCurrentPlan = useCallback(() => {
     setCurrentPlan(null);
     setWorkspaceState("idle");
     setError(null);
   }, []);
+
+  const retryLastPrompt = useCallback(async () => {
+    if (!lastPromptRef.current) return;
+    await sendPrompt(lastPromptRef.current);
+  }, [sendPrompt]);
 
   const approveToolCall = useCallback(async (toolCallKey: string, selection?: AgentImageRunSettingsSelection) => {
     const item = toolTimeline.find((candidate) => candidate.toolCallKey === toolCallKey);
@@ -814,6 +869,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       pendingContinuation,
       placeToolAssetsOnCanvas,
       resetSession,
+      retryLastPrompt,
       selectToolAssetRef,
       sendPrompt,
       sessionId,
@@ -839,6 +895,7 @@ export function useCanvasAgentSession(options: UseCanvasAgentSessionOptions = {}
       pendingContinuation,
       placeToolAssetsOnCanvas,
       resetSession,
+      retryLastPrompt,
       selectToolAssetRef,
       sendPrompt,
       sessionId,

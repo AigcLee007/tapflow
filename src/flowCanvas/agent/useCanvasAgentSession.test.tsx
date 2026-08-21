@@ -12,6 +12,7 @@ const mockApproveAgentToolCallStream = vi.fn();
 const mockExecuteAgentTurnStream = vi.fn();
 const mockGetAgentImageRunSettings = vi.fn();
 const mockOpenAgentTurnStream = vi.fn();
+const mockOpenAgentV2TurnStream = vi.fn();
 const mockReadAgentSseStream = vi.fn();
 const mockReadAgentToolEventStream = vi.fn();
 
@@ -21,6 +22,7 @@ vi.mock("./canvasAgentApi", () => ({
   createAgentTurn: (...args: unknown[]) => mockCreateAgentTurn(...args),
   executeAgentTurnStream: (...args: unknown[]) => mockExecuteAgentTurnStream(...args),
   getAgentImageRunSettings: (...args: unknown[]) => mockGetAgentImageRunSettings(...args),
+  openAgentV2TurnStream: (...args: unknown[]) => mockOpenAgentV2TurnStream(...args),
   openAgentTurnStream: (...args: unknown[]) => mockOpenAgentTurnStream(...args),
   readAgentSseStream: (...args: unknown[]) => mockReadAgentSseStream(...args),
 }));
@@ -40,6 +42,7 @@ describe("useCanvasAgentSession", () => {
     mockExecuteAgentTurnStream.mockReset();
     mockGetAgentImageRunSettings.mockReset();
     mockOpenAgentTurnStream.mockReset();
+    mockOpenAgentV2TurnStream.mockReset();
     mockReadAgentSseStream.mockReset();
     mockReadAgentToolEventStream.mockReset();
     mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
@@ -159,6 +162,34 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.messages.some((message) => message.content.includes("Done."))).toBe(true);
   });
 
+  it("shows V2 workflow result waiting and completion states", async () => {
+    vi.stubEnv("VITE_AGENT_V2_ENABLED", "true");
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: false, status: 503 });
+    mockOpenAgentV2TurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentSseStream.mockImplementation(async (_response, handlers) => {
+      handlers.onAgentV2("agent_v2_tool_result", {
+        name: "canvas.await_results",
+        result: { allTerminal: false, runs: [{ status: "running" }] },
+      });
+      handlers.onAgentV2("agent_v2_tool_result", {
+        name: "canvas.await_results",
+        result: { allTerminal: true, runs: [{ status: "succeeded" }] },
+      });
+      handlers.onAgentV2("agent_v2_turn_completed", { text: "已完成" });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("生成并等待结果");
+    });
+
+    expect(result.current.activityTimeline.map((item) => item.label)).toEqual(
+      expect.arrayContaining(["正在等待模型返回结果", "生成结果已完成"]),
+    );
+    expect(result.current.messages.some((message) => message.content === "已完成")).toBe(true);
+  });
+
   it("records visible activity states before and during execution", async () => {
     mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
     mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
@@ -185,6 +216,27 @@ describe("useCanvasAgentSession", () => {
     expect(result.current.activityTimeline.map((item) => item.label)).toEqual(
       expect.arrayContaining(["Understanding request", "正在提交生成任务", "正在等待模型返回结果", "生成失败", "已完成"]),
     );
+  });
+
+  it("retains the linked workflow run id for view-run actions", async () => {
+    mockCreateAgentSession.mockResolvedValue({ id: "session-1" });
+    mockExecuteAgentTurnStream.mockResolvedValue({ ok: true, status: 200 });
+    mockReadAgentToolEventStream.mockImplementation(async (_response, onEvent) => {
+      onEvent({ toolCallKey: "tool-1", toolName: "generate_image", type: "tool_started" });
+      onEvent({ nodeRunId: "node-1", toolCallKey: "tool-1", type: "workflow_run_linked", workflowRunId: "run-42" });
+      onEvent({
+        result: { assetRefs: [], status: "failed" },
+        toolCallKey: "tool-1",
+        type: "tool_result",
+      });
+    });
+
+    const { result } = renderHook(() => useCanvasAgentSession());
+    await act(async () => {
+      await result.current.sendPrompt("Generate an image");
+    });
+
+    expect(result.current.toolTimeline[0]?.result).toEqual(expect.objectContaining({ workflowRunId: "run-42" }));
   });
 
   it("labels edit_image approval tasks as image edit cards", async () => {

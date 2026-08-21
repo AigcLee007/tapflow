@@ -1,5 +1,5 @@
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import type { AgentGenerationCostEstimate } from "./agent-cost-estimator.js";
 import type { AgentAssetReference } from "./agent-asset-references.js";
@@ -23,6 +23,8 @@ export type AgentToolExecutionTarget = {
 };
 
 export type AgentToolRunInput = {
+  agentNamespace?: string;
+  agentVersion?: "legacy" | "v2";
   call: ParsedAgentToolCall;
   continuationContext?: {
     action: "compare" | "continue-edit" | "make-poster" | "make-variant";
@@ -35,6 +37,8 @@ export type AgentToolRunInput = {
   } | null;
   costEstimate?: AgentGenerationCostEstimate | null;
   executionTarget: AgentToolExecutionTarget;
+  graphRevision?: number | null;
+  idempotencyKey?: string | null;
   previousResults?: Array<{ assetId: string; refId: string }>;
   referenceContext?: AgentReferenceContextInput;
   roundIndex: number;
@@ -75,9 +79,13 @@ export type AgentToolTaskResult = {
 };
 
 type AgentToolCallCreateInput = {
+  agentNamespace?: string;
+  agentVersion?: "legacy" | "v2";
   argumentsJson: Record<string, unknown>;
   costEstimateJson?: Record<string, unknown>;
   createdBy: string | null;
+  graphRevision?: number | null;
+  idempotencyKey?: string | null;
   sessionId: string;
   permissionLevel?: "safe_write" | "confirmed_write" | "credit_required";
   status: string;
@@ -97,8 +105,12 @@ type AgentToolCallUpdateInput = {
 };
 
 type AgentTaskCreateInput = {
+  agentNamespace?: string;
+  agentVersion?: "legacy" | "v2";
   createdBy: string | null;
+  graphRevision?: number | null;
   inputJson: Record<string, unknown>;
+  idempotencyKey?: string | null;
   sessionId: string;
   status: string;
   taskKey: string;
@@ -124,6 +136,15 @@ type AgentToolRunnerRepository = {
 
 type AgentWorkflowLauncherLike = Pick<AgentWorkflowLauncher, "launchImageGeneration">;
 type AgentCanvasServiceLike = Pick<AgentCanvasService, "applyOps">;
+
+async function assertTurnActiveClient(client: PoolClient, tenantId: string, turnId: string): Promise<void> {
+  const result = await client.query<{ cancelled_at: string | null }>(
+    `SELECT cancelled_at::text AS cancelled_at FROM agent_turns WHERE tenant_id = $1::uuid AND id = $2::uuid LIMIT 1`,
+    [tenantId, turnId],
+  );
+  if (result.rowCount === 0) throw new Error("AGENT_TURN_NOT_FOUND");
+  if (result.rows[0]!.cancelled_at) throw new Error("AGENT_TURN_CANCELLED");
+}
 
 type AgentImageTaskLaunchResult = AgentImageWorkflowLaunchResult & {
   taskId: string;
@@ -152,12 +173,18 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
 
   async createTask(input: AgentTaskCreateInput): Promise<{ id: string }> {
     return withTenantTransaction({ tenantId: input.tenantId, userId: input.createdBy }, async (client) => {
+      const isV2 = input.agentVersion === "v2" || input.graphRevision !== undefined || input.idempotencyKey !== undefined;
+      if (isV2) await assertTurnActiveClient(client, input.tenantId, input.turnId);
       const result = await client.query<{ id: string }>(
-        `
+        isV2 ? `
           INSERT INTO agent_tasks (
             tenant_id,
             session_id,
             turn_id,
+            agent_namespace,
+            agent_version,
+            graph_revision,
+            idempotency_key,
             task_key,
             task_type,
             title,
@@ -166,10 +193,32 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
             created_by,
             updated_at
           )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::bigint, $7, $8, $9, $10, $11, $12::jsonb, $13::uuid, now())
+          ON CONFLICT DO NOTHING
+          RETURNING id::text AS id
+        ` : `
+          INSERT INTO agent_tasks (
+            tenant_id, session_id, turn_id, task_key, task_type, title, status,
+            input_json, created_by, updated_at
+          )
           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb, $9::uuid, now())
           RETURNING id::text AS id
         `,
-        [
+        isV2 ? [
+          input.tenantId,
+          input.sessionId,
+          input.turnId,
+          input.agentNamespace ?? null,
+          input.agentVersion ?? null,
+          input.graphRevision ?? null,
+          input.idempotencyKey ?? null,
+          input.taskKey,
+          input.taskType,
+          input.title,
+          input.status,
+          JSON.stringify(input.inputJson),
+          input.createdBy,
+        ] : [
           input.tenantId,
           input.sessionId,
           input.turnId,
@@ -181,18 +230,32 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
           input.createdBy,
         ],
       );
-      return result.rows[0]!;
+      if (result.rows[0]) return result.rows[0];
+      if (isV2 && input.idempotencyKey) {
+        const existing = await client.query<{ id: string }>(
+          `SELECT id::text AS id FROM agent_tasks WHERE tenant_id = $1::uuid AND agent_version = 'v2' AND idempotency_key = $2 LIMIT 1`,
+          [input.tenantId, input.idempotencyKey],
+        );
+        if (existing.rows[0]) return existing.rows[0];
+      }
+      throw new Error("AGENT_TASK_IDEMPOTENCY_CONFLICT");
     }, this.pool);
   }
 
   async createToolCall(input: AgentToolCallCreateInput): Promise<{ id: string }> {
     return withTenantTransaction({ tenantId: input.tenantId, userId: input.createdBy }, async (client) => {
+      const isV2 = input.agentVersion === "v2" || input.graphRevision !== undefined || input.idempotencyKey !== undefined;
+      if (isV2) await assertTurnActiveClient(client, input.tenantId, input.turnId);
       const result = await client.query<{ id: string }>(
-        `
+        isV2 ? `
           INSERT INTO agent_tool_calls (
             tenant_id,
-          session_id,
-          turn_id,
+            session_id,
+            turn_id,
+            agent_namespace,
+            agent_version,
+            graph_revision,
+            idempotency_key,
           tool_call_key,
           tool_name,
           permission_level,
@@ -203,10 +266,33 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
             created_by,
             updated_at
           )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::bigint, $7, $8, $9, $10, $11, $12::jsonb, $12::jsonb, $13::jsonb, $14::uuid, now())
+          ON CONFLICT DO NOTHING
+          RETURNING id::text AS id
+        ` : `
+          INSERT INTO agent_tool_calls (
+            tenant_id, session_id, turn_id, tool_call_key, tool_name, permission_level,
+            status, arguments_json, input_json, cost_estimate_json, created_by, updated_at
+          )
           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb, $8::jsonb, $9::jsonb, $10::uuid, now())
           RETURNING id::text AS id
         `,
-        [
+        isV2 ? [
+          input.tenantId,
+          input.sessionId,
+          input.turnId,
+          input.agentNamespace ?? null,
+          input.agentVersion ?? null,
+          input.graphRevision ?? null,
+          input.idempotencyKey ?? null,
+          input.toolCallKey,
+          input.toolName,
+          input.permissionLevel ?? "credit_required",
+          input.status,
+          JSON.stringify(input.argumentsJson),
+          JSON.stringify(input.costEstimateJson ?? {}),
+          input.createdBy,
+        ] : [
           input.tenantId,
           input.sessionId,
           input.turnId,
@@ -219,13 +305,21 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
           input.createdBy,
         ],
       );
-      return result.rows[0]!;
+      if (result.rows[0]) return result.rows[0];
+      if (isV2 && input.idempotencyKey) {
+        const existing = await client.query<{ id: string }>(
+          `SELECT id::text AS id FROM agent_tool_calls WHERE tenant_id = $1::uuid AND agent_version = 'v2' AND idempotency_key = $2 LIMIT 1`,
+          [input.tenantId, input.idempotencyKey],
+        );
+        if (existing.rows[0]) return existing.rows[0];
+      }
+      throw new Error("AGENT_TOOL_CALL_IDEMPOTENCY_CONFLICT");
     }, this.pool);
   }
 
   async updateTask(id: string, input: AgentTaskUpdateInput): Promise<void> {
     await withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
-      await client.query(
+      const result = await client.query(
         `
           UPDATE agent_tasks
           SET
@@ -236,6 +330,12 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
             finished_at = CASE WHEN $2 IN ('succeeded', 'failed', 'cancelled', 'skipped') THEN now() ELSE finished_at END,
             updated_at = now()
           WHERE id = $1::uuid
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_turns
+              WHERE agent_turns.id = agent_tasks.turn_id
+                AND agent_tasks.agent_version = 'v2'
+                AND agent_turns.cancelled_at IS NOT NULL
+            )
         `,
         [
           id,
@@ -244,12 +344,13 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
           input.errorJson ? JSON.stringify(input.errorJson) : null,
         ],
       );
+      if (result.rowCount === 0) throw new Error("AGENT_TURN_CANCELLED");
     }, this.pool);
   }
 
   async updateToolCall(id: string, input: AgentToolCallUpdateInput): Promise<void> {
     await withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
-      await client.query(
+      const result = await client.query(
         `
           UPDATE agent_tool_calls
           SET
@@ -263,6 +364,12 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
             finished_at = CASE WHEN $2 IN ('succeeded', 'failed', 'cancelled', 'skipped') THEN now() ELSE finished_at END,
             updated_at = now()
           WHERE id = $1::uuid
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_turns
+              WHERE agent_turns.id = agent_tool_calls.turn_id
+                AND agent_tool_calls.agent_version = 'v2'
+                AND agent_turns.cancelled_at IS NOT NULL
+            )
         `,
         [
           id,
@@ -273,6 +380,7 @@ export class DatabaseAgentToolRunnerRepository implements AgentToolRunnerReposit
           input.nodeRunId ?? null,
         ],
       );
+      if (result.rowCount === 0) throw new Error("AGENT_TURN_CANCELLED");
     }, this.pool);
   }
 }
@@ -294,9 +402,13 @@ export class AgentToolRunner {
     input: AgentToolRunInput,
   ): Promise<AgentToolRunResult> {
     const record = await this.options.repository.createToolCall({
+      agentNamespace: input.agentNamespace,
+      agentVersion: input.agentVersion,
       argumentsJson: input.call.arguments,
       costEstimateJson: input.costEstimate as Record<string, unknown> | undefined,
       createdBy: context.userId,
+      graphRevision: input.graphRevision,
+      idempotencyKey: input.idempotencyKey,
       permissionLevel: isCanvasTool(input.call.toolName) ? "safe_write" : "credit_required",
       sessionId: input.sessionId,
       status: "planned",
@@ -650,8 +762,12 @@ export class AgentToolRunner {
     },
   ) {
     const created = await this.options.repository.createTask({
+      agentNamespace: input.agentNamespace,
+      agentVersion: input.agentVersion,
       createdBy: context.userId,
+      graphRevision: input.graphRevision,
       inputJson: buildTaskInputJson(input, task.prompt, task.settings, task.batchIndex, task.referenceAssetIds),
+      idempotencyKey: input.idempotencyKey ? `${input.idempotencyKey}:${task.taskKey}` : null,
       sessionId: input.sessionId,
       status: "queued",
       taskKey: task.taskKey,

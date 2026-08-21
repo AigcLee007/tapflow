@@ -16,6 +16,14 @@ export type ApiEnv = {
   agentPlannerEnabled: boolean;
   agentPlannerRepairAttempts: number;
   agentPlannerTimeoutMs: number;
+  agentV2Enabled: boolean;
+  agentV2RuntimeEnabled: boolean;
+  agentSkillsEnabled: boolean;
+  agentSkillAuthoringEnabled: boolean;
+  agentSkillRuntimeEnabled: boolean;
+  agentSkillMaxSourceChars: number;
+  agentSkillMaxSteps: number;
+  agentSkillRepairAttempts: number;
   agentTextRouteKey: string;
   apiRateLimitMax?: number;
   apiRateLimitWindowMs?: number;
@@ -174,6 +182,14 @@ export function getApiEnv(): ApiEnv {
     process.env.AGENT_PLANNER_TIMEOUT_MS,
     45_000,
   );
+  const agentV2Enabled = parseBooleanEnv("AGENT_V2_ENABLED", process.env.AGENT_V2_ENABLED, false);
+  const agentV2RuntimeEnabled = parseBooleanEnv("AGENT_V2_RUNTIME_ENABLED", process.env.AGENT_V2_RUNTIME_ENABLED, false);
+  const agentSkillsEnabled = parseBooleanEnv("AGENT_SKILLS_ENABLED", process.env.AGENT_SKILLS_ENABLED, false);
+  const agentSkillAuthoringEnabled = parseBooleanEnv("AGENT_SKILL_AUTHORING_ENABLED", process.env.AGENT_SKILL_AUTHORING_ENABLED, false);
+  const agentSkillRuntimeEnabled = parseBooleanEnv("AGENT_SKILL_RUNTIME_ENABLED", process.env.AGENT_SKILL_RUNTIME_ENABLED, false);
+  const agentSkillMaxSourceChars = parsePositiveIntegerEnv("AGENT_SKILL_MAX_SOURCE_CHARS", process.env.AGENT_SKILL_MAX_SOURCE_CHARS, 24_000);
+  const agentSkillMaxSteps = parsePositiveIntegerEnv("AGENT_SKILL_MAX_STEPS", process.env.AGENT_SKILL_MAX_STEPS, 12);
+  const agentSkillRepairAttempts = parsePositiveIntegerEnv("AGENT_SKILL_REPAIR_ATTEMPTS", process.env.AGENT_SKILL_REPAIR_ATTEMPTS, 1);
   const agentTextRouteKey = process.env.AGENT_TEXT_ROUTE_KEY?.trim() || "text.default";
   const agentExecutorEnabled = parseBooleanEnv(
     "AGENT_EXECUTOR_ENABLED",
@@ -364,6 +380,14 @@ export function getApiEnv(): ApiEnv {
     agentPlannerEnabled,
     agentPlannerRepairAttempts,
     agentPlannerTimeoutMs,
+    agentV2Enabled,
+    agentV2RuntimeEnabled,
+    agentSkillsEnabled,
+    agentSkillAuthoringEnabled,
+    agentSkillRuntimeEnabled,
+    agentSkillMaxSourceChars,
+    agentSkillMaxSteps,
+    agentSkillRepairAttempts,
     agentTextRouteKey,
     apiRateLimitMax,
     apiRateLimitWindowMs,

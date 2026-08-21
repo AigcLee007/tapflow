@@ -17,6 +17,7 @@ import { WORKSPACE_ROUTE, getProjectId } from "../../app/routes";
 import { BrandMark } from "../../app/brand/BrandMark";
 import { getAvailableCredits } from "../../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../../billing/useBillingSummarySnapshot";
+import { useRecharge } from "../../billing/RechargeContext";
 import { MenuSurface } from "../../components/menu/MenuSurface";
 import { MENU_DIVIDER_CLASS, MENU_ITEM_CLASS, MENU_ITEM_PRIMARY_CLASS } from "../../components/menu/menuStyles";
 import { useDismissibleLayer } from "../../components/menu/useDismissibleLayer";
@@ -87,6 +88,7 @@ export const FlowTopToolbar: React.FC<{
   const setProjectTitle = useFlowCanvasStore((s) => s.setProjectTitle);
   const billingSnapshot = useBillingSummarySnapshot(true);
   const points = getAvailableCredits(billingSnapshot.summary);
+  const recharge = useRecharge();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [seenIds, setSeenIds] = useState<string[]>(() => readSeenAnnouncementIds());
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -399,7 +401,7 @@ export const FlowTopToolbar: React.FC<{
           </div>
         </div>
 
-        {!hideUtilityActions ? <div style={rightClusterStyle}>          <button type="button" style={topPillStyle} title="当前点数">
+        {!hideUtilityActions ? <div style={rightClusterStyle}>          <button aria-label="充值积分" type="button" style={topPillStyle} title="当前点数" onClick={() => recharge.openRecharge({ source: "canvas" })}>
             <Sparkles size={17} />
             <span>{billingSnapshot.status === "loading" ? "..." : points === null ? "--" : formatToolbarPoint(points)}</span>
           </button>

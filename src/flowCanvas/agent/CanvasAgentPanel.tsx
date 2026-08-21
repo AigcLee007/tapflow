@@ -4,7 +4,7 @@ import { AGENT_REFERENCE_LIMIT, buildAgentReferenceContext } from "./agentRefere
 import { buildAgentArtifactRefChips } from "./agentArtifactRefs";
 import { buildAgentWorkspaceTimeline } from "./agentWorkspaceTimeline";
 import { OPEN_AGENT_SESSION_EVENT, type OpenAgentSessionDetail } from "./agentSessionEvents";
-import { getAgentImageRunSettings, listAgentSessions } from "./canvasAgentApi";
+import { approveAgentSkillRun, cancelAgentSkillRun, getAgentCapabilities, getAgentImageRunSettings, getAgentSkillRun, listAgentSessions, listAgentSkills, type AgentCapabilities, type AgentSkillPreview, type AgentSkillRun } from "./canvasAgentApi";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
 import type { CanvasAgentPlannerOutput } from "./canvasAgentTypes";
 import { CanvasAgentComposer } from "./CanvasAgentComposer";
@@ -13,14 +13,21 @@ import { CanvasAgentConversationView } from "./CanvasAgentConversationView";
 import { CanvasAgentHistoryView } from "./CanvasAgentHistoryView";
 import { CanvasAgentLogView } from "./CanvasAgentLogView";
 import { CanvasAgentPlanCard } from "./CanvasAgentPlanCard";
+import { CanvasAgentSkillAuthoring } from "./CanvasAgentSkillAuthoring";
+import { CanvasAgentSkillDetail } from "./CanvasAgentSkillDetail";
+import { CanvasAgentSkillPicker } from "./CanvasAgentSkillPicker";
+import { CanvasAgentSkillBar } from "./CanvasAgentSkillBar";
+import { CanvasAgentSkillPlan } from "./CanvasAgentSkillPlan";
+import type { AgentSkillPlan } from "./canvasAgentSkillTypes";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import { getCanvasAgentBusyHint, isCanvasAgentBusyState } from "./canvasAgentStateMachine";
 import { CanvasAgentWorkspaceShell } from "./CanvasAgentWorkspaceShell";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useAgentWorkspacePanel } from "./useAgentWorkspacePanel";
-import { useCanvasAgentSession } from "./useCanvasAgentSession";
+import { useCanvasAgentSessionV2 } from "./v2/useCanvasAgentSessionV2";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { MenuSelect } from "../../components/menu/MenuSelect";
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -83,6 +90,35 @@ function buildSelectedCanvasReferenceChips(): AgentReferenceChip[] {
     });
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function findSkillRunId(input: {
+  pendingApproval: Record<string, unknown> | null;
+  toolTimeline: Array<{ result?: unknown; toolName: string }>;
+}): string | null {
+  const pending = input.pendingApproval;
+  if (pending) {
+    const pendingName = readId(pending.name);
+    const pendingResult = readRecord(pending.result);
+    const pendingId = readId(pending.skillRunId) ?? readId(pending.approvalId) ?? readId(pendingResult?.skillRunId) ?? readId(pendingResult?.approvalId);
+    if (pendingId && (pendingName === "skill.run" || pendingName?.startsWith("skill."))) return pendingId;
+  }
+
+  for (const item of [...input.toolTimeline].reverse()) {
+    if (item.toolName !== "skill.run") continue;
+    const result = readRecord(item.result);
+    const runId = readId(result?.skillRunId) ?? readId(result?.approvalId);
+    if (runId) return runId;
+  }
+  return null;
+}
+
 export function CanvasAgentPanel(props: {
   initialSessionId?: string | null;
   onClose: () => void;
@@ -91,8 +127,12 @@ export function CanvasAgentPanel(props: {
   onServerDraftApplied?: () => void | Promise<void>;
   open: boolean;
 }) {
-  const sessionActions = useCanvasAgentSession({
+  const [serverCapabilities, setServerCapabilities] = React.useState<AgentCapabilities | null>(null);
+  const sessionActions = useCanvasAgentSessionV2({
     onServerDraftApplied: props.onServerDraftApplied,
+    v2Enabled: import.meta.env.VITE_AGENT_V2_ENABLED === "true"
+      && serverCapabilities?.agentV2Enabled === true
+      && serverCapabilities.agentV2RuntimeEnabled === true,
   });
   const workspace = useAgentWorkspacePanel();
   const [composerDraft, setComposerDraft] = React.useState("");
@@ -114,6 +154,16 @@ export function CanvasAgentPanel(props: {
   const history = useAgentConversationHistory(sessionActions.sessionId);
   const eventStream = useAgentEventStream(sessionActions.sessionId);
   const [availableModels, setAvailableModels] = React.useState<ReturnType<typeof getEmptyModels>>([]);
+  const [availableSkills, setAvailableSkills] = React.useState<AgentSkillPreview[]>([]);
+  const [selectedSkillId, setSelectedSkillId] = React.useState<string | null>(null);
+  const [skillModality, setSkillModality] = React.useState<"" | AgentSkillPreview["modality"]>("");
+  const [skillQuery, setSkillQuery] = React.useState("");
+  const [skillScope, setSkillScope] = React.useState<"available" | "mine">("available");
+  const [skillView, setSkillView] = React.useState<"picker" | "detail" | "authoring">("picker");
+  const [skillRefreshToken, setSkillRefreshToken] = React.useState(0);
+  const [skillPickerOpen, setSkillPickerOpen] = React.useState(false);
+  const [skillListLoading, setSkillListLoading] = React.useState(false);
+  const [skillListError, setSkillListError] = React.useState<string | null>(null);
   const [sessionList, setSessionList] = React.useState<Array<{
     createdAt: string;
     flowId: string | null;
@@ -127,8 +177,52 @@ export function CanvasAgentPanel(props: {
   const sessionScopeRef = React.useRef<string | null>(null);
   const replayHydratedSessionIdRef = React.useRef<string | null>(null);
 
+  const skillUiEnabled = import.meta.env.VITE_AGENT_SKILLS_ENABLED === "true"
+    && serverCapabilities?.skillsEnabled === true
+    && serverCapabilities.skillRuntimeEnabled === true;
+  const skillAuthoringUiEnabled = skillUiEnabled
+    && import.meta.env.VITE_AGENT_SKILL_AUTHORING_ENABLED === "true"
+    && serverCapabilities?.skillAuthoringEnabled === true;
+
+  React.useEffect(() => {
+    setSelectedSkillId(sessionActions.selectedSkill?.id ?? null);
+  }, [sessionActions.selectedSkill]);
+
   const busy = isCanvasAgentBusyState(sessionActions.workspaceState);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
+
+  const skillRunId = React.useMemo(
+    () => findSkillRunId({ pendingApproval: sessionActions.pendingApproval, toolTimeline: sessionActions.toolTimeline }),
+    [sessionActions.pendingApproval, sessionActions.toolTimeline],
+  );
+  const [skillRun, setSkillRun] = React.useState<AgentSkillRun | null>(null);
+  const [skillRunError, setSkillRunError] = React.useState<string | null>(null);
+
+  const refreshSkillRun = React.useCallback(async (runId: string) => {
+    try {
+      const next = await getAgentSkillRun(runId);
+      setSkillRun(next);
+      setSkillRunError(null);
+    } catch (error) {
+      setSkillRun(null);
+      setSkillRunError(error instanceof Error ? error.message : "Skill 执行状态暂不可用");
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!skillRunId) {
+      setSkillRun(null);
+      setSkillRunError(null);
+      return;
+    }
+    void refreshSkillRun(skillRunId);
+  }, [refreshSkillRun, skillRunId]);
+
+  const skillPlan: AgentSkillPlan | null = skillRun;
+
+  React.useEffect(() => {
+    void getAgentCapabilities().then(setServerCapabilities).catch(() => setServerCapabilities(null));
+  }, []);
 
   React.useEffect(() => {
     const scopeKey = `${backendProjectId ?? ""}:${backendFlowId ?? ""}`;
@@ -168,6 +262,19 @@ export function CanvasAgentPanel(props: {
       })
       .catch(() => setAvailableModels([]));
   }, []);
+
+  React.useEffect(() => {
+    if (!skillPickerOpen || !skillUiEnabled) return;
+    setSkillListLoading(true);
+    setSkillListError(null);
+    const timer = window.setTimeout(() => {
+      void listAgentSkills({ modality: skillModality || undefined, q: skillQuery || undefined, scope: skillScope })
+        .then((skills) => { setAvailableSkills(skills); setSkillListError(null); })
+        .catch(() => { setAvailableSkills([]); setSkillListError("Skill 暂不可用"); })
+        .finally(() => setSkillListLoading(false));
+    }, 160);
+    return () => window.clearTimeout(timer);
+  }, [skillModality, skillQuery, skillScope, skillRefreshToken, skillPickerOpen, skillUiEnabled]);
 
   React.useEffect(() => {
     if (!sessionActions.sessionId) return;
@@ -325,9 +432,44 @@ export function CanvasAgentPanel(props: {
               sessionActions.setPendingContinuation?.(continuation);
             }}
             onPlaceAssets={sessionActions.placeToolAssetsOnCanvas}
+            onRetryTool={() => {
+              void sessionActions.retryLastPrompt?.();
+            }}
+            onViewRun={(workflowRunId) => {
+              workspace.setSelectedRunId(workflowRunId);
+              workspace.setActiveTab("logs");
+            }}
           />
 
-          {sessionActions.currentPlan ? (
+          {skillPlan ? (
+            <div style={{ padding: "0 16px 12px" }}>
+              <CanvasAgentSkillPlan
+                onApprove={async () => {
+                  if (!skillRunId || !sessionActions.sessionId) return;
+                  try {
+                    const response = await approveAgentSkillRun(sessionActions.sessionId, skillRunId);
+                    if (!response.ok) throw new Error(`Skill 批准失败（${response.status}）`);
+                    await refreshSkillRun(skillRunId);
+                  } catch (error) {
+                    setSkillRunError(error instanceof Error ? error.message : "Skill 批准失败");
+                  }
+                }}
+                onCancel={async () => {
+                  if (!skillRunId || !sessionActions.sessionId) return;
+                  try {
+                    await cancelAgentSkillRun(sessionActions.sessionId, skillRunId, "用户取消 Skill 执行");
+                    await refreshSkillRun(skillRunId);
+                  } catch (error) {
+                    setSkillRunError(error instanceof Error ? error.message : "Skill 取消失败");
+                  }
+                }}
+                plan={skillPlan}
+              />
+              {skillRunError ? <div role="alert" style={{ color: "#fca5a5", fontSize: 11, paddingTop: 6 }}>{skillRunError}</div> : null}
+            </div>
+          ) : skillRunId && skillRunError ? (
+            <div role="alert" style={{ color: "#fca5a5", fontSize: 11, padding: "0 16px 12px" }}>{skillRunError}</div>
+          ) : sessionActions.currentPlan ? (
             <div style={{ padding: "0 16px 12px" }}>
               <CanvasAgentPlanCard
                 busy={busy}
@@ -373,6 +515,35 @@ export function CanvasAgentPanel(props: {
             </div>
           ) : null}
 
+          <CanvasAgentSkillBar
+            enabled={skillUiEnabled}
+            onClear={() => { setSelectedSkillId(null); sessionActions.selectSkill(null); }}
+            onOpenPicker={() => setSkillPickerOpen((open) => !open)}
+            onRetry={() => { void getAgentCapabilities().then(setServerCapabilities).catch(() => setServerCapabilities(null)); }}
+            selectedSkill={availableSkills.find((skill) => skill.id === selectedSkillId) ?? null}
+            unavailableReason={!skillUiEnabled && skillPickerOpen ? "Skill 暂不可用" : undefined}
+          />
+
+          {skillPickerOpen ? (
+            <div style={{ display: "grid", gap: 7, padding: "0 16px 10px" }}>
+              {!skillUiEnabled ? <div role="status" style={{ color: "#fbbf24", fontSize: 11, padding: "8px 2px" }}>当前运行环境未启用 Skill</div> : null}
+              {skillUiEnabled ? <>
+              {skillView === "picker" ? <>
+                <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr" }}>
+                  <MenuSelect fullWidth label="技能来源" onChange={(value) => setSkillScope(value === "mine" ? "mine" : "available")} options={[{ label: "技能库", value: "available" }, { label: "我的技能", value: "mine" }]} size="compact" value={skillScope} />
+                  <MenuSelect fullWidth label="类型" onChange={(value) => setSkillModality(value as "" | AgentSkillPreview["modality"])} options={[{ label: "全部", value: "" }, { label: "文本", value: "text" }, { label: "图片", value: "image" }, { label: "视频", value: "video" }]} size="compact" value={skillModality} />
+                </div>
+                <input aria-label="搜索技能" onChange={(event) => setSkillQuery(event.target.value)} placeholder="搜索技能" style={{ background: "rgba(15,23,42,0.54)", border: "1px solid rgba(148,163,184,0.18)", borderRadius: 8, color: "#e2e8f0", fontSize: 12, height: 34, outline: "none", padding: "0 10px", width: "100%" }} value={skillQuery} />
+                <CanvasAgentSkillPicker canCreate={skillAuthoringUiEnabled} loading={skillListLoading} onClose={() => setSkillPickerOpen(false)} onCreate={() => setSkillView("authoring")} onOpenDetail={(skill) => { setSelectedSkillId(skill.id); setSkillView("detail"); }} onRetry={() => setSkillRefreshToken((value) => value + 1)} onSelect={(skill) => { setSelectedSkillId(skill.id); sessionActions.selectSkill(skill); setSkillPickerOpen(false); }} selectedId={selectedSkillId} skills={availableSkills} unavailableReason={skillListError ?? undefined} />
+              </> : null}
+              {skillView === "detail" && selectedSkillId ? (() => {
+                const selected = availableSkills.find((skill) => skill.id === selectedSkillId);
+                return selected ? <CanvasAgentSkillDetail onBack={() => setSkillView("picker")} onSaved={() => { setSkillRefreshToken((value) => value + 1); setSkillView("picker"); }} skill={selected} /> : null;
+              })() : null}
+              {skillView === "authoring" && skillAuthoringUiEnabled ? <CanvasAgentSkillAuthoring onBack={() => setSkillView("picker")} onCreated={() => { setSkillRefreshToken((value) => value + 1); setSkillView("picker"); }} /> : null}
+              </> : null}
+            </div>
+          ) : null}
           <CanvasAgentComposer
             draftValue={composerDraft}
             models={modelOptions}
@@ -423,7 +594,7 @@ export function CanvasAgentPanel(props: {
       {workspace.activeTab === "connections" ? <CanvasAgentConnectionView models={modelOptions} /> : null}
 
       {workspace.activeTab === "logs" ? (
-        <CanvasAgentLogView activityItems={sessionActions.activityTimeline ?? []} error={sessionActions.error} />
+        <CanvasAgentLogView activityItems={sessionActions.activityTimeline ?? []} error={sessionActions.error} selectedRunId={workspace.selectedRunId} />
       ) : null}
     </CanvasAgentWorkspaceShell>
   );

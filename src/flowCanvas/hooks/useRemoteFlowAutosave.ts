@@ -10,6 +10,7 @@ import {
 import { writeLocalFlowDraft } from "../services/localFlowDraft";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { canonicalizeGraph, hashGraph } from "../utils/canonicalGraph";
+import { isRemoteDraftAutosavePaused } from "../runtime/remoteDraftSaveBarrier";
 
 export type RemoteFlowSaveStatus =
   | "idle"
@@ -120,6 +121,10 @@ export function useRemoteFlowAutosave(input: {
       options: FlushSaveOptions = {},
     ): Promise<void> => {
       if (!input.enabled || !input.flowId || !input.draft) {
+        return;
+      }
+      if (isRemoteDraftAutosavePaused()) {
+        dirtyAgainRef.current = true;
         return;
       }
       syncLatestGraphFromStore();

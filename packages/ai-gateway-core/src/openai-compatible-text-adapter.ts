@@ -2,6 +2,7 @@ import { AiGatewayError } from "./errors.js";
 import { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
 import { buildProductionImagePrompt } from "./production-image-prompt.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import { readTextServerSentEvents, type ProviderTextStreamEvent } from "./text-streaming-contract.js";
 import type {
   AssetReferenceInput,
   ImageGenerationRequest,
@@ -154,6 +155,77 @@ function normalizePath(value: unknown, fallback: string): string {
 
 function buildUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, "")}${path}`;
+}
+
+function buildTextTools(request: TextGenerationRequest): Array<Record<string, unknown>> | undefined {
+  if (!request.tools?.length) return undefined;
+  return request.tools.map((tool) => ({
+    function: {
+      description: tool.description,
+      name: tool.name,
+      parameters: tool.inputSchema,
+    },
+    type: "function",
+  }));
+}
+
+function buildToolChoice(choice: TextGenerationRequest["toolChoice"], responsesMode = false): unknown {
+  if (!choice) return undefined;
+  if (typeof choice === "string") return choice;
+  return responsesMode ? { name: choice.function.name, type: "function" } : choice;
+}
+
+function readStreamRecord(value: unknown): Record<string, unknown> {
+  return asRecord(value);
+}
+
+function readStreamTextDelta(event: Record<string, unknown>): string | null {
+  const choices = Array.isArray(event.choices) ? event.choices : [];
+  const choice = readStreamRecord(choices[0]);
+  const delta = readStreamRecord(choice.delta);
+  return typeof delta.content === "string" && delta.content ? delta.content : null;
+}
+
+function readStreamToolDeltas(event: Record<string, unknown>, knownCallIds: Map<number, string>): Array<{ argumentsDelta: string; callId: string; name?: string }> {
+  const choices = Array.isArray(event.choices) ? event.choices : [];
+  const choice = readStreamRecord(choices[0]);
+  const delta = readStreamRecord(choice.delta);
+  const calls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
+  return calls.flatMap((item, index) => {
+    const call = readStreamRecord(item);
+    const fn = readStreamRecord(call.function);
+    const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
+    const callIndex = typeof call.index === "number" ? call.index : index;
+    const explicitId = typeof call.id === "string" && call.id ? call.id : null;
+    if (explicitId) knownCallIds.set(callIndex, explicitId);
+    const callId = explicitId ?? knownCallIds.get(callIndex) ?? `tool-call-${callIndex}`;
+    if (!argumentsDelta && typeof fn.name !== "string") return [];
+    return [{
+      argumentsDelta,
+      callId,
+      ...(typeof fn.name === "string" && fn.name ? { name: fn.name } : {}),
+    }];
+  });
+}
+
+function readResponsesToolDelta(event: Record<string, unknown>): { argumentsDelta: string; callId: string; name?: string } | null {
+  const type = typeof event.type === "string" ? event.type : "";
+  const delta = typeof event.delta === "string" ? event.delta : "";
+  if (type === "response.function_call_arguments.delta" && delta) {
+    const callId = typeof event.item_id === "string" && event.item_id ? event.item_id : "tool-call-0";
+    return { argumentsDelta: delta, callId };
+  }
+  if (type === "response.output_item.added") {
+    const item = readStreamRecord(event.item);
+    if (item.type === "function_call" && typeof item.name === "string") {
+      return {
+        argumentsDelta: "",
+        callId: typeof item.call_id === "string" ? item.call_id : String(item.id ?? "tool-call-0"),
+        name: item.name,
+      };
+    }
+  }
+  return null;
 }
 
 function appendQueryParam(url: string, key: string, value: string): string {
@@ -709,6 +781,133 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
   constructor(options?: { fetchImplementation?: FetchLike }) {
     this.fetchImplementation = options?.fetchImplementation ?? fetch;
+  }
+
+  async *streamText(
+    context: ProviderCallContext,
+    request: TextGenerationRequest,
+  ): AsyncGenerator<ProviderTextStreamEvent> {
+    const requestConfig = asRecord(context.requestConfig);
+    const responsesMode = isTextResponsesMode(requestConfig);
+    const images = resolveHydratedImageInputs(request);
+    const tools = buildTextTools(request);
+    const toolChoice = buildToolChoice(request.toolChoice, responsesMode);
+    const payload: Record<string, unknown> = responsesMode
+      ? {
+          input: withResponsesImageInputs(request.messages, images),
+          max_output_tokens: request.maxTokens ?? getNumber(requestConfig.maxOutputTokens) ?? getNumber(requestConfig.max_output_tokens),
+          model: request.model?.trim() || getString(requestConfig.model) || context.modelKey,
+          stream: true,
+          temperature: request.temperature ?? getNumber(requestConfig.temperature),
+          ...(tools ? { tools: tools.map((tool) => ({
+            description: asRecord(tool.function).description,
+            name: asRecord(tool.function).name,
+            parameters: asRecord(tool.function).parameters,
+            type: "function",
+          })) } : {}),
+          ...(toolChoice ? { tool_choice: toolChoice } : {}),
+        }
+      : {
+          max_tokens: request.maxTokens ?? getNumber(requestConfig.maxTokens) ?? getNumber(requestConfig.max_tokens),
+          messages: withChatImageInputs(request.messages, images),
+          model: request.model?.trim() || context.modelKey,
+          stream: true,
+          temperature: request.temperature ?? getNumber(requestConfig.temperature),
+          ...(tools ? { tools } : {}),
+          ...(toolChoice ? { tool_choice: toolChoice } : {}),
+        };
+    const providerRequest = {
+      body: payload,
+      headers: { Authorization: `Bearer ${context.apiKey}`, "Content-Type": "application/json" },
+      method: "POST",
+      url: buildUrl(
+        context.baseUrl,
+        normalizePath(
+          responsesMode ? requestConfig.responsesPath ?? requestConfig.path : requestConfig.chatPath ?? requestConfig.path,
+          responsesMode ? "/v1/responses" : "/chat/completions",
+        ),
+      ),
+    };
+
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(providerRequest.url, {
+        body: JSON.stringify(payload),
+        headers: providerRequest.headers,
+        method: "POST",
+        signal: request.signal ?? AbortSignal.timeout(context.timeoutMs),
+      });
+    } catch (error) {
+      const timeout = error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+      throw new AiGatewayError({
+        code: timeout ? "PROVIDER_TIMEOUT" : "PROVIDER_INTERNAL_ERROR",
+        message: timeout ? "The text provider stream timed out" : "The text provider stream failed before a response was received",
+        providerRequest,
+        statusCode: timeout ? 504 : 502,
+      });
+    }
+    if (!response.ok) {
+      const providerResponse = { body: await readResponseBody(response), status: response.status };
+      throw this.mapError(response.status, providerRequest, providerResponse);
+    }
+
+    let finishReason: string | undefined;
+    const knownCallIds = new Map<number, string>();
+    for await (const raw of readTextServerSentEvents(response)) {
+      const event = readStreamRecord(raw);
+      if (event.error && typeof event.error === "object") {
+        const error = readStreamRecord(event.error);
+        throw new AiGatewayError({
+          code: "PROVIDER_BAD_REQUEST",
+          message: typeof error.message === "string" ? error.message : "The text provider stream returned an error",
+          providerRequest,
+          statusCode: 502,
+        });
+      }
+      if (responsesMode) {
+        const type = typeof event.type === "string" ? event.type : "";
+        const text = type === "response.output_text.delta" && typeof event.delta === "string" ? event.delta : null;
+        if (text) yield { type: "text_delta", text };
+        const tool = readResponsesToolDelta(event);
+        if (tool) yield { type: "tool_call_delta", ...tool };
+        if (type === "response.completed") {
+          const responseBody = readStreamRecord(event.response);
+          const usage = asRecord(responseBody.usage);
+          if (Object.keys(usage).length > 0) {
+            yield {
+              type: "usage",
+              usage: {
+                inputTokens: getNumber(usage.input_tokens),
+                outputTokens: getNumber(usage.output_tokens),
+                totalTokens: getNumber(usage.total_tokens),
+              },
+            };
+          }
+          finishReason = "stop";
+        }
+        continue;
+      }
+      const text = readStreamTextDelta(event);
+      if (text) yield { type: "text_delta", text };
+      for (const tool of readStreamToolDeltas(event, knownCallIds)) {
+        yield { type: "tool_call_delta", ...tool };
+      }
+      const choices = Array.isArray(event.choices) ? event.choices : [];
+      const choice = readStreamRecord(choices[0]);
+      if (typeof choice.finish_reason === "string") finishReason = choice.finish_reason;
+      const usage = asRecord(event.usage);
+      if (Object.keys(usage).length > 0) {
+        yield {
+          type: "usage",
+          usage: {
+            inputTokens: getNumber(usage.prompt_tokens),
+            outputTokens: getNumber(usage.completion_tokens),
+            totalTokens: getNumber(usage.total_tokens),
+          },
+        };
+      }
+    }
+    yield { type: "done", ...(finishReason ? { finishReason } : {}) };
   }
 
   async generateText(

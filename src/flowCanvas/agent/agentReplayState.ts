@@ -5,6 +5,241 @@ import type {
   CanvasAgentToolTimelineItem,
 } from "./canvasAgentToolTypes";
 import type { CanvasAgentMessage } from "./useCanvasAgentSession";
+import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
+
+export type V2AgentSessionState = {
+  activityTimeline: CanvasAgentActivityItem[];
+  error: string | null;
+  finalText: string | null;
+  pendingApproval: Record<string, unknown> | null;
+  pendingQuestion: string | null;
+  status: "awaiting_approval" | "error" | "executing_tool" | "idle" | "waiting_for_input";
+  toolTimeline: CanvasAgentToolTimelineItem[];
+};
+
+export function createInitialV2AgentSessionState(): V2AgentSessionState {
+  return {
+    activityTimeline: [],
+    error: null,
+    finalText: null,
+    pendingApproval: null,
+    pendingQuestion: null,
+    status: "idle",
+    toolTimeline: [],
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function getString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function getBoundedString(value: unknown, maxLength: number): string | undefined {
+  const text = getString(value);
+  return text ? text.slice(0, maxLength) : undefined;
+}
+
+function getStringList(value: unknown, maxItems = 12): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value
+    .map((item) => getBoundedString(item, 200))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, maxItems);
+  return values.length > 0 ? values : undefined;
+}
+
+function sanitizeV2AssetRefs(value: unknown): CanvasAgentToolAssetRef[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const refs = value
+    .map((item) => {
+      const ref = asRecord(item);
+      const assetId = getBoundedString(ref?.assetId, 200);
+      const kind = ref?.kind;
+      const label = getBoundedString(ref?.label, 200);
+      const promptSummary = typeof ref?.promptSummary === "string" ? ref.promptSummary.slice(0, 1000) : undefined;
+      const refId = getBoundedString(ref?.refId, 200);
+      if (!assetId || (kind !== "image" && kind !== "video") || !label || promptSummary === undefined || !refId) return null;
+      return {
+        assetId,
+        ...(typeof ref?.height === "number" && Number.isFinite(ref.height) ? { height: ref.height } : {}),
+        kind,
+        label,
+        promptSummary,
+        refId,
+        ...(typeof ref?.width === "number" && Number.isFinite(ref.width) ? { width: ref.width } : {}),
+      } satisfies CanvasAgentToolAssetRef;
+    })
+    .filter((item): item is CanvasAgentToolAssetRef => item !== null)
+    .slice(0, 12);
+  return refs.length > 0 ? refs : undefined;
+}
+
+function sanitizeV2Runs(value: unknown): Array<Record<string, string>> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const runs = value
+    .map((item) => {
+      const run = asRecord(item);
+      const id = getBoundedString(run?.id, 200);
+      const status = getBoundedString(run?.status, 80);
+      return id && status ? { id, status } : null;
+    })
+    .filter((item): item is Record<string, string> => item !== null)
+    .slice(0, 12);
+  return runs.length > 0 ? runs : undefined;
+}
+
+function sanitizeV2ToolResult(value: Record<string, unknown>): Record<string, unknown> {
+  const estimate = asRecord(value.estimate);
+  const output = asRecord(value.output);
+  const outputText = getBoundedString(output?.text, 20_000);
+  const result = {
+    ...(typeof value.allTerminal === "boolean" ? { allTerminal: value.allTerminal } : {}),
+    ...(typeof value.approvalRequired === "boolean" ? { approvalRequired: value.approvalRequired } : {}),
+    ...(getStringList(value.assetIds) ? { assetIds: getStringList(value.assetIds) } : {}),
+    ...(sanitizeV2AssetRefs(value.assetRefs) ? { assetRefs: sanitizeV2AssetRefs(value.assetRefs) } : {}),
+    ...(getStringList(value.createdNodeIds) ? { createdNodeIds: getStringList(value.createdNodeIds) } : {}),
+    ...(getBoundedString(value.error, 1000) ? { error: getBoundedString(value.error, 1000) } : {}),
+    ...(getStringList(value.nodeIds) ? { nodeIds: getStringList(value.nodeIds) } : {}),
+    ...(getStringList(value.placedNodeIds) ? { placedNodeIds: getStringList(value.placedNodeIds) } : {}),
+    ...(getBoundedString(value.message, 1000) ? { message: getBoundedString(value.message, 1000) } : {}),
+    ...(getBoundedString(value.question, 1000) ? { question: getBoundedString(value.question, 1000) } : {}),
+    ...(typeof value.revision === "number" && Number.isSafeInteger(value.revision) && value.revision >= 0 ? { revision: value.revision } : {}),
+    ...(sanitizeV2Runs(value.runs) ? { runs: sanitizeV2Runs(value.runs) } : {}),
+    ...(getBoundedString(value.skillRunId, 200) ? { skillRunId: getBoundedString(value.skillRunId, 200) } : {}),
+    ...(getBoundedString(value.skillStepId, 200) ? { skillStepId: getBoundedString(value.skillStepId, 200) } : {}),
+    ...(getBoundedString(value.status, 80) ? { status: getBoundedString(value.status, 80) } : {}),
+    ...(getBoundedString(value.text, 20_000) ? { text: getBoundedString(value.text, 20_000) } : {}),
+    ...(outputText ? { output: { text: outputText } } : {}),
+    ...(getStringList(value.updatedNodeIds) ? { updatedNodeIds: getStringList(value.updatedNodeIds) } : {}),
+    ...(getBoundedString(value.workflowRunId, 200) ? { workflowRunId: getBoundedString(value.workflowRunId, 200) } : {}),
+    ...(typeof estimate?.totalCredits === "number" && Number.isFinite(estimate.totalCredits) ? { estimate: { totalCredits: estimate.totalCredits } } : {}),
+  };
+  return result;
+}
+
+function upsertV2Tool(state: V2AgentSessionState, callId: string, name: string, patch: Partial<CanvasAgentToolTimelineItem>) {
+  const existing = state.toolTimeline.find((item) => item.toolCallKey === callId);
+  const next: CanvasAgentToolTimelineItem = {
+    assetRefs: existing?.assetRefs ?? [],
+    status: existing?.status ?? "running",
+    title: existing?.title ?? name,
+    toolCallKey: callId,
+    toolName: name,
+    ...existing,
+    ...patch,
+  };
+  state.toolTimeline = [...state.toolTimeline.filter((item) => item.toolCallKey !== callId), next];
+}
+
+function appendV2Activity(state: V2AgentSessionState, id: string, label: string, detail: string | undefined, activityState: CanvasAgentActivityItem["state"]) {
+  if (state.activityTimeline.some((item) => item.id === id)) return;
+  state.activityTimeline = [...state.activityTimeline, { detail, id, label, state: activityState }];
+}
+
+export function applyV2AgentEventToSessionState(
+  input: V2AgentSessionState,
+  eventName: string,
+  rawData: unknown,
+): V2AgentSessionState {
+  const state: V2AgentSessionState = {
+    ...input,
+    activityTimeline: [...input.activityTimeline],
+    toolTimeline: [...input.toolTimeline],
+  };
+  const data = asRecord(rawData) ?? {};
+  const eventType = eventName.replace(/^agent_v2_/, "");
+  const callId = getString(data.callId) ?? getString(data.toolCallKey);
+  const toolName = getString(data.name) ?? getString(data.toolName) ?? "agent_tool";
+
+  if (eventType === "text_delta") return state;
+
+  if (eventType === "tool_started" && callId) {
+    upsertV2Tool(state, callId, toolName, { status: "running" });
+    state.status = "executing_tool";
+    appendV2Activity(state, `v2-tool-started-${callId}`, `正在执行 ${toolName}`, undefined, "active");
+    return state;
+  }
+
+  if (eventType === "tool_result" && callId) {
+    const result = sanitizeV2ToolResult(asRecord(data.result) ?? {});
+    const resultStatus = getString(result.status);
+    const waitingForInput = resultStatus === "waiting_for_input" || resultStatus === "awaiting_input";
+    const awaitingApproval = resultStatus === "awaiting_approval" || resultStatus === "approval_required" || result.approvalRequired === true;
+    const failed = resultStatus === "failed" || resultStatus === "error";
+    const partialSuccess = resultStatus === "partial_success";
+    upsertV2Tool(state, callId, toolName, {
+      ...(Array.isArray(result.assetRefs) ? { assetRefs: result.assetRefs as CanvasAgentToolAssetRef[] } : {}),
+      error: failed || partialSuccess ? getString(result.message) ?? getString(result.error) ?? (partialSuccess ? "部分步骤失败，可重试失败步骤。" : "Agent 工具执行失败。") : undefined,
+      result,
+      status: awaitingApproval ? "awaiting_approval" : failed ? "failed" : partialSuccess ? "partial_success" : "succeeded",
+    });
+    if (awaitingApproval) {
+      state.pendingApproval = { callId, name: toolName, ...result };
+      state.status = "awaiting_approval";
+      appendV2Activity(state, `v2-approval-${callId}`, "等待确认执行", "确认参数和积分后继续。", "active");
+    } else if (waitingForInput) {
+      const question = getString(result.question);
+      if (question) state.pendingQuestion = question;
+      state.status = "waiting_for_input";
+      appendV2Activity(state, `v2-question-${callId}`, "等待补充信息", question ?? undefined, "active");
+    } else {
+      appendV2Activity(state, `v2-tool-result-${callId}`, failed ? "执行失败" : "步骤已完成", getString(result.message) ?? undefined, failed ? "failed" : "completed");
+    }
+    return state;
+  }
+
+  if (eventType === "turn_waiting") {
+    const reason = getString(data.reason);
+    const details = asRecord(data.details);
+    if (reason === "user_input") {
+      const question = getString(details?.question) ?? getString(data.question);
+      if (question) state.pendingQuestion = question;
+      state.status = "waiting_for_input";
+      appendV2Activity(state, `v2-turn-waiting-${question ?? "input"}`, "等待补充信息", question ?? undefined, "active");
+    } else {
+      state.status = "executing_tool";
+      appendV2Activity(state, "v2-turn-waiting-workflow", "正在等待模型返回结果", undefined, "active");
+    }
+    return state;
+  }
+
+  if (eventType === "turn_completed") {
+    state.finalText = getString(data.text) ?? getString(data.summary) ?? state.finalText;
+    state.pendingQuestion = null;
+    state.pendingApproval = null;
+    state.status = "idle";
+    appendV2Activity(state, "v2-turn-completed", "已完成", undefined, "completed");
+    return state;
+  }
+
+  if (eventType === "turn_failed") {
+    state.error = getString(data.message) ?? "Agent 执行失败。";
+    state.pendingQuestion = null;
+    state.pendingApproval = null;
+    state.status = "error";
+    appendV2Activity(state, "v2-turn-failed", "任务失败", state.error, "failed");
+    return state;
+  }
+
+  return state;
+}
+
+export function buildV2AgentSessionStateFromEvents(events: AgentSessionEvent[]): V2AgentSessionState {
+  return events.reduce((state, event) => {
+    const payload = event.eventJson;
+    const isV2Shape = event.eventType === "turn_waiting"
+      || (event.eventType === "tool_started" && typeof payload.callId === "string" && typeof payload.name === "string")
+      || (event.eventType === "tool_result" && typeof payload.callId === "string" && typeof payload.name === "string")
+      || (event.eventType === "turn_completed" && typeof payload.text === "string")
+      || (event.eventType === "turn_failed" && (String(payload.code ?? "").startsWith("AGENT_V2") || payload.graphRevision !== undefined));
+    return isV2Shape
+      ? applyV2AgentEventToSessionState(state, `agent_v2_${event.eventType}`, payload)
+      : state;
+  }, createInitialV2AgentSessionState());
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -131,7 +366,11 @@ export function buildToolTimelineFromSessionEvents(events: AgentSessionEvent[]):
       if (!toolCallKey) continue;
       const current = ensureItem(items, toolCallKey, "generate_image");
       const result = isRecord(payload.result) ? payload.result : {};
-      const status = result.status === "failed" ? "failed" : "succeeded";
+      const status = result.status === "failed"
+        ? "failed"
+        : result.status === "partial_success"
+          ? "partial_success"
+          : "succeeded";
       const assetRefs = Array.isArray(result.assetRefs)
         ? result.assetRefs
             .map((value) => asAssetRef(value))

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import { requireAuth, requirePermission, requireTenant } from "../../http/auth-middleware.js";
 import {
@@ -55,6 +55,10 @@ function parseParams<T>(request: FastifyRequest, schema: { parse: (value: unknow
 
 function parseQuery<T>(request: FastifyRequest, schema: { parse: (value: unknown) => T }): T {
   return schema.parse(request.query);
+}
+
+function formatStreamEvent(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 function getAgentContext(request: FastifyRequest) {
@@ -138,6 +142,21 @@ function writeAgentSseFailure(error: unknown, request: FastifyRequest, reply: Fa
 
 export function registerAgentRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
+
+  app.get(
+    "/api/v2/agent/capabilities",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (_request, reply) => {
+      const env = app.agentService.env;
+      return reply.send({
+        agentV2Enabled: env.agentV2Enabled === true,
+        agentV2RuntimeEnabled: env.agentV2RuntimeEnabled === true,
+        skillAuthoringEnabled: env.agentSkillsEnabled === true && env.agentSkillAuthoringEnabled === true,
+        skillRuntimeEnabled: env.agentSkillsEnabled === true && env.agentSkillRuntimeEnabled === true,
+        skillsEnabled: env.agentSkillsEnabled === true,
+      });
+    },
+  );
 
   app.post(
     "/api/v2/agent/sessions",
@@ -360,6 +379,76 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/v2-turns/stream",
+    {
+      preHandler: [...authHandlers, requirePermission("flow:update")],
+    },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<CreateAgentTurnInput & { routeKey?: string }>(request, createAgentTurnSchema.extend({ routeKey: z.string().trim().max(200).optional(), idempotencyKey: z.string().trim().min(1).max(200) }));
+        startAgentSse(reply);
+        try {
+          await app.agentService.streamV2TurnEvents(getAgentContext(request), params.sessionId, body, (chunk) => { reply.raw.write(chunk); });
+        } catch (streamError) {
+          writeAgentSseFailure(streamError, request, reply);
+        } finally {
+          reply.raw.end();
+        }
+        return reply;
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/turns/v2/stream",
+    { preHandler: [...authHandlers, requirePermission("flow:update")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<CreateAgentTurnInput & { routeKey?: string }>(request, createAgentTurnSchema.extend({ routeKey: z.string().trim().max(200).optional(), idempotencyKey: z.string().trim().min(1).max(200) }));
+        startAgentSse(reply);
+        try { await app.agentService.streamV2TurnEvents(getAgentContext(request), params.sessionId, body, (chunk) => { reply.raw.write(chunk); }); }
+        catch (streamError) { writeAgentSseFailure(streamError, request, reply); }
+        finally { reply.raw.end(); }
+        return reply;
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/cancel",
+    { preHandler: [...authHandlers, requirePermission("flow:run")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = z.object({ reason: z.string().trim().max(500).optional() }).strict().parse(request.body);
+        return reply.send(await app.agentService.cancelV2Turn(getAgentContext(request), params.sessionId, body.reason));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/approvals/:approvalId/stream",
+    { preHandler: [...authHandlers, requirePermission("flow:run")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), approvalId: z.string().uuid() }).parse(request.params);
+        startAgentSse(reply);
+        try {
+          const result = await app.agentService.approveV2SkillRun(getAgentContext(request), params.sessionId, params.approvalId);
+          reply.raw.write(formatStreamEvent("agent_v2_approval", result));
+          reply.raw.write(formatStreamEvent("done", { sessionId: params.sessionId, approvalId: params.approvalId }));
+        } catch (streamError) { writeAgentSseFailure(streamError, request, reply); }
+        finally { reply.raw.end(); }
+        return reply;
+      } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
 

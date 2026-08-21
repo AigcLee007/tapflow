@@ -116,6 +116,86 @@ Runtime URLs:
 - Frontend: `http://localhost:5188`
 - API health check: `http://localhost:3366/health`
 
+## 6.1 Agent + Skill V2 Local Flags
+
+Agent V2 and Skills are opt-in. Keep every flag disabled for the default local
+path, then enable the matching server and Vite flags in the same shell/build
+when testing the new panel:
+
+```env
+AGENT_V2_ENABLED=false
+AGENT_V2_RUNTIME_ENABLED=false
+AGENT_SKILLS_ENABLED=false
+AGENT_SKILL_AUTHORING_ENABLED=false
+AGENT_SKILL_RUNTIME_ENABLED=false
+AGENT_SKILL_MAX_SOURCE_CHARS=24000
+AGENT_SKILL_MAX_STEPS=12
+AGENT_SKILL_REPAIR_ATTEMPTS=1
+VITE_AGENT_V2_ENABLED=false
+VITE_AGENT_SKILLS_ENABLED=false
+VITE_AGENT_SKILL_AUTHORING_ENABLED=false
+VITE_AGENT_SKILL_RUNTIME_ENABLED=false
+```
+
+Enablement is conjunctive: the V2 panel requires both `AGENT_V2_ENABLED` and
+`VITE_AGENT_V2_ENABLED`; Skill browsing requires both
+`AGENT_SKILLS_ENABLED` and `VITE_AGENT_SKILLS_ENABLED`; authoring and runtime
+each require their corresponding pair. If a server capability is
+unavailable or a runtime flag is off, the UI must remain on the current Agent
+panel and V2 write requests must be rejected. Never infer enablement from
+`import.meta.env.DEV`.
+
+After changing a `VITE_*` value, restart Vite. API/Worker values are read at
+process start, so restart both processes as well. Use the server capability
+endpoint to confirm the effective rollout without exposing provider details:
+
+```bash
+curl -s http://localhost:3366/api/v2/agent/capabilities
+```
+
+## 6.2 Agent + Skill Smoke And Replay
+
+Run migrations before enabling the runtime. The Agent metadata and Skill tables
+are applied by the normal migration command (`000075` and `000076` in the
+current tree):
+
+```bash
+npm run db:migrate
+```
+
+Seed the provider-agnostic official catalog only in local development. This
+command is intentionally blocked outside `NODE_ENV=development` unless an
+operator explicitly sets `DEV_SEED_ENABLED=true`; it only manages
+platform-scoped official Skills and never modifies private tenant Skills:
+
+```bash
+npm run dev:seed-agent-skills
+```
+
+With authenticated test credentials, verify in order: create a session, send a
+text-only turn, browse and select a published Skill, run a text Skill, then an
+image/video Skill through the normal workflow path. Approvals must be required
+before paid execution; cancellation must prevent later canvas mutations. Replay
+the Skill run events with `afterSeq` and confirm sequence numbers are strictly
+monotonic:
+
+```bash
+curl -s -H "Authorization: Bearer $TAPFLOW_ACCESS_TOKEN" \
+  "http://localhost:3366/api/v2/agent/skill-runs/<run-id>/events?afterSeq=0"
+```
+
+Verify generated media appears in `/assets` and the refreshed canvas stores
+only tenant-owned `assetId` references (never base64, `blob:`/`data:` URLs,
+signed URLs, `File`, or `Blob` values). Exercise a stale draft revision and
+confirm the API returns `409` rather than silently overwriting another tab.
+
+For local observability, retain `requestId`, `agentVersion`, `turnId`,
+`skillId`, `skillVersionId`, `skillRunId`, `skillStepId`, `graphRevision`,
+`durationMs`, `firstEventLatencyMs`, `failedStep`, `retryCount`, and
+`redactionHits` in structured API/Worker logs. Provider keys, authorization
+headers, upstream route configuration, and raw prompts containing secrets must
+not be logged or returned to the browser.
+
 Provider settings UI (local/dev):
 
 - Route: `/account/provider-settings`

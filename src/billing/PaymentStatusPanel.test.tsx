@@ -22,6 +22,10 @@ describe("PaymentStatusPanel", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
     render(<PaymentStatusPanel payment={payment} />);
     expect(screen.getByRole("img", { name: "支付二维码" }).getAttribute("src")).toBe(payment.qrCodeUrl);
+    expect(screen.getByText("微信扫码支付")).toBeTruthy();
+    expect(screen.getByText("当前仅支持微信支付")).toBeTruthy();
+    expect(screen.getByText("请使用微信扫一扫完成支付")).toBeTruthy();
+    expect(screen.queryByText("支付状态")).toBeNull();
   });
 
   test("does not show a QR code on mobile after checkout redirects", () => {
@@ -42,7 +46,7 @@ describe("PaymentStatusPanel", () => {
   ] as const)("maps %s to %s", (status, label) => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
     render(<PaymentStatusPanel payment={{ ...payment, status }} />);
-    expect(screen.getByText("支付状态")).toBeTruthy();
+    expect(screen.getByText("微信扫码支付")).toBeTruthy();
     expect(screen.getByText(label)).toBeTruthy();
   });
 });

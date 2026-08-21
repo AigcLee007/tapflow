@@ -24,6 +24,11 @@ import { AuditApiService } from "./modules/audit/audit.service.js";
 import { registerAdminRoutes } from "./modules/admin/admin.routes.js";
 import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
+import { registerSkillRoutes } from "./modules/agent/skill.routes.js";
+import { SkillAuthoringService } from "./modules/agent/skill-authoring.service.js";
+import { SkillRunService } from "./modules/agent/agent-skill-run.service.js";
+import { registerSkillRunRoutes } from "./modules/agent/skill-run.routes.js";
+import { SkillService } from "./modules/agent/skill.service.js";
 import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
@@ -36,6 +41,7 @@ import { AgentWorkflowLauncher } from "./modules/agent/agent-workflow-launcher.j
 import { registerAiGatewayAdminRoutes } from "./modules/ai-gateway/ai-gateway.routes.js";
 import { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
 import { registerAiModelCatalogRoutes } from "./modules/ai-model-catalog/ai-model-catalog.routes.js";
+import { RedisAiModelCatalogCache, type AiModelCatalogCache } from "./modules/ai-model-catalog/ai-model-catalog.cache.js";
 import { AiModelCatalogService } from "./modules/ai-model-catalog/ai-model-catalog.service.js";
 import { registerAiModelConfigurationRoutes } from "./modules/ai-model-configurations/ai-model-configurations.routes.js";
 import { AiModelConfigurationsService } from "./modules/ai-model-configurations/ai-model-configurations.service.js";
@@ -174,6 +180,7 @@ export function buildApp(options?: {
   assetVideoReferenceVariantQueue?: AssetVideoReferenceVariantQueue | null;
   workflowRunsService?: WorkflowRunsService;
   agentExecutorService?: AgentExecutorService;
+  aiModelCatalogCache?: AiModelCatalogCache;
 }) {
   const env = options?.env ?? getApiEnv();
   const ownedPool = !options?.pool;
@@ -191,6 +198,17 @@ export function buildApp(options?: {
         prefix: env.queuePrefix,
       })
     : null;
+  const ownedAiModelCatalogCache = !options?.aiModelCatalogCache;
+  const aiModelCatalogRedisConnection = ownedAiModelCatalogCache
+    ? createRedisConnection({
+        connectTimeout: 1_000,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        redisUrl: env.redisUrl,
+      })
+    : null;
+  const aiModelCatalogCache = options?.aiModelCatalogCache
+    ?? new RedisAiModelCatalogCache(aiModelCatalogRedisConnection!);
   const storageProvider =
     options?.storageProvider ??
     new S3StorageProvider({
@@ -224,7 +242,10 @@ export function buildApp(options?: {
     credentialVault,
     pool,
   });
-  const aiModelCatalogService = new AiModelCatalogService({ pool });
+  const aiModelCatalogService = new AiModelCatalogService({
+    cache: aiModelCatalogCache,
+    pool,
+  });
   const aiModelConfigurationsService = new AiModelConfigurationsService({
     credentialVault,
     pluginRegistry: builtinAiPluginRegistry,
@@ -325,6 +346,8 @@ export function buildApp(options?: {
     storageProvider,
   });
   const promptsService = new PromptsService({ pool, promptCatalogMediaDir: env.promptCatalogMediaDir });
+  const skillService = new SkillService();
+  const skillRunService = new SkillRunService();
   const agentService = new AgentService({
     aiModelCatalogService,
     env,
@@ -335,6 +358,9 @@ export function buildApp(options?: {
     sessionRepository: agentSessionRepository,
     runSettingsService: agentRunSettingsService,
     textRuntime: agentTextRuntime,
+    skillService,
+    skillRunService,
+    workflowRunsService,
   });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
@@ -353,7 +379,10 @@ export function buildApp(options?: {
 
   app.decorate("adminService", adminService);
   app.decorate("agentService", agentService);
+  app.decorate("skillService", skillService);
+  app.decorate("skillRunService", skillRunService);
   app.decorate("aiGatewayService", aiGatewayService);
+  app.decorate("aiModelCatalogCache", aiModelCatalogCache);
   app.decorate("aiModelCatalogService", aiModelCatalogService);
   app.decorate("aiModelConfigurationsService", aiModelConfigurationsService);
   app.decorate("aiPluginService", aiPluginService);
@@ -440,6 +469,10 @@ export function buildApp(options?: {
     if (!ownedQueueHealthService && appRedisConnection) {
       await closeRedisConnection(appRedisConnection);
     }
+
+    if (ownedAiModelCatalogCache && aiModelCatalogRedisConnection) {
+      await closeRedisConnection(aiModelCatalogRedisConnection);
+    }
   });
 
   app.addHook("onReady", async () => {
@@ -473,6 +506,25 @@ export function buildApp(options?: {
 
   registerAdminRoutes(app);
   registerAgentRoutes(app);
+  registerSkillRoutes(app, skillService, new SkillAuthoringService({
+    repairAttempts: env.agentSkillRepairAttempts,
+    generate: async (prompt, runtimeContext) => {
+      if (!runtimeContext) throw new Error("AUTHORING_RUNTIME_CONTEXT_REQUIRED");
+      const result = await agentTextRuntime.generateText(runtimeContext, {
+        messages: [
+          { role: "system", content: "你是 TapFlow 的 Skill 设计助手。严格按要求返回 JSON，不执行画布、工作流或计费操作。" },
+          { role: "user", content: prompt.slice(0, 24000) },
+        ],
+        routeKey: env.agentTextRouteKey,
+        maxTokens: 4000,
+      });
+      return result.outputText;
+    },
+  }), {
+    skillsEnabled: env.agentSkillsEnabled,
+    authoringEnabled: env.agentSkillAuthoringEnabled,
+  });
+  registerSkillRunRoutes(app, { canvas: app.agentService.canvasService, enabled: env.agentSkillsEnabled && env.agentSkillRuntimeEnabled, runs: skillRunService, skills: skillService });
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
   registerAiModelCatalogRoutes(app);

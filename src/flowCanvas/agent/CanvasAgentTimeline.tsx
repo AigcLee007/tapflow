@@ -15,6 +15,8 @@ export function CanvasAgentTimeline(props: {
     assets?: CanvasAgentToolAssetRef[],
   ) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
+  onRetryTool?: (toolCallKey: string) => void;
+  onViewRun?: (workflowRunId: string) => void;
 }) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -26,6 +28,8 @@ export function CanvasAgentTimeline(props: {
           onCancel={props.onCancel}
           onContinueFromAsset={props.onContinueFromAsset}
           onPlaceAssets={props.onPlaceAssets}
+          onRetryTool={props.onRetryTool}
+          onViewRun={props.onViewRun}
         />
       ))}
     </div>

@@ -14,6 +14,7 @@ function sanitizeLogText(value: string) {
 export function CanvasAgentLogView(props: {
   activityItems: CanvasAgentActivityItem[];
   error: string | null;
+  selectedRunId?: string | null;
 }) {
   return (
     <div style={{ display: "grid", gap: 12, height: "100%", overflowY: "auto", padding: 16 }}>
@@ -31,6 +32,7 @@ export function CanvasAgentLogView(props: {
         <div style={{ color: "rgba(226,232,240,0.72)", fontSize: 12, lineHeight: 1.6 }}>
           这里只保留对排查有帮助的安全信息，不展示供应商、线路密钥或上游模型细节。
         </div>
+        {props.selectedRunId ? <div style={{ color: "#93c5fd", fontSize: 11 }}>当前运行：{props.selectedRunId}</div> : null}
       </section>
 
       {props.error ? (
@@ -54,6 +56,7 @@ export function CanvasAgentLogView(props: {
         {props.activityItems.map((item) => (
           <div
             key={item.id}
+            data-selected-run={props.selectedRunId && item.detail?.includes(props.selectedRunId) ? "true" : undefined}
             style={{
               background: "rgba(255,255,255,0.03)",
               border: "1px solid rgba(255,255,255,0.08)",

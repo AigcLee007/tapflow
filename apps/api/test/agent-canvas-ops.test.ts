@@ -338,4 +338,53 @@ describe("AgentCanvasService", () => {
     );
     expect(result.draft.revision).toBe(5);
   });
+
+  it("rejects a V2 canvas write on a revision conflict without rebasing", async () => {
+    const draft = createDraft(3);
+    const saveFlowDraft = vi.fn().mockRejectedValue(new FlowsApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "stale"));
+    const service = new AgentCanvasService({
+      eventRepository: { appendSessionEvent: vi.fn() },
+      flowsService: { getFlowDraft: vi.fn().mockResolvedValue(draft), saveFlowDraft },
+      sessionRepository: { getSession: vi.fn().mockResolvedValue({ flowId: "flow-1", id: "session-1", projectId: "project-1", tenantId: "tenant-1" }) },
+    });
+    await expect(service.applyOps(context, "session-1", {
+      expectedRevision: 3,
+      strictRevision: true,
+      flowId: "flow-1",
+      ops: [{ type: "update_node_data", nodeId: "text-1", patch: { text: "v2" } }],
+      turnId: "turn-1",
+    })).rejects.toMatchObject({ code: "FLOW_DRAFT_REVISION_CONFLICT" });
+    expect(saveFlowDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("places safe text and asset result nodes without persisting media URLs", async () => {
+    const draft = createDraft(3);
+    const saveFlowDraft = vi.fn().mockImplementation(async (_context, _flowId, input) => ({ ...draft, revision: input.expectedRevision + 1, graph: input.graph }));
+    const service = new AgentCanvasService({
+      eventRepository: { appendSessionEvent: vi.fn().mockResolvedValue(null) },
+      flowsService: { getFlowDraft: vi.fn().mockResolvedValue(draft), saveFlowDraft },
+      randomId: (() => { const ids = ["result-text", "result-image"]; return () => ids.shift()!; })(),
+      sessionRepository: { getSession: vi.fn().mockResolvedValue({ flowId: "flow-1", id: "session-1", projectId: "project-1", tenantId: "tenant-1" }) },
+    });
+
+    const result = await service.placeSkillResults(context, "session-1", {
+      expectedRevision: 3,
+      flowId: "flow-1",
+      results: [
+        { kind: "text", text: "可编辑的最终文案", title: "文案结果" },
+        { assetId: "asset-123", kind: "image", previewUrl: "https://private.example/signed", title: "图片结果" },
+      ],
+      skillRunId: "run-1",
+      skillStepId: "step-1",
+      turnId: "turn-1",
+    });
+
+    const nodes = saveFlowDraft.mock.calls[0][2].graph.nodes;
+    expect(result.applied.createdNodeIds).toEqual(["result-text", "result-image"]);
+    expect(nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "result-text", data: expect.objectContaining({ text: "可编辑的最终文案", skillRunId: "run-1" }) }),
+      expect.objectContaining({ id: "result-image", data: expect.objectContaining({ assetId: "asset-123", skillStepId: "step-1" }) }),
+    ]));
+    expect(JSON.stringify(nodes)).not.toContain("signed");
+  });
 });
