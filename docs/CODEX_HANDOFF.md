@@ -1,5 +1,13 @@
 # Codex Handoff
 
+## Canvas Skill Workbench UI Handoff (2026-08-21)
+
+- The Canvas Agent now exposes a persistent Skill bar and picker, including truthful unavailable state while `VITE_AGENT_SKILLS_ENABLED` or server Skill runtime flags are off.
+- Product-safe Skill contracts normalize picker and Skill Run responses. Internal provider, route, credential, base URL, and normalized configuration fields are dropped before data reaches UI state.
+- V2 `skill.run` approval events resolve the durable Skill Run projection and render an execution plan with estimate, step status, approval, cancellation, and error states. Approval uses the existing session approval stream; cancellation uses the authenticated Skill Run endpoint.
+- Replay metadata restores only selected Skill ID/version. The standard chat, history, logs, reference chips, and canvas-first layout remain available.
+- Focused frontend validation passed: 30 Skill/API/picker/panel/plan tests, 35 session/panel regression tests, production build, and `git diff --check`. All V2/Skill flags remain disabled pending staging acceptance.
+
 ## Agent + Skill Runtime Hardening (2026-08-20)
 
 - Scoped V2 context projects only tenant/flow-safe model catalog, active pricing, and recent run summaries; missing pricing is represented as unavailable rather than free.

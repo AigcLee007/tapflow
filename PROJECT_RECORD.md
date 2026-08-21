@@ -2,6 +2,14 @@
 
 Last updated: 2026-08-21
 
+## 2026-08-21 - Canvas Skill Workbench UI Slice
+
+- Added a persistent LibTV-style Skill workbench bar to the right-side Canvas Agent. It remains visible when runtime flags are disabled and reports the unavailable state without hiding the normal composer.
+- Skill catalog responses are projected through a product-safe whitelist; the picker uses shared menu density, modality groups, loading/error/empty/retry states, and Escape dismissal.
+- Added safe Skill Run read/approval/cancel adapters and a visible execution plan with estimates, ordered steps, approval/cancel controls, and redacted DOM-facing data. V2 approval events now load the durable Skill Run projection instead of exposing provider or route fields.
+- Selected Skill identity/version is restored from replay metadata and cleared on new-chat reset. Runtime flags remain disabled pending authenticated staging acceptance.
+- Validation: 30 focused frontend tests passed across API, picker, panel, and Skill plan suites; session/panel regression suite passed (35 tests); `npm run build` and `git diff --check` passed. Build warnings are existing Browserslist/mixed-import/chunk-size notices.
+
 ## 2026-08-21 - Skill Approval Gate Runtime Boundary
 
 - Added a server-generated, redacted Skill launch approval plan for selected V2 canvas targets. The plan is persisted in `agent_skill_runs.budget_snapshot` and contains only flow/revision, action, node IDs, pricing flags, and batch metadata.
