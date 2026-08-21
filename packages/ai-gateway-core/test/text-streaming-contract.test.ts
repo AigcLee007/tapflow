@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { AiGateway } from "../src/ai-gateway.js";
 import { AittcoTextRelayAdapter } from "../src/aittco-text-relay-adapter.js";
 import { OpenAiCompatibleTextAdapter } from "../src/openai-compatible-text-adapter.js";
+import { DatabaseTextGenerationRuntime } from "../src/database-text-runtime.js";
 import {
   type ResolvedRoute,
   type TextGenerationRequest,
@@ -48,6 +49,24 @@ async function collect<T>(events: AsyncIterable<T>): Promise<T[]> {
 }
 
 describe("text streaming gateway contract", () => {
+  test("database text runtime exposes only the normalized route capabilities", async () => {
+    const runtime = new DatabaseTextGenerationRuntime({
+      credentialVault: {} as never,
+      pool: {} as never,
+      routeResolver: {
+        resolveTextRoute({ routes }: { routes: ResolvedRoute[] }) {
+          return routes[0]!;
+        },
+      } as never,
+    });
+    Object.defineProperty(runtime, "listRuntimeRoutes", {
+      value: async () => [route({ supportsTextStreaming: true, supportsToolCalling: true })],
+    });
+
+    await expect(runtime.getTextStreamingCapabilities({ tenantId: "tenant", userId: "user" }, "text.route"))
+      .resolves.toEqual({ supportsTextStreaming: true, supportsToolCalling: true });
+  });
+
   test("fails closed when the selected route does not advertise streaming and tool calling", async () => {
     const gateway = new AiGateway({
       test: {

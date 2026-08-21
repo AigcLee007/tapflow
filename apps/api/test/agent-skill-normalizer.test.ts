@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeSkillSource } from "../src/modules/agent/skill-normalizer.js";
 import { skillSourceSchema } from "../src/modules/agent/skill-schemas.js";
+import { toSkillRuntimeAction } from "../src/modules/agent/skill-types.js";
 
 describe("skill source normalization", () => {
+  it("maps persisted actions to explicit runtime operations", () => {
+    expect(["analyze", "canvas", "text", "image", "video", "review", "deliver"].map((action) => toSkillRuntimeAction(action as never))).toEqual([
+      "analyze", "create_canvas", "generate_text", "generate_image", "generate_video", "review", "deliver",
+    ]);
+  });
+
   it("normalizes a text Skill into executable-safe hints", () => {
     const source = skillSourceSchema.parse({
       name: "Product copy",

@@ -7,6 +7,7 @@ import {
   executeAgentTurnStream,
   listAgentSkills,
   openAgentV2TurnStream,
+  placeSkillRunResults,
   readAgentSseStream,
 } from "./canvasAgentApi";
 
@@ -223,6 +224,28 @@ describe("canvasAgentApi", () => {
 
     expect(String(calls[0]?.input)).toBe("/api/v2/agent/sessions/session-1/tool-calls/approve/stream");
     expect(calls[0]?.init?.method).toBe("POST");
+  });
+
+  it("places a completed Skill run result through the V2 endpoint", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      return Response.json({ applied: { createdNodeIds: ["node-1"] } });
+    }) as typeof fetch;
+    try {
+      await placeSkillRunResults("run-1", {
+        expectedRevision: 4,
+        flowId: "flow-1",
+        results: [{ kind: "text", text: "result" }],
+        sessionId: "session-1",
+        turnId: "turn-1",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(String(calls[0]?.input)).toBe("/api/v2/agent/skill-runs/run-1/place-results");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ expectedRevision: 4, flowId: "flow-1" });
   });
 
   it("parses plan and done events from agent SSE", async () => {

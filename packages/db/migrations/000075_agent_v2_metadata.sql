@@ -8,6 +8,13 @@ ALTER TABLE agent_turns
   ADD COLUMN IF NOT EXISTS lease_owner text NULL,
   ADD COLUMN IF NOT EXISTS lease_expires_at timestamptz NULL;
 
+-- The legacy migration names this constraint explicitly. Dropping by name is
+-- robust against PostgreSQL's `IN (...)` -> `= ANY (ARRAY[...])` deparser.
+ALTER TABLE agent_turns DROP CONSTRAINT IF EXISTS agent_turns_status_check;
+ALTER TABLE agent_turns
+  ADD CONSTRAINT agent_turns_status_check
+  CHECK (status IN ('pending', 'planned', 'running', 'succeeded', 'failed', 'cancelled'));
+
 ALTER TABLE agent_tool_calls
   ADD COLUMN IF NOT EXISTS agent_namespace text NULL,
   ADD COLUMN IF NOT EXISTS agent_version text NULL,

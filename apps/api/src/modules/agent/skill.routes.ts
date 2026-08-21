@@ -5,12 +5,22 @@ import { requireAuth, requirePermission, requireTenant } from "../../http/auth-m
 import { SkillService } from "./skill.service.js";
 import { skillSourceSchema } from "./skill-schemas.js";
 import { SkillAuthoringService } from "./skill-authoring.service.js";
+import { skillPackageSchema, validateSkillPackage } from "./skill-package.service.js";
 
 const idParams = z.object({ skillId: z.string().uuid() });
 const listQuery = z.object({ scope: z.enum(["available", "mine"]).default("available"), modality: z.enum(["text", "image", "video"]).optional(), q: z.string().trim().max(100).optional() });
 const draftBody = z.object({ source: skillSourceSchema, expectedRevision: z.number().int().nonnegative().optional() });
-const packageBody = z.object({ skillMd: z.string().trim().min(1).max(24000), graphJson: z.unknown().optional() }).strict();
-const authoringBody = z.object({ draft: skillSourceSchema.partial().default({}), userMessage: z.string().trim().min(1).max(4000) }).strict();
+const packageBody = skillPackageSchema;
+const authoringBody = z.object({
+  canvasSnapshot: z.object({
+    nodes: z.array(z.object({ id: z.string().trim().min(1).max(120), kind: z.string().trim().max(40).optional(), text: z.string().max(240).optional(), title: z.string().max(120).optional() }).strict()).max(24),
+    selectedNodeIds: z.array(z.string().trim().min(1).max(120)).max(12),
+  }).strict().optional(),
+  draft: skillSourceSchema.partial().default({}),
+  sessionId: z.string().uuid().nullable().optional(),
+  userMessage: z.string().trim().min(1).max(4000),
+}).strict();
+const instantiateBody = z.object({ inputs: z.record(z.string().trim().min(1).max(100), z.union([z.string().trim().max(12000), z.number().finite(), z.boolean()])).default({}) }).strict();
 
 function context(request: FastifyRequest) {
   if (!request.ctx.tenantId || !request.ctx.userId) throw new Error("TENANT_REQUIRED");
@@ -18,8 +28,8 @@ function context(request: FastifyRequest) {
 }
 
 function replyError(request: FastifyRequest, reply: FastifyReply, error: unknown) {
-  const status = error instanceof ZodError ? 400 : error instanceof Error && ["SKILL_NOT_FOUND", "FEATURE_DISABLED"].includes(error.message) ? (error.message === "SKILL_NOT_FOUND" ? 404 : 404) : error instanceof Error && error.message === "SKILL_VERSION_CONFLICT" ? 409 : error instanceof Error && ["SKILL_EXPORT_UNAVAILABLE", "AUTHORING_OUTPUT_INVALID"].includes(error.message) ? 422 : 500;
-  const code = error instanceof ZodError ? "VALIDATION_ERROR" : error instanceof Error ? error.message : "INTERNAL_ERROR";
+  const code = error instanceof ZodError ? "SKILL_INVALID_SOURCE" : error instanceof Error ? error.message : "INTERNAL_ERROR";
+  const status = new Set(["SKILL_NOT_FOUND"]).has(code) ? 404 : code === "SKILL_FORBIDDEN" ? 403 : code === "SKILL_VERSION_CONFLICT" ? 409 : new Set(["SKILL_INVALID_SOURCE", "SKILL_INVALID_PACKAGE_PATH", "SKILL_INVALID_PACKAGE_FILE", "SKILL_INVALID_PACKAGE_CONTENT", "SKILL_PUBLISH_BLOCKED", "SKILL_EXPORT_UNAVAILABLE", "AUTHORING_OUTPUT_INVALID"]).has(code) ? 422 : code === "FEATURE_DISABLED" ? 404 : 500;
   return reply.code(status).send({ error: { code, message: status === 500 ? "Skill service is temporarily unavailable." : code, requestId: request.ctx.requestId } });
 }
 
@@ -52,20 +62,31 @@ export function registerSkillRoutes(app: FastifyInstance, service: SkillService,
     try { ensureSkills();
       const params = idParams.parse(request.params);
       const body = draftBody.parse(request.body);
-      return reply.send(await service.publish(context(request), params.skillId, body.source));
+      return reply.send(await service.publish(context(request), params.skillId, body.source, body.expectedRevision));
     } catch (error) { return replyError(request, reply, error); }
   });
   app.post("/api/v2/agent/skills/authoring/turn", { preHandler: auth }, async (request, reply) => {
-    try { ensureAuthoring(); return reply.send(await authoring.turn(authoringBody.parse(request.body))); }
+    try {
+      ensureAuthoring();
+      const body = authoringBody.parse(request.body);
+      return reply.send(await authoring.turn({ ...body, runtimeContext: context(request) }));
+    }
     catch (error) { return replyError(request, reply, error); }
   });
   app.post("/api/v2/agent/skills/import", { preHandler: auth }, async (request, reply) => {
-    try { ensureSkills(); return reply.code(201).send(await service.importPackage(context(request), packageBody.parse(request.body))); }
+    try { ensureSkills(); const pkg = validateSkillPackage(packageBody.parse(request.body)); return reply.code(201).send(await service.importPackage(context(request), pkg)); }
     catch (error) { return replyError(request, reply, error); }
   });
   app.get("/api/v2/agent/skills/:skillId/export", { preHandler: auth }, async (request, reply) => {
     try { ensureSkills(); return reply.send(await service.exportPackage(context(request), idParams.parse(request.params).skillId)); }
     catch (error) { return replyError(request, reply, error); }
+  });
+  app.post("/api/v2/agent/skills/:skillId/instantiate", { preHandler: [...auth, requirePermission("flow:update")] }, async (request, reply) => {
+    try {
+      ensureSkills();
+      const params = idParams.parse(request.params);
+      return reply.send(await service.instantiateGraph(context(request), params.skillId, instantiateBody.parse(request.body).inputs));
+    } catch (error) { return replyError(request, reply, error); }
   });
   app.post("/api/v2/agent/skills/:skillId/duplicate", { preHandler: auth }, async (request, reply) => {
     try {

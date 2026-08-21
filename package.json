@@ -20,6 +20,7 @@
     "start:tapflow-agent": "npm run start --workspace @aigc-flow/tapflow-agent",
     "dev:seed-billing": "tsx scripts/dev-seed-billing.ts",
     "dev:seed-ai": "tsx scripts/dev-seed-ai.ts",
+    "dev:seed-agent-skills": "tsx scripts/dev-seed-agent-skills.ts",
     "assets:backfill-variants": "node --import tsx ./scripts/backfill-asset-variants.ts",
     "prompts:backfill-variants": "node --import tsx ./scripts/migrate-prompt-media-variants.ts",
     "cleanup:stuck-runs": "tsx scripts/cleanup-stuck-workflow-runs.ts",

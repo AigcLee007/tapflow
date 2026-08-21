@@ -26,6 +26,8 @@ import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
 import { registerSkillRoutes } from "./modules/agent/skill.routes.js";
 import { SkillAuthoringService } from "./modules/agent/skill-authoring.service.js";
+import { SkillRunService } from "./modules/agent/agent-skill-run.service.js";
+import { registerSkillRunRoutes } from "./modules/agent/skill-run.routes.js";
 import { SkillService } from "./modules/agent/skill.service.js";
 import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
@@ -329,6 +331,7 @@ export function buildApp(options?: {
   });
   const promptsService = new PromptsService({ pool, promptCatalogMediaDir: env.promptCatalogMediaDir });
   const skillService = new SkillService();
+  const skillRunService = new SkillRunService();
   const agentService = new AgentService({
     aiModelCatalogService,
     env,
@@ -340,6 +343,8 @@ export function buildApp(options?: {
     runSettingsService: agentRunSettingsService,
     textRuntime: agentTextRuntime,
     skillService,
+    skillRunService,
+    workflowRunsService,
   });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
@@ -359,6 +364,7 @@ export function buildApp(options?: {
   app.decorate("adminService", adminService);
   app.decorate("agentService", agentService);
   app.decorate("skillService", skillService);
+  app.decorate("skillRunService", skillRunService);
   app.decorate("aiGatewayService", aiGatewayService);
   app.decorate("aiModelCatalogService", aiModelCatalogService);
   app.decorate("aiModelConfigurationsService", aiModelConfigurationsService);
@@ -479,10 +485,25 @@ export function buildApp(options?: {
 
   registerAdminRoutes(app);
   registerAgentRoutes(app);
-  registerSkillRoutes(app, skillService, new SkillAuthoringService(), {
+  registerSkillRoutes(app, skillService, new SkillAuthoringService({
+    repairAttempts: env.agentSkillRepairAttempts,
+    generate: async (prompt, runtimeContext) => {
+      if (!runtimeContext) throw new Error("AUTHORING_RUNTIME_CONTEXT_REQUIRED");
+      const result = await agentTextRuntime.generateText(runtimeContext, {
+        messages: [
+          { role: "system", content: "你是 TapFlow 的 Skill 设计助手。严格按要求返回 JSON，不执行画布、工作流或计费操作。" },
+          { role: "user", content: prompt.slice(0, 24000) },
+        ],
+        routeKey: env.agentTextRouteKey,
+        maxTokens: 4000,
+      });
+      return result.outputText;
+    },
+  }), {
     skillsEnabled: env.agentSkillsEnabled,
     authoringEnabled: env.agentSkillAuthoringEnabled,
   });
+  registerSkillRunRoutes(app, { canvas: app.agentService.canvasService, enabled: env.agentSkillsEnabled && env.agentSkillRuntimeEnabled, runs: skillRunService, skills: skillService });
   registerAuditRoutes(app);
   registerAiGatewayAdminRoutes(app);
   registerAiModelCatalogRoutes(app);

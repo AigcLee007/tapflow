@@ -16,6 +16,8 @@ describe("agent v2 metadata migration", () => {
     expect(sql).toMatch(/ALTER TABLE agent_turns[\s\S]*cancelled_at/);
     expect(sql).toMatch(/lease_owner/);
     expect(sql).toMatch(/lease_expires_at/);
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS agent_turns_status_check/);
+    expect(sql).toMatch(/CHECK \(status IN \('pending', 'planned', 'running', 'succeeded', 'failed', 'cancelled'\)\)/);
     expect(sql).toMatch(/agent_tool_calls[\s\S]*agent_version/);
     expect(sql).toMatch(/agent_tasks[\s\S]*agent_version/);
     expect(sql).toMatch(/agent_task_events[\s\S]*agent_version/);

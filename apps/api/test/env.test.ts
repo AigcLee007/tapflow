@@ -97,6 +97,14 @@ describe("getApiEnv", () => {
     expect(disabled.agentSkillsEnabled).toBe(false);
   });
 
+  test.each(["AGENT_SKILL_MAX_SOURCE_CHARS", "AGENT_SKILL_MAX_STEPS", "AGENT_SKILL_REPAIR_ATTEMPTS"])(
+    "rejects non-positive %s",
+    (variable) => {
+      withRequiredProductionEnv({ [variable]: "0" });
+      expect(() => getApiEnv()).toThrow(`${variable} must be a positive integer when provided`);
+    },
+  );
+
   test("reads the complete Resend sender configuration", () => {
     withRequiredProductionEnv({
       RESEND_API_KEY: "  re_test_api_key  ",

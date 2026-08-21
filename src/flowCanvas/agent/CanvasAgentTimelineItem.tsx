@@ -17,6 +17,8 @@ export function CanvasAgentTimelineItem(props: {
     assets?: CanvasAgentToolAssetRef[],
   ) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
+  onRetryTool?: (toolCallKey: string) => void;
+  onViewRun?: (workflowRunId: string) => void;
 }) {
   const { item } = props;
 
@@ -95,6 +97,29 @@ export function CanvasAgentTimelineItem(props: {
       >
         <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 800 }}>{item.title}</div>
         <div style={{ color: "rgba(226,232,240,0.74)", fontSize: 12, lineHeight: 1.5 }}>{item.summary}</div>
+        {item.textOutput ? (
+          <pre
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              borderRadius: 10,
+              color: "#e2e8f0",
+              fontFamily: "inherit",
+              fontSize: 12,
+              lineHeight: 1.55,
+              margin: 0,
+              maxHeight: 220,
+              overflow: "auto",
+              padding: 10,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {item.textOutput}
+          </pre>
+        ) : null}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {item.retryable ? <button onClick={() => props.onRetryTool?.(item.toolCallKey)} type="button">重试</button> : null}
+          {item.workflowRunId ? <button onClick={() => props.onViewRun?.(item.workflowRunId!)} type="button">查看运行</button> : null}
+        </div>
       </div>
     );
   }
@@ -105,7 +130,11 @@ export function CanvasAgentTimelineItem(props: {
         assets={item.assets}
         onContinueFromAsset={props.onContinueFromAsset}
         onPlaceAssets={() => props.onPlaceAssets?.(item.toolCallKey)}
+        onRetry={item.retryable ? () => props.onRetryTool?.(item.toolCallKey) : undefined}
+        onViewRun={item.workflowRunId ? () => props.onViewRun?.(item.workflowRunId!) : undefined}
         placedNodeIds={item.placedNodeIds}
+        status={item.status}
+        workflowRunId={item.workflowRunId}
       />
     );
   }

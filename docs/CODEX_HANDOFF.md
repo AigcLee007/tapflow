@@ -1,5 +1,20 @@
 # Codex Handoff
 
+## Agent + Skill Runtime Hardening (2026-08-20)
+
+- Scoped V2 context projects only tenant/flow-safe model catalog, active pricing, and recent run summaries; missing pricing is represented as unavailable rather than free.
+- V2 turn events remain redacted and now persist server-side observability metadata (Skill version, duration, first-event latency, retry/redaction counters).
+- Persisted Skill actions have explicit runtime mapping for canvas, text, image, and video execution; the text runner uses existing billing reserve/settle/refund and writes authoritative text nodes.
+- “查看运行” retains the selected workflow run ID when opening the Agent logs view.
+- API/root builds, focused Agent/Skill tests, and diff checks pass. Real authenticated staging E2E remains pending; keep all V2/Skill flags disabled until that gate passes.
+
+## Agent + Skill UI Handoff (2026-08-20)
+
+- The existing Canvas Agent panel now contains a feature-flagged Skill workspace with official/private browsing, search, text/image/video filters, card selection, detail editing, and conversational authoring.
+- Skill draft reads/writes go through `/api/v2/agent/skills/*`; private saves use the server revision as CAS input. Official detail reads return only the published creator-facing source. Authoring has no canvas or billing side effects and creates a private draft only after explicit save.
+- Completed/reviewable Skill runs can write text or `assetId`-backed media results to the bound canvas through `/api/v2/agent/skill-runs/:runId/place-results`; the endpoint enforces session/turn/flow ownership and strict graph-revision CAS.
+- Focused UI tests: 4 passed across picker, authoring, and detail. Frontend production build passed. V2/Skill and authoring flags remain disabled by default until staging acceptance.
+
 ## Current Sprint Handoff (platform-template-center)
 
 Branch:
@@ -606,6 +621,17 @@ Pass date:
 
 Validated local core flows:
 
+Agent + Skill runtime continuation (2026-08-20):
+
+- API and Worker builds pass after wiring normalized Skill versions, durable Skill Run session/turn linkage, V2 approval/cancel compatibility routes, workflow-to-Skill terminal state propagation, delivery checks, and graph-template instantiation.
+- Focused tests pass for Skill policy/run/step execution, V2 workflow adapter, delivery checks, graph instantiation, Worker workflow runtime, and frontend Canvas Agent API contracts.
+- Skill and Skill Run repositories are created lazily, keeping disabled V2/Skill flags compatible with application tests and utility startup paths that do not provide `DATABASE_URL`.
+- The Skill catalog now binds simultaneous modality and text-search filters to stable SQL parameters, and the Canvas Agent session renders V2 `canvas.await_results` waiting/completed activity states.
+- Production remains feature-flagged off for V2 Agent and Skill runtime. Staging still needs authenticated end-to-end validation with database, Redis, object storage, billing, and real provider routes before enabling the flags.
+- Task 15 rollout documentation is now captured in `docs/v2-local-development.md`, `docs/staging-runbook.md`, and `docs/PRODUCTION_RUNBOOK.md`. The staging environment template already lists the disabled-by-default server/Vite flags and baseline rollback notes.
+- Coexistence contract: turns persist `agent_version`, legacy sessions are not force-migrated, and V2/legacy execution is lease-exclusive. Rollback disables V2 runtime first, then Skill runtime/authoring/catalog; durable Skill/version/run/event, asset, draft, and billing-ledger records are preserved.
+- Staging acceptance remains pending; no production or staging enablement was performed in this handoff.
+
 1. Auth
    - Register
    - Login
@@ -723,3 +749,20 @@ New production docs added:
 - complete package evidence: AI Gateway Core `141` passed; API `283` passed with `126` database-backed skips; Worker `70` passed with `17` skips; Redis `5` passed with `2` skips; the complete video/canvas focused suite passed `180` assertions. The AI Gateway Core, Redis, API, Worker, and root frontend builds passed.
 - authenticated local canvas QA remains unavailable: `npm run dev:infra` failed because the Docker Desktop Linux engine pipe is missing, and this workspace has no `DATABASE_URL` or `REDIS_URL`. The local browser smoke used its isolated catalog harness; it did not call a live API.
 - no live PixelHub API call or staging action was performed. The plugin is not installed in staging and inactive/active route smokes remain pending; follow `docs/PIXELHUB_VIDEO_MODELS_RUNBOOK.md`.
+## Agent + Skill V2 Safety Verification (2026-08-20)
+
+- V2 native `ask_user` now ends a turn in `waiting_for_input` via `turn_waiting`; it no longer emits a misleading completion event.
+- Live and replay consumers share a reducer that redacts V2 tool results before browser state. Only bounded product-safe fields are retained; credentials, provider/route internals, URLs, signed URLs, and binary/data payloads are excluded.
+- Regression and focused validation passed: frontend Agent/Skill 40 tests, API 26 tests, Worker 3 tests, AI Gateway Core 175 tests, DB metadata 1 test, plus fresh frontend/API/Worker/Gateway/DB builds and `git diff --check`.
+- Production flags remain disabled. Authenticated staging acceptance, real provider/billing/object-storage execution, and the full historical test suite remain follow-up work; known legacy syntax failures are documented above.
+
+Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized action mapping, priced media execution, stable per-step billing idempotency, provider-failure refunds, asset-ID-only write-back, and partial batch outcomes. Focused API Agent/Skill coverage is 35 tests across 9 files; frontend Skill integration/state coverage is 3 tests across 2 files. These tests do not replace staging acceptance with live infrastructure and provider routes.
+## Agent + Skill Runtime Continuation (2026-08-21)
+
+- Added `npm run dev:seed-agent-skills`, guarded to local development or explicit `DEV_SEED_ENABLED=true`. The seed contains seven provider-agnostic official text/image/video Skills, uses stable slug/checksum idempotency, writes platform-scoped records, and never updates private Skills.
+- Skill draft/publish persistence now keeps source JSON, canonical `SKILL.md`, parsed frontmatter, normalized projection, checksum, and graph data together. Publish supports revision CAS and rejects stale drafts.
+- V2 Skill turns now require the Skill runtime flags when a Skill is selected and enforce both flow and project binding against the session.
+- Focused validation passed: API Agent/Skill 60 tests, frontend Agent/Skill 49 tests, Worker Skill 42 tests with 18 database-dependent skips, AI Gateway streaming 5 tests, root production build, API build, Worker build, and `git diff --check`.
+- Full `npm test` completed with 380 passing, 22 skipped, 32 failing across 15 files and 4 unhandled legacy runtime errors. These remain historical migration, billing/UI fixture, Canvas Agent test-id, production-studio, video-reference, and multipart transport failures. Real authenticated staging acceptance with PostgreSQL, Redis/BullMQ, S3, provider routes, billing, and browser replay is still pending; all Agent/Skill flags remain disabled.
+- Pre-merge review fixed the legacy `agent_turns` status-constraint replacement and system-admin RLS context for official Skill seeding. Focused migration and seed regression tests pass.
+- Do not enable V2/Skill flags yet: the selected-Skill V2 launch path still needs approval-gate enforcement, normalized Skill-step dispatch, and runtime delivery-check integration before staging acceptance.

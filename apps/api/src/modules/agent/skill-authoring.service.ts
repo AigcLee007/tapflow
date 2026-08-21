@@ -1,10 +1,20 @@
 import { skillSourceSchema } from "./skill-schemas.js";
 import type { SkillSource } from "./skill-types.js";
 import { z } from "zod";
+import { buildSkillAuthoringPrompt } from "./skill-authoring-prompt.js";
+
+export type SkillAuthoringCanvasSnapshot = {
+  nodes: Array<{ id: string; kind?: string; text?: string; title?: string }>;
+  selectedNodeIds: string[];
+};
 
 export type SkillAuthoringTurnInput = {
+  canvasSnapshot?: SkillAuthoringCanvasSnapshot;
   draft: Partial<SkillSource>;
+  sessionId?: string | null;
   userMessage: string;
+  /** Server-only runtime context; never accepted from the client payload. */
+  runtimeContext?: { tenantId: string; userId: string | null };
 };
 
 export type SkillAuthoringTurnResult = {
@@ -48,6 +58,14 @@ const DEFAULT_SOURCE: SkillSource = {
 };
 
 export class SkillAuthoringService {
+  private readonly generate?: (prompt: string, context?: { tenantId: string; userId: string | null }) => Promise<string>;
+  private readonly repairAttempts: number;
+
+  constructor(options: { generate?: (prompt: string, context?: { tenantId: string; userId: string | null }) => Promise<string>; repairAttempts?: number } = {}) {
+    this.generate = options.generate;
+    this.repairAttempts = Math.min(1, Math.max(0, Math.floor(options.repairAttempts ?? 1)));
+  }
+
   parseModelOutput(raw: string): SkillAuthoringStructuredOutput {
     try {
       return parseAuthoringStructuredOutput(stripJsonFence(raw));
@@ -57,6 +75,19 @@ export class SkillAuthoringService {
   }
 
   async turn(input: SkillAuthoringTurnInput): Promise<SkillAuthoringTurnResult> {
+    const sanitizedInput = { ...input, canvasSnapshot: sanitizeCanvasSnapshot(input.canvasSnapshot) };
+    if (this.generate) {
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= this.repairAttempts; attempt += 1) {
+        try {
+          const structured = this.parseModelOutput(await this.generate(buildSkillAuthoringPrompt(sanitizedInput, attempt > 0), sanitizedInput.runtimeContext));
+          return normalizeModelResult(sanitizedInput.draft, structured);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error("AUTHORING_OUTPUT_INVALID");
+    }
     const message = input.userMessage.trim();
     const source: SkillSource = { ...DEFAULT_SOURCE, ...input.draft };
     const sourcePatch: Partial<SkillSource> = {};
@@ -86,4 +117,27 @@ export class SkillAuthoringService {
       validationNotes: readyToPreview ? [] : ["草稿仍缺少必填信息"],
     };
   }
+}
+
+function sanitizeCanvasSnapshot(snapshot: SkillAuthoringCanvasSnapshot | undefined): SkillAuthoringCanvasSnapshot | undefined {
+  if (!snapshot) return undefined;
+  return {
+    nodes: snapshot.nodes.slice(0, 24).map((node) => ({
+      id: String(node.id).slice(0, 120),
+      ...(node.kind ? { kind: String(node.kind).slice(0, 40) } : {}),
+      ...(node.text ? { text: String(node.text).slice(0, 240) } : {}),
+      ...(node.title ? { title: String(node.title).slice(0, 120) } : {}),
+    })),
+    selectedNodeIds: snapshot.selectedNodeIds.slice(0, 12).map((id) => String(id).slice(0, 120)),
+  };
+}
+
+function normalizeModelResult(draft: Partial<SkillSource>, output: SkillAuthoringStructuredOutput): SkillAuthoringTurnResult {
+  const merged = { ...DEFAULT_SOURCE, ...draft, ...output.sourcePatch };
+  const valid = (() => { try { skillSourceSchema.parse(merged); return true; } catch { return false; } })();
+  return {
+    ...output,
+    readyToPreview: output.readyToPreview && valid,
+    validationNotes: valid ? output.validationNotes : [...output.validationNotes, "草稿仍缺少必填信息"],
+  };
 }

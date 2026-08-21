@@ -77,6 +77,7 @@ export type AgentCanvasOp =
 
 export type ApplyAgentCanvasOpsInput = {
   expectedRevision?: number;
+  strictRevision?: boolean;
   flowId: string;
   ops: AgentCanvasOp[];
   turnId: string;
@@ -91,6 +92,13 @@ export type ApplyAgentCanvasOpsResult = {
   };
   draft: FlowDraftView;
   event: unknown;
+};
+
+export type PlaceSkillResultInput = {
+  assetId?: string;
+  kind: "text" | "image" | "video";
+  text?: string;
+  title?: string;
 };
 
 type SessionRepositoryLike = Pick<AgentSessionRepository, "appendSessionEvent"> & {
@@ -140,6 +148,67 @@ export class AgentCanvasService {
     this.randomId = options.randomId ?? (() => randomUUID());
   }
 
+  async placeSkillResults(
+    context: AgentContext,
+    sessionId: string,
+    input: {
+      expectedRevision: number;
+      flowId: string;
+      results: PlaceSkillResultInput[];
+      skillRunId: string;
+      skillStepId?: string;
+      turnId: string;
+    },
+  ): Promise<ApplyAgentCanvasOpsResult> {
+    if (input.results.length === 0 || input.results.length > 12) {
+      throw new FlowsApiError(400, "AGENT_RESULT_INVALID", "Skill results must contain between one and twelve artifacts.");
+    }
+    const ops: AgentCanvasOp[] = input.results.map((result, index) => {
+      const title = result.title?.trim().slice(0, 200) || `${result.kind} result`;
+      if (result.kind === "text") {
+        const text = result.text?.trim().slice(0, 20_000) ?? "";
+        if (!text) throw new FlowsApiError(400, "AGENT_RESULT_INVALID", "Text Skill results must include text.");
+        return {
+          data: {
+            resultKind: "text",
+            skillRunId: input.skillRunId,
+            ...(input.skillStepId ? { skillStepId: input.skillStepId } : {}),
+            source: "agent_skill",
+            text,
+            title,
+          },
+          kind: "text",
+          position: { x: 640 + index * 340, y: 120 },
+          type: "add_node",
+        };
+      }
+      const assetId = result.assetId?.trim();
+      if (!assetId || /^(https?:|data:|blob:)/i.test(assetId)) {
+        throw new FlowsApiError(400, "AGENT_RESULT_INVALID", "Media Skill results must reference a stored assetId.");
+      }
+      return {
+        data: {
+          assetId,
+          resultKind: result.kind,
+          skillRunId: input.skillRunId,
+          ...(input.skillStepId ? { skillStepId: input.skillStepId } : {}),
+          source: "agent_skill",
+          title,
+        },
+        kind: result.kind,
+        position: { x: 640 + index * 340, y: 120 },
+        type: "add_node",
+      };
+    });
+    return this.applyOps(context, sessionId, {
+      expectedRevision: input.expectedRevision,
+      flowId: input.flowId,
+      ops,
+      strictRevision: true,
+      turnId: input.turnId,
+    });
+  }
+
   async applyOps(
     context: AgentContext,
     sessionId: string,
@@ -157,7 +226,8 @@ export class AgentCanvasService {
     let draft = await this.options.flowsService.getFlowDraft(context, input.flowId);
     let expectedRevision = input.expectedRevision ?? draft.revision;
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    const maxAttempts = input.strictRevision ? 1 : 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const applied = this.applyOpsToDraft(sessionId, input.turnId, draft, input.ops);
       try {
         const saved = await this.options.flowsService.saveFlowDraft(context, input.flowId, {
@@ -176,6 +246,9 @@ export class AgentCanvasService {
           event,
         };
       } catch (error) {
+        if (input.strictRevision) {
+          throw error;
+        }
         if (!isRevisionConflict(error) || attempt >= 1) {
           throw error;
         }

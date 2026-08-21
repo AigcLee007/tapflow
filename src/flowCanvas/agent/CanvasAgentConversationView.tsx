@@ -17,6 +17,8 @@ export function CanvasAgentConversationView(props: {
     assets?: CanvasAgentToolAssetRef[],
   ) => void;
   onPlaceAssets?: (toolCallKey: string) => void;
+  onRetryTool?: (toolCallKey: string) => void;
+  onViewRun?: (workflowRunId: string) => void;
 }) {
   if (props.items.length === 0) {
     return (
@@ -55,6 +57,8 @@ export function CanvasAgentConversationView(props: {
         onCancel={props.onCancel}
         onContinueFromAsset={props.onContinueFromAsset}
         onPlaceAssets={props.onPlaceAssets}
+        onRetryTool={props.onRetryTool}
+        onViewRun={props.onViewRun}
       />
       {props.busy ? (
         <div style={{ color: "rgba(148,163,184,0.9)", fontSize: 12, paddingBottom: 4 }}>

@@ -28,7 +28,7 @@ export type CanvasAgentToolTimelineItem = {
   placedNodeIds?: string[];
   result?: unknown;
   selectedAssetRefIds?: string[];
-  status: "awaiting_approval" | "failed" | "running" | "succeeded";
+  status: "awaiting_approval" | "failed" | "partial_success" | "running" | "succeeded";
   taskId?: string;
   title: string;
   toolCallKey: string;

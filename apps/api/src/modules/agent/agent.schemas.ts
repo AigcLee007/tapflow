@@ -104,7 +104,10 @@ export const createAgentTurnSchema = z.object({
     assetRefIds: z.array(z.string().trim().min(1).max(200)).max(8).optional(),
   }).nullable().optional(),
   prompt: z.string().trim().min(1).max(8000),
+  idempotencyKey: z.string().trim().min(1).max(200).optional(),
+  expectedGraphRevision: z.number().int().nonnegative().optional(),
   selectedSkillId: z.string().uuid().nullable().optional(),
+  selectedSkillVersion: z.number().int().positive().optional(),
   referenceContext: agentReferenceContextSchema.optional(),
   snapshot: canvasAgentSnapshotSchema,
 });

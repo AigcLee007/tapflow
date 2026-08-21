@@ -2,8 +2,28 @@ import { describe, expect, test, vi } from "vitest";
 
 import { AgentEventService } from "../src/modules/agent/agent-event.service.js";
 import { AgentSessionRepository } from "../src/modules/agent/agent-session.repository.js";
+import { createAgentTurnSchema } from "../src/modules/agent/agent.schemas.js";
 
 describe("AgentEventService V2 replay guards", () => {
+  test("accepts an explicit request identity and expected graph revision", () => {
+    const parsed = createAgentTurnSchema.parse({
+      idempotencyKey: "turn-request-1",
+      expectedGraphRevision: 7,
+      prompt: "make a title",
+      snapshot: {
+        edges: [],
+        flowId: null,
+        nodeOutputs: {},
+        nodes: [],
+        projectId: null,
+        selectedNodeIds: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(parsed.idempotencyKey).toBe("turn-request-1");
+    expect(parsed.expectedGraphRevision).toBe(7);
+  });
+
   test("persists V2 event metadata for deterministic replay and deduplication", async () => {
     const appendSessionEvent = vi.fn(async (_context, input) => ({
       createdAt: "2026-08-20T00:00:00.000Z",

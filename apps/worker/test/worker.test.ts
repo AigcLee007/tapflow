@@ -2319,6 +2319,19 @@ describeWithDatabase("workflow node execution", () => {
           },
           appPool,
         );
+        const draftNode = await withTenantTransaction(
+          { tenantId: seeded.tenantId, userId: seeded.userId },
+          async (client) => {
+            const result = await client.query<{ data: Record<string, unknown> }>(
+              `SELECT node->'data' AS data
+               FROM flow_drafts, jsonb_array_elements(graph_json->'nodes') AS node
+               WHERE flow_id = $1::uuid AND node->>'id' = 'text'`,
+              [seeded.flowId],
+            );
+            return result.rows[0]?.data ?? null;
+          },
+          appPool,
+        );
         const billing = await countBillingState(appPool, seeded.tenantId, seeded.userId);
         const billingService = new BillingService({ pool: appPool });
 
@@ -2344,6 +2357,12 @@ describeWithDatabase("workflow node execution", () => {
 
         expect(nodeRun.status).toBe("succeeded");
         expect(nodeRun.output_json.text).toBe("generated text");
+        expect(draftNode).toMatchObject({
+          text: "generated text",
+          generationStatus: "done",
+          latestNodeRunId: seeded.middleNodeRunId,
+          status: "success",
+        });
         expect(billing).toEqual({
           ledgerEntries: 1,
           usageEvents: 1,

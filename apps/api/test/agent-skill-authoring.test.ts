@@ -3,6 +3,36 @@ import { describe, expect, it } from "vitest";
 import { SkillAuthoringService, parseAuthoringStructuredOutput } from "../src/modules/agent/skill-authoring.service.js";
 
 describe("SkillAuthoringService", () => {
+  it("passes a bounded sanitized canvas snapshot to the authoring model and retries one invalid JSON response", async () => {
+    const prompts: string[] = [];
+    let attempts = 0;
+    const service = new SkillAuthoringService({
+      generate: async (prompt) => {
+        prompts.push(prompt);
+        attempts += 1;
+        return attempts === 1 ? "```json\nnot valid\n```" : JSON.stringify({
+          assistantReply: "已整理",
+          missingQuestions: [],
+          readyToPreview: true,
+          sourcePatch: { modality: "text", name: "文案 Skill", summary: "写文案", inputs: "主题", method: "分析\n写作", outputs: "正文", usageScenarios: "广告", askWhen: "缺少主题时追问" },
+          validationNotes: [],
+        });
+      },
+      repairAttempts: 1,
+    });
+    const result = await service.turn({
+      canvasSnapshot: { nodes: [{ id: "n1", title: "x".repeat(500), text: "secret prompt" }], selectedNodeIds: ["n1"] },
+      draft: {},
+      sessionId: "session-1",
+      userMessage: "做一个文案 Skill",
+    });
+    expect(result.readyToPreview).toBe(true);
+    expect(attempts).toBe(2);
+    expect(prompts[0]).toContain("session-1");
+    expect(prompts[0]).toContain("secret prompt");
+    expect(prompts[0]).not.toContain("x".repeat(500));
+  });
+
   it("turns a user description into an editable source patch without side effects", async () => {
     const service = new SkillAuthoringService();
     const result = await service.turn({

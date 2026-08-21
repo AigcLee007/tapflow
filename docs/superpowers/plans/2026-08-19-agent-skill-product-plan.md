@@ -21,11 +21,11 @@
 - Modify: `PROJECT_RECORD.md`
 - Test: `apps/api/test/agent-skill-config.test.ts`
 
-- [ ] Add server flags with disabled production-safe defaults: `AGENT_V2_ENABLED`, `AGENT_V2_RUNTIME_ENABLED`, `AGENT_SKILLS_ENABLED`, `AGENT_SKILL_AUTHORING_ENABLED`, `AGENT_SKILL_RUNTIME_ENABLED`, `AGENT_SKILL_MAX_SOURCE_CHARS=24000`, `AGENT_SKILL_MAX_STEPS=12`, and `AGENT_SKILL_REPAIR_ATTEMPTS=1`.
-- [ ] Add `VITE_AGENT_V2_ENABLED`, `VITE_AGENT_SKILLS_ENABLED`, `VITE_AGENT_SKILL_AUTHORING_ENABLED`, and `VITE_AGENT_SKILL_RUNTIME_ENABLED`; do not infer enablement from `import.meta.env.DEV`.
-- [ ] Define rollout precedence: V2 panel requires both matching Vite/server V2 flags; authoring requires Skill flags; any disabled runtime flag renders the current Agent panel and rejects V2 write routes.
-- [ ] Write config tests that reject non-positive limits and confirm all flags default to disabled.
-- [ ] Run `npm run test --workspace @aigc-flow/api -- agent-skill-config` and record the result in the project record.
+- [x] Add server flags with disabled production-safe defaults: `AGENT_V2_ENABLED`, `AGENT_V2_RUNTIME_ENABLED`, `AGENT_SKILLS_ENABLED`, `AGENT_SKILL_AUTHORING_ENABLED`, `AGENT_SKILL_RUNTIME_ENABLED`, `AGENT_SKILL_MAX_SOURCE_CHARS=24000`, `AGENT_SKILL_MAX_STEPS=12`, and `AGENT_SKILL_REPAIR_ATTEMPTS=1`.
+- [x] Add `VITE_AGENT_V2_ENABLED`, `VITE_AGENT_SKILLS_ENABLED`, `VITE_AGENT_SKILL_AUTHORING_ENABLED`, and `VITE_AGENT_SKILL_RUNTIME_ENABLED`; do not infer enablement from `import.meta.env.DEV`.
+- [x] Define rollout precedence: V2 panel requires both matching Vite/server V2 flags; authoring requires Skill flags; any disabled runtime flag renders the current Agent panel and rejects V2 write routes.
+- [x] Write config tests that reject non-positive limits and confirm all flags default to disabled.
+- [x] Run `npm run test --workspace @aigc-flow/api -- agent-skill-config` and record the result in the project record.
 - [ ] Commit as `feat(agent): add v2 agent and skill feature flags`.
 
 ### Task 2: Add V2 turn metadata, leases, and replay safety
@@ -37,12 +37,12 @@
 - Test: `packages/db/test/agent-v2-metadata.test.ts`
 - Test: `apps/api/test/agent-v2-replay.test.ts`
 
-- [ ] Add `agent_version`, `graph_revision`, `idempotency_key`, `cancelled_at`, and a bounded turn lease to `agent_turns`; add V2 namespace/version, graph revision, and idempotency fields to `agent_tool_calls`, `agent_tasks`, and `agent_task_events` without changing legacy values.
-- [ ] Add tenant-scoped unique indexes that deduplicate V2 turn requests and tool calls by their idempotency keys while allowing historical legacy records with null V2 metadata.
-- [ ] Make every V2 event append through the existing monotonic session sequence and include turn, task, tool-call, Skill version, graph revision, and redaction version metadata.
-- [ ] Implement acquire/renew/release lease behavior so one V2 turn cannot execute twice after refresh, retry, or a second browser tab; cancellation is durable and blocks later tool mutations.
-- [ ] Test migration/RLS, duplicate idempotency, lease contention, cancellation, and `afterSeq` event replay without modifying old sessions.
-- [ ] Run `npm run build --workspace @aigc-flow/db` and focused API tests; report database-dependent skips when `DATABASE_URL` is absent.
+- [x] Add `agent_version`, `graph_revision`, `idempotency_key`, `cancelled_at`, and a bounded turn lease to `agent_turns`; add V2 namespace/version, graph revision, and idempotency fields to `agent_tool_calls`, `agent_tasks`, and `agent_task_events` without changing legacy values.
+- [x] Add tenant-scoped unique indexes that deduplicate V2 turn requests and tool calls by their idempotency keys while allowing historical legacy records with null V2 metadata.
+- [x] Make every V2 event append through the existing monotonic session sequence and include turn, task, tool-call, Skill version, graph revision, and redaction version metadata.
+- [x] Implement acquire/renew/release lease behavior so one V2 turn cannot execute twice after refresh, retry, or a second browser tab; cancellation is durable and blocks later tool mutations.
+- [x] Test migration/RLS, duplicate idempotency, lease contention, cancellation, and `afterSeq` event replay without modifying old sessions.
+- [x] Run `npm run build --workspace @aigc-flow/db` and focused API tests; report database-dependent skips when `DATABASE_URL` is absent.
 - [ ] Commit as `feat(agent): add v2 turn metadata and replay guards`.
 
 ### Task 3: Add native tool-calling and text-streaming gateway contracts
@@ -62,8 +62,8 @@
 - [ ] Add route capability checks `supportsTextStreaming` and `supportsToolCalling`; the V2 Agent must return `AGENT_ROUTE_CAPABILITY_REQUIRED` when either is unavailable instead of parsing tool JSON from model text.
 - [ ] Preserve the existing synchronous text-generation contract for canvas text nodes; the new streaming contract is only the V2 Agent-control plane.
 - [ ] Resolve routes and decrypt credentials only inside `DatabaseTextGenerationRuntime`; redact call logs and emit product-visible model/route labels only.
-- [ ] Test OpenAI-compatible and relay delta streams, split tool arguments, usage, provider errors, cancellation, redaction, and capability fail-closed behavior.
-- [ ] Run `npm run test --workspace @aigc-flow/ai-gateway-core` and `npm run build --workspace @aigc-flow/ai-gateway-core`.
+- [x] Test OpenAI-compatible and relay delta streams, split tool arguments, usage, provider errors, cancellation, redaction, and capability fail-closed behavior.
+- [x] Run `npm run test --workspace @aigc-flow/ai-gateway-core` and `npm run build --workspace @aigc-flow/ai-gateway-core`.
 - [ ] Commit as `feat(ai-gateway): add native agent tool streaming`.
 
 ### Task 4: Build scoped, sanitized V2 Agent context
@@ -134,11 +134,11 @@
 - Modify: `package.json`
 - Test: `apps/api/test/official-agent-skills.test.ts`
 
-- [ ] Add provider-agnostic official Skills: concept short-video scripts, ad copy/storyboards, product image direction, image variations, product short video, travel video, and image-to-video.
-- [ ] Keep each Skill expressed in user-facing creative language; do not include provider names, route keys, credentials, or API instructions.
-- [ ] Make seeding idempotent by stable slug and checksum; never overwrite private Skills.
-- [ ] Guard the script for local/dev or explicitly approved staging use.
-- [ ] Test catalog validation, stable slugs, idempotent seed input, and secret/internal-field absence.
+- [x] Add provider-agnostic official Skills: concept short-video scripts, ad copy/storyboards, product image direction, image variations, product short video, travel video, and image-to-video.
+- [x] Keep each Skill expressed in user-facing creative language; do not include provider names, route keys, credentials, or API instructions.
+- [x] Make seeding idempotent by stable slug and checksum; never overwrite private Skills.
+- [x] Guard the script for local/dev or explicitly approved staging use.
+- [x] Test catalog validation, stable slugs, idempotent seed input, and secret/internal-field absence.
 - [ ] Commit as `feat(agent): add official text image and video skills`.
 
 ## Workstream C: Authoring and Management
@@ -197,17 +197,17 @@
 - Test: `src/flowCanvas/agent/CanvasAgentSkillPicker.test.tsx`
 - Test: `src/flowCanvas/agent/CanvasAgentSkillAuthoring.test.tsx`
 
-- [ ] Add the Skill entry inside the V2 right-side Agent panel; keep the existing panel as a flag-controlled fallback and do not create another application shell.
+- [x] Add the Skill entry inside the V2 right-side Agent panel; keep the existing panel as a flag-controlled fallback and do not create another application shell.
 - [ ] Build the V2 panel as a single timeline for message, scoped reference, Skill, visible plan, approval, running task, result, and recovery events. History/log/connection views become secondary drawers rather than primary work tabs.
-- [ ] Show official/private tabs, search, text/image/video filter, Skill cards, detail view, and “use in this conversation”.
-- [ ] Display only LibTV-style fields: summary, usage, inputs, method, outputs, ask-when, modality, version, and visibility.
-- [ ] Add conversational “创建 Skill”; show the generated draft as editable fields with preview, save, and discard actions.
-- [ ] Persist only Skill ID/version in session state and include it in the next V2 Agent turn; import/export remains an advanced overflow action, not the creator's primary authoring surface.
-- [ ] Implement `useCanvasAgentSessionV2` with only `sendPrompt`, `cancelTurn`, `approve`, `selectSkill`, `hydrateReplayEvents`, session/event state, pending question, and pending approval. Remove no behavior from the old session hook in this task.
-- [ ] Pause client autosave while applying a server-confirmed Agent draft/revision and resume only after the store accepts the returned revision, so a stale client snapshot cannot overwrite a V2 canvas operation.
-- [ ] Use existing menu tokens, outside-click dismissal, keyboard focus, and no native `<select>`.
-- [ ] Test filtering, selection, detail close, draft editing, validation errors, version display, and clearing selection.
-- [ ] Run focused frontend tests and `npm run build`.
+- [x] Show official/private tabs, search, text/image/video filter, Skill cards, detail view, and “use in this conversation”.
+- [x] Display only LibTV-style fields: summary, usage, inputs, method, outputs, ask-when, modality, version, and visibility.
+- [x] Add conversational “创建 Skill”; show the generated draft as editable fields with preview, save, and discard actions.
+- [x] Persist only Skill ID/version in session state and include it in the next V2 Agent turn; import/export remains an advanced overflow action, not the creator's primary authoring surface.
+- [x] Implement `useCanvasAgentSessionV2` with only `sendPrompt`, `cancelTurn`, `approve`, `selectSkill`, `hydrateReplayEvents`, session/event state, pending question, and pending approval. Remove no behavior from the old session hook in this task.
+- [x] Pause client autosave while applying a server-confirmed Agent draft/revision and resume only after the store accepts the returned revision, so a stale client snapshot cannot overwrite a V2 canvas operation.
+- [x] Use existing menu tokens, outside-click dismissal, keyboard focus, and no native `<select>`.
+- [x] Test filtering, selection, detail close, draft editing, validation errors, version display, and clearing selection.
+- [x] Run focused frontend tests and `npm run build`.
 - [ ] Commit as `feat(agent): add canvas skill picker and authoring ui`.
 
 ## Workstream D: Canvas-first V2 Agent + Skill Runtime
@@ -233,8 +233,8 @@
 - [ ] Register only `canvas.get_context`, `skill.load`, `canvas.apply_ops`, `canvas.run_nodes`, `canvas.await_results`, `ask_user`, and `finish`. Define strict discriminated Zod schemas and server-owned execution context for every tool.
 - [ ] Implement `canvas.apply_ops` using an allowlisted patch surface and `expectedRevision` CAS. Create visible plan/provisional/result nodes only; the server rereads the current flow draft before mutation and rejects stale or unsafe operations without a silent overwrite.
 - [ ] Implement `canvas.run_nodes` as an adapter to the existing Workflow Run, Worker, reserve/settle/refund, and idempotency path. Do not register independent `generate_image`, `generate_image_batch`, `edit_image`, or arbitrary provider tools in V2.
-- [ ] Include selected Skill source and normalized hints in explicit untrusted-content delimiters and progressively load only the permitted package reference excerpts. Test official/private access, native multi-tool sequence, unsupported capability, injection text, no-Skill turns, stale revisions, and duplicate V2 requests.
-- [ ] Run API tests and frontend type/build checks.
+- [x] Include selected Skill source and normalized hints in explicit untrusted-content delimiters and progressively load only the permitted package reference excerpts. Test official/private access, native multi-tool sequence, unsupported capability, injection text, no-Skill turns, stale revisions, and duplicate V2 requests.
+- [x] Run API tests and frontend type/build checks.
 - [ ] Commit as `feat(agent): add canvas-first v2 turn loop`.
 
 ### Task 12: Add durable Skill run and approval state machine
@@ -270,16 +270,16 @@
 - Test: `apps/api/test/agent-skill-step-runner.test.ts`
 - Test: `apps/worker/test/agent-skill-metadata.test.ts`
 
-- [ ] Map normalized actions to `analyze`, `create_canvas`, `generate_text`, `generate_image`, `generate_video`, `review`, and `deliver`.
-- [ ] Implement `generate_text` as a server-authorized text runtime call that writes the result to a text node/output record; do not require an `assets` row for text-only Skills.
-- [ ] Keep text generation subject to route availability, pricing, reserve/settle/refund when priced, and the same approval policy as paid image/video generation.
+- [x] Map normalized actions to `analyze`, `create_canvas`, `generate_text`, `generate_image`, `generate_video`, `review`, and `deliver`.
+- [x] Implement `generate_text` as a server-authorized text runtime call that writes the result to a text node/output record; do not require an `assets` row for text-only Skills.
+- [x] Keep text generation subject to route availability, pricing, reserve/settle/refund when priced, and the same approval policy as paid image/video generation.
 - [ ] Resolve product-visible model choices to internal routes only in the server launcher.
-- [ ] Create a Skill step record before every paid workflow and link workflow/node IDs after launch.
-- [ ] Reuse existing reserve/settle/refund and idempotency paths; do not create a second billing implementation.
-- [ ] Pass only Skill run/step IDs to Worker metadata; never pass credentials or raw provider configuration.
-- [ ] When a published Skill has a graph template, instantiate it only through the V2 `canvas.apply_ops` template path: validate the package a third time, map template IDs to new UUIDs, bind declared current inputs by ID, and require separate approval before overwriting any existing result node.
-- [ ] Test text-only run, text-to-image/video step chain, image run, video run, partial batch success, provider failure/refund, missing-pricing fail-closed, and retry identity.
-- [ ] Run API, Worker, AI Gateway Core, and billing-focused tests.
+- [x] Create a Skill step record before every paid workflow and link workflow/node IDs after launch.
+- [x] Reuse existing reserve/settle/refund and idempotency paths; do not create a second billing implementation.
+- [x] Pass only Skill run/step IDs to Worker metadata; never pass credentials or raw provider configuration.
+- [x] When a published Skill has a graph template, instantiate it only through the V2 `canvas.apply_ops` template path: validate the package a third time, map template IDs to new UUIDs, bind declared current inputs by ID, and require separate approval before overwriting any existing result node.
+- [x] Test text-only run, text-to-image/video step chain, image run, video run, partial batch success, provider failure/refund, missing-pricing fail-closed, and retry identity.
+- [x] Run API, Worker, AI Gateway Core, and billing-focused tests.
 - [ ] Commit as `feat(agent): execute skill text image and video steps`.
 
 ### Task 14: Add delivery checks and canvas/asset write-back
@@ -294,12 +294,13 @@
 - Test: `src/flowCanvas/agent/CanvasAgentSkillResults.test.tsx`
 
 - [ ] Check required artifact count, text output presence/length/format for text Skills, media modality/duration/aspect metadata when available, asset persistence for media, and result-node links.
-- [ ] Mark a run `reviewing` when a result exists but a delivery check is incomplete; never claim completion from text alone.
-- [ ] Create text result nodes with bounded text output and safe Skill run/step metadata; create media result nodes with `assetId`; never store URLs/base64/blob data.
-- [ ] Show retry, place-on-canvas, continue-from-result, and view-run actions.
-- [ ] Test missing asset, wrong modality, partial success, successful delivery, revision conflict, and failed-step retry.
-- [ ] Test template plan instantiation, safe text/asset binding, invalid template revalidation, and rejected overwrite attempts.
-- [ ] Run focused frontend/API tests and production build.
+- [x] Mark a run `reviewing` when a result exists but a delivery check is incomplete; never claim completion from text alone.
+- [x] Create text result nodes with bounded text output and safe Skill run/step metadata; create media result nodes with `assetId`; never store URLs/base64/blob data.
+- [x] Expose guarded `/api/v2/agent/skill-runs/:runId/place-results` write-back with session/turn/flow binding and strict revision CAS.
+- [x] Show retry, place-on-canvas, continue-from-result, and view-run actions.
+- [x] Test missing asset, wrong modality, partial success, successful delivery, revision conflict, and failed-step retry.
+- [x] Test template plan instantiation, safe text/asset binding, invalid template revalidation, and rejected overwrite attempts.
+- [x] Run focused frontend/API tests and production build.
 - [ ] Commit as `feat(agent): verify skill delivery and link canvas results`.
 
 ## Workstream E: Release and Verification
@@ -314,12 +315,12 @@
 - Modify: `docs/staging-runbook.md`
 - Modify: `PROJECT_RECORD.md`
 
-- [ ] Document disabled-by-default flags and the rollout order: deploy V2 code/migrations with all V2 flags off -> enable V2 for an internal tenant -> enable authoring -> enable runtime for a canary tenant -> staging acceptance -> controlled production expansion.
-- [ ] Document coexistence: `agent_version` is written for every turn, legacy sessions are not force-migrated, and old/V2 runtimes cannot execute one turn concurrently. The V2 UI falls back to the old panel when its flag is off.
-- [ ] Document rollback by disabling `AGENT_V2_RUNTIME_ENABLED` first, then `AGENT_SKILL_RUNTIME_ENABLED`; stop the worker before schema rollback only when explicitly required. Preserve Skill/version/run rows, generated Assets, flow drafts, and immutable billing ledger records.
-- [ ] Document production migrations with `node packages/db/dist/cli.js`.
-- [ ] Add observability fields for Skill ID/version, run duration, first-event latency, failed step, retry count, and redaction hits; keep provider internals out of creator-facing logs.
-- [ ] Update `PROJECT_RECORD.md` with migration, seed, flags, and smoke-test status.
+- [x] Document disabled-by-default flags and the rollout order: deploy V2 code/migrations with all V2 flags off -> enable V2 for an internal tenant -> enable authoring -> enable runtime for a canary tenant -> staging acceptance -> controlled production expansion.
+- [x] Document coexistence: `agent_version` is written for every turn, legacy sessions are not force-migrated, and old/V2 runtimes cannot execute one turn concurrently. The V2 UI falls back to the old panel when its flag is off.
+- [x] Document rollback by disabling `AGENT_V2_RUNTIME_ENABLED` first, then `AGENT_SKILL_RUNTIME_ENABLED`; stop the worker before schema rollback only when explicitly required. Preserve Skill/version/run rows, generated Assets, flow drafts, and immutable billing ledger records.
+- [x] Document production migrations with `node packages/db/dist/cli.js`.
+- [x] Add observability fields for Skill ID/version, run duration, first-event latency, failed step, retry count, and redaction hits; keep provider internals out of creator-facing logs.
+- [x] Update `PROJECT_RECORD.md` with migration, seed, flags, and smoke-test status.
 - [ ] Commit as `docs(agent): document skill runtime deployment and rollback`.
 
 ### Task 16: Run contract, UI, security, and end-to-end acceptance

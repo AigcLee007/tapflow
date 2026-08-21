@@ -10,6 +10,7 @@ const mockCreateAgentSession = vi.fn();
 const mockCreateAgentTurn = vi.fn();
 const mockExecuteAgentTurnStream = vi.fn();
 const mockGetAgentImageRunSettings = vi.fn();
+const mockGetAgentCapabilities = vi.fn();
 const mockGetAgentSessionEvents = vi.fn();
 const mockGetAgentSessionHistory = vi.fn();
 const mockListAgentSessions = vi.fn();
@@ -24,6 +25,7 @@ vi.mock("./canvasAgentApi", () => ({
   createAgentTurn: (...args: unknown[]) => mockCreateAgentTurn(...args),
   executeAgentTurnStream: (...args: unknown[]) => mockExecuteAgentTurnStream(...args),
   getAgentImageRunSettings: (...args: unknown[]) => mockGetAgentImageRunSettings(...args),
+  getAgentCapabilities: (...args: unknown[]) => mockGetAgentCapabilities(...args),
   getAgentSessionEvents: (...args: unknown[]) => mockGetAgentSessionEvents(...args),
   getAgentSessionHistory: (...args: unknown[]) => mockGetAgentSessionHistory(...args),
   listAgentSessions: (...args: unknown[]) => mockListAgentSessions(...args),
@@ -68,6 +70,7 @@ describe("CanvasAgentPanel", () => {
     mockCreateAgentTurn.mockReset();
     mockExecuteAgentTurnStream.mockReset();
     mockGetAgentImageRunSettings.mockReset();
+    mockGetAgentCapabilities.mockReset();
     mockGetAgentSessionEvents.mockReset();
     mockGetAgentSessionHistory.mockReset();
     mockListAgentSessions.mockReset();
@@ -112,6 +115,13 @@ describe("CanvasAgentPanel", () => {
           sizes: ["1K", "2K", "4K"],
         },
       ],
+    });
+    mockGetAgentCapabilities.mockResolvedValue({
+      agentV2Enabled: false,
+      agentV2RuntimeEnabled: false,
+      skillAuthoringEnabled: false,
+      skillRuntimeEnabled: false,
+      skillsEnabled: false,
     });
     mockGetAgentSessionEvents.mockResolvedValue({ events: [] });
     mockGetAgentSessionHistory.mockResolvedValue({

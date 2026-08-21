@@ -78,6 +78,14 @@ export type AgentTurnLease = {
   turnId: string;
 };
 
+export type AgentV2TurnLookup = {
+  cancelledAt: string | null;
+  graphRevision: number | null;
+  id: string;
+  snapshotJson: unknown;
+  status: string;
+};
+
 const DEFAULT_TURN_LEASE_MS = 30_000;
 const MIN_TURN_LEASE_MS = 5_000;
 const MAX_TURN_LEASE_MS = 5 * 60_000;
@@ -223,6 +231,34 @@ export class AgentSessionRepository {
           updatedAt: row.updated_at,
         })),
       };
+    }, this.pool);
+  }
+
+  async getV2TurnByIdempotency(context: AgentContext, idempotencyKey: string): Promise<AgentV2TurnLookup | null> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{
+        cancelled_at: string | null;
+        graph_revision: string | null;
+        id: string;
+        snapshot_json: unknown;
+        status: string;
+      }>(
+        `SELECT id::text AS id, status, snapshot_json, graph_revision::text AS graph_revision, cancelled_at::text AS cancelled_at
+         FROM agent_turns
+         WHERE tenant_id = $1::uuid AND agent_version = 'v2' AND idempotency_key = $2
+         LIMIT 1`,
+        [context.tenantId, idempotencyKey],
+      );
+      const row = result.rows[0];
+      return row
+        ? {
+            cancelledAt: row.cancelled_at,
+            graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
+            id: row.id,
+            snapshotJson: row.snapshot_json,
+            status: row.status,
+          }
+        : null;
     }, this.pool);
   }
 

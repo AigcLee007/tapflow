@@ -78,6 +78,18 @@ export type AgentSkillPreview = {
   visibility: "official" | "private";
 };
 
+export type AgentCapabilities = {
+  agentV2Enabled: boolean;
+  agentV2RuntimeEnabled: boolean;
+  skillAuthoringEnabled: boolean;
+  skillRuntimeEnabled: boolean;
+  skillsEnabled: boolean;
+};
+
+export function getAgentCapabilities() {
+  return apiGet<AgentCapabilities>("/agent/capabilities");
+}
+
 export type AgentContinuationContext = {
   action: CanvasAgentContinuationAction;
   assetId: string;
@@ -90,8 +102,11 @@ export type AgentContinuationContext = {
 
 export type AgentTurnRequestInput = {
   continuationContext?: AgentContinuationContext | null;
+  expectedGraphRevision?: number;
+  idempotencyKey?: string;
   prompt: string;
   selectedSkillId?: string | null;
+  selectedSkillVersion?: number;
   referenceContext?: AgentReferenceContext;
   snapshot: CanvasAgentSnapshot;
 };
@@ -124,6 +139,23 @@ export type AgentCanvasApplyResponse = {
   };
   event: AgentSessionEvent | null;
 };
+
+export type SkillRunResultInput = {
+  assetId?: string;
+  kind: "text" | "image" | "video";
+  text?: string;
+  title?: string;
+};
+
+export function placeSkillRunResults(runId: string, input: {
+  expectedRevision: number;
+  flowId: string;
+  results: SkillRunResultInput[];
+  sessionId: string;
+  turnId: string;
+}) {
+  return apiPost<AgentCanvasApplyResponse>(`/agent/skill-runs/${encodeURIComponent(runId)}/place-results`, input);
+}
 
 export function createAgentSession(input: {
   flowId: string | null;
@@ -161,6 +193,10 @@ export function getAgentSessionEvents(sessionId: string, input?: { afterSeq?: nu
   return apiGet<AgentSessionEventsResponse>(`/agent/sessions/${sessionId}/events${suffix}`);
 }
 
+export function cancelAgentTurn(sessionId: string, reason?: string) {
+  return apiPost<{ cancelled: boolean; turnId?: string }>(`/agent/sessions/${sessionId}/cancel`, { reason });
+}
+
 export function createAgentMessage(sessionId: string, input: {
   content: string;
   metadata?: Record<string, unknown>;
@@ -187,10 +223,11 @@ export function authorAgentSkillTurn(input: { draft: Record<string, unknown>; us
   return apiPost<Record<string, unknown>>("/agent/skills/authoring/turn", input);
 }
 
-export async function openAgentV2TurnStream(sessionId: string, input: AgentTurnRequestInput & { idempotencyKey?: string; routeKey?: string }) {
+export async function openAgentV2TurnStream(sessionId: string, input: AgentTurnRequestInput & { routeKey?: string }) {
   const token = getStoredAccessToken();
+  const request = { ...input, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() };
   return fetch(`/api/v2/agent/sessions/${sessionId}/v2-turns/stream`, {
-    body: JSON.stringify(input),
+    body: JSON.stringify(request),
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",

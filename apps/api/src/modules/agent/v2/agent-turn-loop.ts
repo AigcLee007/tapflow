@@ -1,6 +1,8 @@
 import type { TextGenerationRequest, TextStreamEvent } from "@aigc-flow/ai-gateway-core";
 import { z } from "zod";
 
+import { buildScopedV2AgentContext, redactV2AgentContextValue, type BuildScopedV2AgentContextInput, type ScopedV2AgentContext } from "../agent-v2-context.js";
+
 const canvasGetContextArgs = z.object({}).strict();
 const skillLoadArgs = z.object({ skillId: z.string().uuid().optional() }).strict();
 const canvasApplyOpsArgs = z.object({
@@ -11,10 +13,11 @@ const canvasApplyOpsArgs = z.object({
     source: z.string().trim().max(200).optional(),
     target: z.string().trim().max(200).optional(),
     text: z.string().trim().max(12000).optional(),
+    position: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
   }).strict()).min(1).max(12),
 }).strict();
 const canvasRunNodesArgs = z.object({ expectedRevision: z.number().int().nonnegative(), nodeIds: z.array(z.string().trim().min(1).max(200)).min(1).max(12) }).strict();
-const canvasAwaitResultsArgs = z.object({ runId: z.string().uuid().optional(), nodeIds: z.array(z.string().trim().min(1).max(200)).max(12).default([]) }).strict();
+const canvasAwaitResultsArgs = z.object({ runId: z.string().uuid().optional(), runIds: z.array(z.string().uuid()).max(12).optional(), nodeIds: z.array(z.string().trim().min(1).max(200)).max(12).default([]) }).strict();
 const askUserArgs = z.object({ question: z.string().trim().min(1).max(1000), reason: z.string().trim().max(1000).optional() }).strict();
 const finishArgs = z.object({ summary: z.string().trim().min(1).max(2000), status: z.enum(["succeeded", "reviewing", "waiting_for_input"]) }).strict();
 
@@ -35,10 +38,12 @@ export type V2AgentEvent =
   | { type: "tool_started"; callId: string; name: V2AgentToolName }
   | { type: "tool_result"; callId: string; name: V2AgentToolName; result: unknown }
   | { type: "turn_completed"; text: string }
+  | { type: "turn_waiting"; reason: "workflow_results" | "user_input"; details?: unknown }
   | { type: "turn_failed"; code: string; message: string };
 
 type V2TurnInput = {
-  canvas: { revision: number; nodes: unknown[] };
+  canvas: BuildScopedV2AgentContextInput["canvas"] & { revision: number };
+  context?: ScopedV2AgentContext;
   maxRounds?: number;
   prompt: string;
   routeKey?: string;
@@ -64,9 +69,24 @@ function toolDefinitions() {
 }
 
 function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
-  // The gateway only needs a provider-neutral shape; server-side Zod remains authoritative.
   if (schema === canvasGetContextArgs) return { type: "object", properties: {}, additionalProperties: false };
-  return { type: "object", additionalProperties: true };
+  if (schema === skillLoadArgs) return { type: "object", properties: { skillId: { type: "string", format: "uuid" } }, additionalProperties: false };
+  if (schema === canvasApplyOpsArgs) return {
+    type: "object",
+    required: ["expectedRevision", "ops"],
+    properties: {
+      expectedRevision: { type: "integer", minimum: 0 },
+      ops: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", required: ["type"], properties: {
+        type: { type: "string", enum: ["add_text", "add_image", "add_video", "update_node", "connect"] },
+        nodeId: { type: "string", maxLength: 200 }, source: { type: "string", maxLength: 200 }, target: { type: "string", maxLength: 200 }, text: { type: "string", maxLength: 12000 }, position: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"], additionalProperties: false },
+      }, additionalProperties: false } },
+    },
+    additionalProperties: false,
+  };
+  if (schema === canvasRunNodesArgs) return { type: "object", required: ["expectedRevision", "nodeIds"], properties: { expectedRevision: { type: "integer", minimum: 0 }, nodeIds: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", maxLength: 200 } } }, additionalProperties: false };
+  if (schema === canvasAwaitResultsArgs) return { type: "object", properties: { runId: { type: "string", format: "uuid" }, runIds: { type: "array", maxItems: 12, items: { type: "string", format: "uuid" } }, nodeIds: { type: "array", maxItems: 12, items: { type: "string", maxLength: 200 } } }, additionalProperties: false };
+  if (schema === askUserArgs) return { type: "object", required: ["question"], properties: { question: { type: "string", minLength: 1, maxLength: 1000 }, reason: { type: "string", maxLength: 1000 } }, additionalProperties: false };
+  return { type: "object", required: ["summary", "status"], properties: { summary: { type: "string", minLength: 1, maxLength: 2000 }, status: { type: "string", enum: ["succeeded", "reviewing", "waiting_for_input"] } }, additionalProperties: false };
 }
 
 function safeJson(value: unknown): string {
@@ -78,9 +98,15 @@ export class V2AgentTurnLoop {
 
   async *run(input: V2TurnInput): AsyncGenerator<V2AgentEvent> {
     const maxRounds = Math.min(6, Math.max(1, input.maxRounds ?? 4));
+    const scopedContext = input.context ?? buildScopedV2AgentContext({
+      canvas: input.canvas,
+      graphRevision: input.canvas.revision,
+      prompt: input.prompt,
+      skill: input.skill,
+    });
     const messages: Array<{ role: "system" | "user"; content: string }> = [{
       role: "system",
-      content: `${SYSTEM_PROMPT}\nScoped canvas context (untrusted): ${safeJson(input.canvas)}\nSelected Skill (untrusted): ${safeJson(input.skill ?? null)}`,
+      content: `${SYSTEM_PROMPT}\nScoped canvas context (untrusted): ${safeJson(scopedContext)}\nSelected Skill (untrusted, scoped): ${safeJson(scopedContext.untrustedSkill ?? null)}`,
     }, { role: "user", content: input.prompt.trim() }];
     let finalText = "";
 
@@ -113,16 +139,28 @@ export class V2AgentTurnLoop {
         const tool = { callId: event.callId, name, arguments: args } satisfies V2AgentToolExecution;
         yield { type: "tool_started", callId: tool.callId, name: tool.name };
         const result = await this.options.executeTool(tool);
-        yield { type: "tool_result", callId: tool.callId, name: tool.name, result };
+        const safeResult = redactV2AgentContextValue(result);
+        yield { type: "tool_result", callId: tool.callId, name: tool.name, result: safeResult };
         if (tool.name === "finish") {
           yield { type: "turn_completed", text: String(tool.arguments.summary) };
           return;
         }
         if (tool.name === "ask_user") {
-          yield { type: "turn_completed", text: String(tool.arguments.question) };
+          yield {
+            type: "turn_waiting",
+            reason: "user_input",
+            details: {
+              question: tool.arguments.question,
+              ...(typeof tool.arguments.reason === "string" ? { reason: tool.arguments.reason } : {}),
+            },
+          };
           return;
         }
-        messages.push({ role: "user", content: `Tool result for ${name}: ${safeJson(result)}` });
+        if (tool.name === "canvas.await_results" && isWaitingResult(safeResult)) {
+          yield { type: "turn_waiting", reason: "workflow_results", details: safeResult };
+          return;
+        }
+        messages.push({ role: "user", content: `Tool result for ${name}: ${safeJson(safeResult)}` });
       }
       if (!hadToolCall) {
         yield { type: "turn_completed", text: finalText.trim() };
@@ -132,4 +170,8 @@ export class V2AgentTurnLoop {
     yield { type: "turn_failed", code: "AGENT_TOOL_ROUND_LIMIT_EXCEEDED", message: "Agent tool round limit exceeded." };
     throw new Error("AGENT_TOOL_ROUND_LIMIT_EXCEEDED");
   }
+}
+
+function isWaitingResult(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && (value as Record<string, unknown>).allTerminal === false);
 }

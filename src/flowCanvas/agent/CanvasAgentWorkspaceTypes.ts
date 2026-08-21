@@ -55,17 +55,23 @@ export type AgentWorkspaceTimelineItem =
   | {
       id: string;
       kind: "tool";
+      retryable?: boolean;
       status: CanvasAgentToolTimelineItem["status"];
       summary: string;
+      textOutput?: string;
       title: string;
       toolCallKey: string;
+      workflowRunId?: string;
     }
   | {
       assets: AgentResultAsset[];
       id: string;
       kind: "result";
       placedNodeIds?: string[];
+      retryable?: boolean;
+      status?: "partial_success" | "succeeded";
       toolCallKey: string;
+      workflowRunId?: string;
     }
   | {
       id: string;

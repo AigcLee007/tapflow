@@ -7,6 +7,7 @@ import type { RequestContext } from "./http/request-context.js";
 import type { AdminApiService } from "./modules/admin/admin.service.js";
 import type { AgentService } from "./modules/agent/agent.service.js";
 import type { SkillService } from "./modules/agent/skill.service.js";
+import type { SkillRunService } from "./modules/agent/agent-skill-run.service.js";
 import type { AuditApiService } from "./modules/audit/audit.service.js";
 import type { AuthService } from "./modules/auth/auth.service.js";
 import type { AiGatewayAdminService } from "./modules/ai-gateway/ai-gateway.service.js";
@@ -34,6 +35,7 @@ declare module "fastify" {
     adminService: AdminApiService;
     agentService: AgentService;
     skillService: SkillService;
+    skillRunService: SkillRunService;
     aiGatewayService: AiGatewayAdminService;
     aiModelCatalogService: AiModelCatalogService;
     aiModelConfigurationsService: AiModelConfigurationsService;

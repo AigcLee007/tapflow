@@ -14,7 +14,11 @@ import type {
   ResolvedRoute,
   TextGenerationRequest,
 } from "./types.js";
-import type { TextStreamEvent } from "./text-streaming-contract.js";
+import {
+  assertTextStreamingCapabilities,
+  type TextStreamEvent,
+  type TextStreamingCapabilities,
+} from "./text-streaming-contract.js";
 
 type RuntimeContext = {
   tenantId: string;
@@ -267,6 +271,23 @@ export class DatabaseTextGenerationRuntime {
       request,
       route: selectedRoute,
     });
+  }
+
+  /**
+   * Validate the route before the Agent creates a durable turn or opens an SSE
+   * response. Capability metadata is resolved server-side and only the
+   * normalized capability result crosses this boundary.
+   */
+  async getTextStreamingCapabilities(
+    context: RuntimeContext,
+    routeKey: string | null,
+  ): Promise<TextStreamingCapabilities> {
+    const routes = await this.listRuntimeRoutes(context, routeKey);
+    const selectedRoute = this.routeResolver.resolveTextRoute({
+      routeKey: routeKey?.trim() || null,
+      routes,
+    });
+    return assertTextStreamingCapabilities(selectedRoute, { toolCalling: true });
   }
 
   private async listRuntimeRoutes(

@@ -42,6 +42,19 @@ CREATE TABLE IF NOT EXISTS agent_skill_versions (
 CREATE INDEX IF NOT EXISTS idx_agent_skill_versions_skill_created
   ON agent_skill_versions (skill_id, version_no DESC);
 
+CREATE OR REPLACE FUNCTION prevent_published_skill_version_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.status = 'published' THEN
+    RAISE EXCEPTION 'SKILL_PUBLISHED_VERSION_IMMUTABLE';
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+DROP TRIGGER IF EXISTS agent_skill_versions_published_immutable ON agent_skill_versions;
+CREATE TRIGGER agent_skill_versions_published_immutable
+  BEFORE UPDATE OR DELETE ON agent_skill_versions
+  FOR EACH ROW EXECUTE FUNCTION prevent_published_skill_version_mutation();
+
 ALTER TABLE agent_skills
   ADD CONSTRAINT agent_skills_current_version_fk
   FOREIGN KEY (current_version_id) REFERENCES agent_skill_versions(id) ON DELETE SET NULL;
@@ -90,6 +103,26 @@ CREATE TABLE IF NOT EXISTS agent_skill_step_runs (
 CREATE INDEX IF NOT EXISTS idx_agent_skill_steps_tenant_run
   ON agent_skill_step_runs (tenant_id, skill_run_id, step_index);
 
+CREATE TABLE IF NOT EXISTS agent_skill_run_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  skill_run_id uuid NOT NULL REFERENCES agent_skill_runs(id) ON DELETE CASCADE,
+  seq bigint NOT NULL CHECK (seq > 0),
+  event_type text NOT NULL,
+  from_status text NULL,
+  to_status text NOT NULL,
+  skill_version_id uuid NOT NULL REFERENCES agent_skill_versions(id) ON DELETE RESTRICT,
+  turn_id uuid NULL REFERENCES agent_turns(id) ON DELETE SET NULL,
+  idempotency_key text NULL,
+  graph_revision bigint NULL CHECK (graph_revision IS NULL OR graph_revision >= 0),
+  redaction_version text NOT NULL DEFAULT 'v2',
+  event_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (skill_run_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_skill_run_events_tenant_run
+  ON agent_skill_run_events (tenant_id, skill_run_id, seq ASC);
+
 ALTER TABLE agent_skills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_skills FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS agent_skills_select_visible ON agent_skills;
@@ -118,3 +151,6 @@ CREATE POLICY agent_skill_runs_tenant ON agent_skill_runs FOR ALL USING (tenant_
 ALTER TABLE agent_skill_step_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_skill_step_runs FORCE ROW LEVEL SECURITY;
 CREATE POLICY agent_skill_steps_tenant ON agent_skill_step_runs FOR ALL USING (tenant_id = app.current_tenant_id()) WITH CHECK (tenant_id = app.current_tenant_id());
+ALTER TABLE agent_skill_run_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_skill_run_events FORCE ROW LEVEL SECURITY;
+CREATE POLICY agent_skill_run_events_tenant ON agent_skill_run_events FOR ALL USING (tenant_id = app.current_tenant_id()) WITH CHECK (tenant_id = app.current_tenant_id());
