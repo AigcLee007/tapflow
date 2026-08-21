@@ -172,7 +172,7 @@ export class DatabaseSkillRunRepository implements SkillRunRepository {
 
   async claimApprovalLaunch(context: SkillRunContext, runId: string): Promise<boolean> {
     return withTenantTransaction(context, async (client) => {
-      const result = await client.query(`UPDATE agent_skill_runs SET output_json = jsonb_set(COALESCE(output_json, '{}'::jsonb), '{approvalLaunchClaimed}', 'true'::jsonb), updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid AND status = 'running' AND approval_state = 'approved' AND COALESCE(output_json->>'approvalLaunchClaimed', 'false') <> 'true' RETURNING id`, [context.tenantId, runId]);
+      const result = await client.query(`UPDATE agent_skill_runs SET output_json = jsonb_set(COALESCE(output_json, '{}'::jsonb), '{approvalLaunchClaimedAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint), true), updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid AND status = 'running' AND approval_state = 'approved' AND (output_json->>'approvalLaunchClaimedAt' IS NULL OR ((output_json->>'approvalLaunchClaimedAt') ~ '^[0-9]+$' AND (output_json->>'approvalLaunchClaimedAt')::bigint < (extract(epoch from now()) * 1000)::bigint - 60000)) RETURNING id`, [context.tenantId, runId]);
       return result.rowCount === 1;
     }, this.pool);
   }

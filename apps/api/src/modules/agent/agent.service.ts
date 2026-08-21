@@ -917,7 +917,9 @@ export class AgentService {
           nodes: nodes.map((node) => {
             const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
             const kind = typeof data.kind === "string" ? data.kind : node.type;
-            return { id: String(node.id), type: kind, priced: data.priced !== false };
+            // Pricing is resolved by the server-side Workflow Run path. Never
+            // trust graph JSON to mark a Skill target as free.
+            return { id: String(node.id), type: kind, priced: true };
           }),
         });
         if (plan.requiresApproval) {
