@@ -184,6 +184,10 @@ export function CanvasAgentPanel(props: {
     && import.meta.env.VITE_AGENT_SKILL_AUTHORING_ENABLED === "true"
     && serverCapabilities?.skillAuthoringEnabled === true;
 
+  React.useEffect(() => {
+    setSelectedSkillId(sessionActions.selectedSkill?.id ?? null);
+  }, [sessionActions.selectedSkill]);
+
   const busy = isCanvasAgentBusyState(sessionActions.workspaceState);
   const activeContinuation = sessionActions.pendingContinuation ?? sessionActions.lastContinuation;
 

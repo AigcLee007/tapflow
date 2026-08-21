@@ -39,8 +39,22 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
   }, [session.approveToolCall]);
   const hydrateReplayEvents = useCallback((events: Parameters<typeof session.hydrateReplayEvents>[0]) => {
     setV2State(buildV2AgentSessionStateFromEvents(events));
+    const replaySkill = [...events].reverse().map((event) => {
+      const payload = event.eventJson as Record<string, unknown>;
+      return typeof payload.selectedSkillId === "string" && Number.isInteger(payload.selectedSkillVersion)
+        ? { id: payload.selectedSkillId, version: payload.selectedSkillVersion as number }
+        : null;
+    }).find((value): value is { id: string; version: number } => value !== null) ?? null;
+    setSelectedSkill(replaySkill);
     session.hydrateReplayEvents(events);
   }, [session.hydrateReplayEvents]);
+  const resetSession = useCallback(() => {
+    setSelectedSkill(null);
+    setV2State(createInitialV2AgentSessionState());
+    setPendingApproval(null);
+    setPendingQuestion(null);
+    session.resetSession();
+  }, [session.resetSession]);
   const effectiveWorkspaceState =
     v2State.status === "error"
       ? "failed"
@@ -61,6 +75,7 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
     hydrateReplayEvents,
     pendingApproval: v2State.pendingApproval ?? pendingApproval,
     pendingQuestion: v2State.pendingQuestion ?? pendingQuestion,
+    resetSession,
     selectSkill,
     selectedSkill,
     sendPrompt,
@@ -75,7 +90,7 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
           : session.status,
     toolTimeline: [...session.toolTimeline, ...v2State.toolTimeline],
     workspaceState: effectiveWorkspaceState,
-  }), [approve, cancelTurn, effectiveWorkspaceState, hydrateReplayEvents, pendingApproval, pendingQuestion, selectSkill, selectedSkill, sendPrompt, session, v2State]);
+  }), [approve, cancelTurn, effectiveWorkspaceState, hydrateReplayEvents, pendingApproval, pendingQuestion, resetSession, selectSkill, selectedSkill, sendPrompt, session, v2State]);
 }
 
 export type CanvasAgentSessionV2 = ReturnType<typeof useCanvasAgentSessionV2>;
