@@ -162,9 +162,11 @@ export class DatabaseSkillRunRepository implements SkillRunRepository {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query(`UPDATE agent_skill_runs SET budget_snapshot = $3::jsonb, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid RETURNING id`, [context.tenantId, runId, JSON.stringify(snapshot)]);
       if (result.rowCount !== 1) throw new Error("SKILL_RUN_NOT_FOUND");
-      const run = await this.getRun(context, runId);
-      if (!run) throw new Error("SKILL_RUN_NOT_FOUND");
-      return run;
+      const run = await client.query<RunRow>(`SELECT id::text AS id, skill_version_id::text AS skill_version_id, session_id::text AS session_id, turn_id::text AS turn_id, project_id::text AS project_id, flow_id::text AS flow_id, status, approval_state, idempotency_key, graph_revision::text AS graph_revision, budget_snapshot, output_json, error_json FROM agent_skill_runs WHERE tenant_id = $1::uuid AND id = $2::uuid`, [context.tenantId, runId]);
+      const row = run.rows[0];
+      if (!row) throw new Error("SKILL_RUN_NOT_FOUND");
+      const steps = await client.query<StepRow>(`SELECT id::text AS id, step_index, action, status, approval_state, node_id, workflow_run_id::text AS workflow_run_id, asset_id::text AS asset_id, retry_count, output_json, error_json FROM agent_skill_step_runs WHERE tenant_id = $1::uuid AND skill_run_id = $2::uuid ORDER BY step_index ASC`, [context.tenantId, runId]);
+      return mapRun(row, steps.rows.map(mapStep));
     }, this.pool);
   }
 
