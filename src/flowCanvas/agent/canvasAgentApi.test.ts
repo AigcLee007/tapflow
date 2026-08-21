@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import { buildAgentReferenceContext } from "./agentReferenceContext";
 import {
   approveAgentToolCallStream,
+  approveAgentSkillRun,
   createAgentTurn,
   executeAgentTurnStream,
+  getAgentSkillRun,
   listAgentSkills,
   openAgentV2TurnStream,
   placeSkillRunResults,
   readAgentSseStream,
+  cancelAgentSkillRun,
 } from "./canvasAgentApi";
 
 const emptySnapshot = {
@@ -203,6 +206,88 @@ describe("canvasAgentApi", () => {
     expect(String(calls[0]?.input)).toBe("/api/v2/agent/skills?scope=available&modality=text");
     expect(String(calls[1]?.input)).toBe("/api/v2/agent/sessions/session-1/v2-turns/stream");
     expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({ idempotencyKey: "turn-1" });
+  });
+
+  it("projects Skill picker responses to product-safe fields", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json([{
+      baseUrl: "https://provider.internal",
+      category: "marketing",
+      credential: "secret",
+      id: "skill-1",
+      inputHints: [
+        { key: "prompt", kind: "text", label: "提示词", required: true, routeKey: "internal-route" },
+        { kind: "unknown", label: 42, required: "yes" },
+      ],
+      modality: "image",
+      name: "封面图",
+      normalized: { method: "do not expose" },
+      ownerUserId: "internal-owner",
+      provider: "internal-provider",
+      routeKey: "internal-route",
+      status: "published",
+      summary: "生成封面",
+      version: 3,
+      visibility: "official",
+    }])) as typeof fetch;
+
+    try {
+      const [skill] = await listAgentSkills();
+      expect(skill).toEqual({
+        category: "marketing",
+        id: "skill-1",
+        inputHints: [{ kind: "text", label: "提示词", required: true }],
+        modality: "image",
+        name: "封面图",
+        summary: "生成封面",
+        version: 3,
+        visibility: "official",
+      });
+      expect(JSON.stringify(skill)).not.toMatch(/routeKey|provider|credential|baseUrl|normalized/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("exposes product-safe Skill Run operations", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      if (String(input).endsWith("/skill-runs/run-1")) {
+        return Response.json({
+          approvalState: "pending",
+          budgetSnapshot: { estimatedCredits: 8, provider: "secret" },
+          id: "run-1",
+          routeKey: "internal-route",
+          status: "waiting_for_approval",
+          steps: [{ action: "image", assetId: "asset-1", id: "step-1", nodeId: "node-1", output: { baseUrl: "secret" }, status: "waiting_for_approval", stepIndex: 0 }],
+        });
+      }
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const run = await getAgentSkillRun("run-1");
+      await approveAgentSkillRun("session-1", "run-1");
+      await cancelAgentSkillRun("session-1", "run-1", "user cancelled");
+      expect(calls.map((call) => String(call.input))).toEqual([
+        "/api/v2/agent/skill-runs/run-1",
+        "/api/v2/agent/sessions/session-1/approvals/run-1/stream",
+        "/api/v2/agent/skill-runs/run-1/cancel",
+      ]);
+      expect(run).toMatchObject({
+        approvalState: "pending",
+        estimatedCredits: 8,
+        id: "run-1",
+        status: "waiting_for_approval",
+        steps: [{ assetId: "asset-1", id: "step-1", nodeId: "node-1", status: "waiting_for_approval" }],
+      });
+      expect(JSON.stringify(run)).not.toMatch(/routeKey|provider|baseUrl/);
+      expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ reason: "user cancelled" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("opens the tool approval stream endpoint", async () => {
