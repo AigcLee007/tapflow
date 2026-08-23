@@ -1,6 +1,15 @@
 ﻿# Project Record
 
-Last updated: 2026-08-21
+Last updated: 2026-08-23
+
+## 2026-08-23 - Production Image Run Finalization Recovery
+
+- Production diagnosis confirmed that the provider completed image generation and OSS access had recovered, but the Worker success transaction rolled back while calling the Agent Skill step sync because `agent_skill_step_runs` was missing. The database had migration `000075` but not `000076`.
+- Applied `000076_agent_skills.sql` to staging in a transaction and verified all five Agent Skill tables plus the migration ledger entry. Corrected its RLS policies to use the UUID-returning `app.current_user_id()` directly.
+- Reconciled historical runs matching the confirmed failure signature: affected nodes were moved to a terminal state and reserved personal-wallet credits were refunded idempotently. No old provider job was retried.
+- Recovered one independently confirmed provider-success result into object storage and `assets`, settled its original reservation without duplicate billing, and finalized its node/workflow events and canvas draft.
+- Repaired affected canvas drafts so terminal success/failure states no longer retain `workflowLaunchStatus: worker_waiting`. The frontend runner now writes `asset_visible` for succeeded text/media snapshots and `failed` for failed/canceled media snapshots.
+- Verification passed: the focused workflow runner suite passed all 43 tests, the production frontend build passed, and database checks confirmed the recovered run and asset are terminal and available.
 
 ## 2026-08-21 - Canvas Skill Workbench UI Slice
 

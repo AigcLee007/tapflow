@@ -2472,6 +2472,7 @@ describe('v2WorkflowRunner', () => {
     useFlowCanvasStore.getState().addNode('image', { x: 0, y: 0 }, {
       generationMode: 'panorama_360',
       generationStatus: 'generating',
+      workflowLaunchStatus: 'worker_waiting',
       modelId: 'gpt-image-2',
       params: {
         aspectRatio: '21:9',
@@ -2561,6 +2562,7 @@ describe('v2WorkflowRunner', () => {
     expect(updatedNode?.data).toMatchObject({
       generationStatus: 'error',
       status: 'failed',
+      workflowLaunchStatus: 'failed',
     });
     expect(String(updatedNode?.data.errorMessage || '')).toContain('The provider rejected the request payload');
     expect(String(updatedNode?.data.errorMessage || '')).toContain('providerDetails=fetch failed');

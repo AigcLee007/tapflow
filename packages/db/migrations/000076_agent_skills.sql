@@ -129,21 +129,21 @@ DROP POLICY IF EXISTS agent_skills_select_visible ON agent_skills;
 CREATE POLICY agent_skills_select_visible ON agent_skills FOR SELECT USING (
   app.current_is_system_admin() OR
   (visibility = 'official' AND status = 'published' AND tenant_id IS NULL) OR
-  (visibility = 'private' AND tenant_id = app.current_tenant_id() AND owner_user_id = NULLIF(app.current_user_id(), '')::uuid)
+  (visibility = 'private' AND tenant_id = app.current_tenant_id() AND owner_user_id = app.current_user_id())
 );
 DROP POLICY IF EXISTS agent_skills_write_owner ON agent_skills;
 CREATE POLICY agent_skills_write_owner ON agent_skills FOR ALL USING (
-  app.current_is_system_admin() OR (visibility = 'private' AND tenant_id = app.current_tenant_id() AND owner_user_id = NULLIF(app.current_user_id(), '')::uuid)
+  app.current_is_system_admin() OR (visibility = 'private' AND tenant_id = app.current_tenant_id() AND owner_user_id = app.current_user_id())
 ) WITH CHECK (
-  app.current_is_system_admin() OR (visibility = 'private' AND tenant_id = app.current_tenant_id() AND owner_user_id = NULLIF(app.current_user_id(), '')::uuid)
+  app.current_is_system_admin() OR (visibility = 'private' AND tenant_id = app.current_tenant_id() AND owner_user_id = app.current_user_id())
 );
 
 ALTER TABLE agent_skill_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_skill_versions FORCE ROW LEVEL SECURITY;
 CREATE POLICY agent_skill_versions_select_visible ON agent_skill_versions FOR SELECT USING (
-  app.current_is_system_admin() OR EXISTS (SELECT 1 FROM agent_skills skill WHERE skill.id = skill_id AND ((skill.visibility = 'official' AND skill.status = 'published' AND skill.tenant_id IS NULL) OR (skill.visibility = 'private' AND skill.tenant_id = app.current_tenant_id() AND skill.owner_user_id = NULLIF(app.current_user_id(), '')::uuid)))
+  app.current_is_system_admin() OR EXISTS (SELECT 1 FROM agent_skills skill WHERE skill.id = skill_id AND ((skill.visibility = 'official' AND skill.status = 'published' AND skill.tenant_id IS NULL) OR (skill.visibility = 'private' AND skill.tenant_id = app.current_tenant_id() AND skill.owner_user_id = app.current_user_id())))
 );
-CREATE POLICY agent_skill_versions_write_owner ON agent_skill_versions FOR ALL USING (app.current_is_system_admin() OR (tenant_id = app.current_tenant_id() AND created_by = NULLIF(app.current_user_id(), '')::uuid)) WITH CHECK (app.current_is_system_admin() OR (tenant_id = app.current_tenant_id() AND created_by = NULLIF(app.current_user_id(), '')::uuid));
+CREATE POLICY agent_skill_versions_write_owner ON agent_skill_versions FOR ALL USING (app.current_is_system_admin() OR (tenant_id = app.current_tenant_id() AND created_by = app.current_user_id())) WITH CHECK (app.current_is_system_admin() OR (tenant_id = app.current_tenant_id() AND created_by = app.current_user_id()));
 
 ALTER TABLE agent_skill_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_skill_runs FORCE ROW LEVEL SECURITY;

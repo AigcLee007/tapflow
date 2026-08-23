@@ -862,6 +862,8 @@ function buildFailedNodePatch(nodeRun: PersistableNodeRun): Partial<FlowNodeData
     latestWorkflowRunId: nodeRun.workflowRunId,
     progress: 0,
     status: 'failed',
+    workflowLaunchStatus: 'failed',
+    workflowLaunchUpdatedAt: Date.now(),
   };
 }
 
@@ -877,6 +879,8 @@ function buildSucceededTextNodePatch(nodeRun: PersistableNodeRun): Partial<FlowN
     latestWorkflowRunId: nodeRun.workflowRunId,
     progress: 100,
     status: 'success',
+    workflowLaunchStatus: 'asset_visible',
+    workflowLaunchUpdatedAt: Date.now(),
   };
 }
 
