@@ -52,4 +52,15 @@ describe("canvas operation protocol", () => {
     expect(() => assertCanvasOperationRevision(base, 5)).toThrow("stale");
     expect(assertCanvasOperationRevision(base, 4)).toBe(true);
   });
+
+  test("rejects cyclic and excessively deep unsafe payloads without overflowing", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const cyclicResult = operationEnvelopeSchema.safeParse({ ...base, operations: [{ type: "node.update_data", nodeId: "n1", data: { cyclic } }] });
+    expect(cyclicResult.success).toBe(false);
+    let deep: Record<string, unknown> = {};
+    const root = deep;
+    for (let i = 0; i < 140; i++) { deep.next = {}; deep = deep.next as Record<string, unknown>; }
+    expect(operationEnvelopeSchema.safeParse({ ...base, operations: [{ type: "node.update_data", nodeId: "n1", data: root }] }).success).toBe(false);
+  });
 });

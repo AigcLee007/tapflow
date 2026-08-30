@@ -21,14 +21,19 @@ export type CanvasOperation = z.infer<typeof canvasOperationSchema>;
 const forbidden = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 const forbiddenKey = /(?:base64|raw(?:media|route)?|signedurl|signed_url|authorization|credential|api[_-]?key|secret|provider|filesystem|shell|mcp|browser|codeexecution|code_execution)/i;
 
-function rejectUnsafe(value: unknown, path: string[] = []): unknown {
+function rejectUnsafe(value: unknown, path: string[] = [], state = { seen: new WeakSet<object>(), nodes: 0 }): unknown {
+  if (path.length > 100 || ++state.nodes > 2000) throw new z.ZodError([{ code: "custom", path, message: "Operation payload is too deep or large." }]);
   if (typeof value === "string" && (forbidden.test(value) || value.length > 100_000)) throw new z.ZodError([{ code: "custom", path, message: "Raw media, URLs, or secrets are not allowed." }]);
   if ((typeof File !== "undefined" && value instanceof File) || (typeof Blob !== "undefined" && value instanceof Blob)) throw new z.ZodError([{ code: "custom", path, message: "File and Blob values are not allowed." }]);
-  if (Array.isArray(value)) value.forEach((item, index) => rejectUnsafe(item, [...path, String(index)]));
-  else if (value && typeof value === "object") Object.entries(value).forEach(([key, child]) => {
+  if (Array.isArray(value)) {
+    if (state.seen.has(value)) throw new z.ZodError([{ code: "custom", path, message: "Cyclic operation payload is not allowed." }]);
+    state.seen.add(value); value.forEach((item, index) => rejectUnsafe(item, [...path, String(index)], state));
+  } else if (value && typeof value === "object") {
+    if (state.seen.has(value)) throw new z.ZodError([{ code: "custom", path, message: "Cyclic operation payload is not allowed." }]);
+    state.seen.add(value); Object.entries(value).forEach(([key, child]) => {
     if (forbiddenKey.test(key)) throw new z.ZodError([{ code: "custom", path: [...path, key], message: "Secret or external capability fields are not allowed." }]);
-    rejectUnsafe(child, [...path, key]);
-  });
+    rejectUnsafe(child, [...path, key], state);
+  }); }
   return value;
 }
 

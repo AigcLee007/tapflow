@@ -27,5 +27,8 @@ describe("canvas v3 tools", () => {
     expect(() => assertCanvasToolAllowed({ namespace: "run", toolName: "estimate_run", tenantId: "t1", projectId: "p1", flowId: "f1", sessionId: "s1", expectedRevision: 4 }, { ...context, modelVisible: false })).toThrow("model");
     expect(() => assertCanvasToolAllowed({ namespace: "run", toolName: "estimate_run", tenantId: "t1", projectId: "p1", flowId: "f1", sessionId: "s1", expectedRevision: 4 }, { ...context, pricingPresent: false })).toThrow("pricing");
     expect(() => assertCanvasToolAllowed({ namespace: "run", toolName: "execute_run", tenantId: "t1", projectId: "p1", flowId: "f1", sessionId: "s1", expectedRevision: 4 }, { ...context, risk: "paid", requiresApproval: true, approvalGranted: false })).toThrow("approval");
+    expect(() => assertCanvasToolAllowed({ namespace: "run", toolName: "execute_run", tenantId: "t1", projectId: "p1", flowId: "f1", sessionId: "s1", expectedRevision: 4 }, { ...context, risk: "destructive", requiresApproval: false, approvalGranted: false })).toThrow("approval");
+    expect(() => assertCanvasToolAllowed({ namespace: "read", toolName: "provider.list", tenantId: "t1", projectId: "p1", flowId: "f1", sessionId: "s1", expectedRevision: 4 }, context)).toThrow("tool");
+    expect(() => assertCanvasToolAllowed({ namespace: "read", toolName: "unknown.tool", tenantId: "t1", projectId: "p1", flowId: "f1", sessionId: "s1", expectedRevision: 4 }, context)).toThrow("tool");
   });
 });
