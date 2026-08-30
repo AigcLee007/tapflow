@@ -13,6 +13,7 @@ Last updated: 2026-08-30
 - Task 1 progress: added disabled-by-default V3 server/runtime flags, bounded tool-round configuration, Vite/Compose propagation, and truthful capability runtime identity (`v3_real`, `v2_real`, or `unavailable`) without DEV-based inference.
 - Task 5 progress: added the dependency-injected V3 Canvas Director loop with persisted mode/status events, bounded rounds, approval/input/run suspension, terminal replay, delivery verification, and one-repair failure semantics. Added authenticated V3 route boundaries that fail closed until the runtime adapter is wired.
 - Task 6 foundation: added a revisioned Canvas Operation Service with strict draft CAS, stable operation-set idempotency, reversible create/connect/delete/update/move changes, and focused regression coverage. Asset ownership and client-reference expansion remain the next slice before wiring an execution route.
+- V3 continuation: added asset-backed placement and client-reference checks, delivery verification with partial/waiting/failed states, failed-step retry metadata, frontend task projection/SSE replay, command bar/task sheet, ghost preview overlay, Skill Contract V2 projection, and bounded visual capture metadata. V3 focused validation currently passes 12 files / 43 tests; authenticated staging execution remains the release gate.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 

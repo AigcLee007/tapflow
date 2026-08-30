@@ -385,3 +385,6 @@ WHERE a.kind = 'image'
 Acceptance gates: variant coverage above 99%; signing P95 below 100ms excluding public RTT; first canvas thumb P75 below 1s/P95 below 2s; 90% of 12 visible thumbs P75 below 1.5s/P95 below 3s; same-tab refresh first image below 500ms; thumb P95 below 300KB; twelve thumbs below 2.5MB; and no original image requests after repair.
 
 Roll out in this order: capture baseline, deploy backward-compatible API, deploy Worker/script, audit, enqueue 20 scoped assets, inspect queue failures/CPU/storage/`asset_variants`, complete controlled batches, deploy frontend, then run mainland-China browser checks. To roll back, stop further enqueueing, roll the frontend back to preview-first behavior first, reduce image-variant concurrency or stop the Worker before changing queue behavior, and roll API back last. Never delete generated variants, originals, drafts, workflow history, or billing records.
+# Canvas Agent V3 rollback
+
+If V3 behavior is unsafe or incomplete, stop `tapflow-worker`, set `AGENT_V3_ENABLED=false`, `AGENT_V3_RUNTIME_ENABLED=false`, and `VITE_AGENT_V3_ENABLED=false` in the Compose environment, then redeploy the v2 stack. Do not delete V3 tasks, events, operation records, Skills, assets, flow drafts, or billing ledger entries.
