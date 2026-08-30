@@ -23,6 +23,12 @@ import {
   getAgentEventsQuerySchema,
   getAgentImageRunSettingsEstimateQuerySchema,
   listAgentSessionsQuerySchema,
+  agentV3ApprovalSchema,
+  agentV3EventsQuerySchema,
+  agentV3SessionTurnParamsSchema,
+  agentV3TaskIdParamsSchema,
+  agentV3UndoSchema,
+  agentV3RetrySchema,
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
@@ -507,4 +513,28 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       }
     },
   );
+
+  // V3 endpoints deliberately have their own authenticated boundary. The Director
+  // adapter is attached in the V3 runtime slice; until then they fail closed.
+  const v3Unavailable = async (request: FastifyRequest, reply: FastifyReply) =>
+    sendError(request, reply, 503, "AGENT_V3_UNAVAILABLE", "Canvas Agent V3 is not available.");
+  const v3Auth = [...authHandlers, requirePermission("flow:read")];
+  app.post("/api/v2/agent/v3/sessions/:sessionId/turns/stream", { preHandler: v3Auth }, v3Unavailable);
+  app.get("/api/v2/agent/v3/tasks/:taskId/events", { preHandler: v3Auth }, async (request, reply) => {
+    agentV3TaskIdParamsSchema.parse(request.params);
+    agentV3EventsQuerySchema.parse(request.query);
+    return v3Unavailable(request, reply);
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/approve", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
+    agentV3TaskIdParamsSchema.parse(request.params); agentV3ApprovalSchema.parse(request.body); return v3Unavailable(request, reply);
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/cancel", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
+    agentV3TaskIdParamsSchema.parse(request.params); return v3Unavailable(request, reply);
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/retry-step", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
+    agentV3TaskIdParamsSchema.parse(request.params); agentV3RetrySchema.parse(request.body); return v3Unavailable(request, reply);
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/undo-canvas", { preHandler: [...authHandlers, requirePermission("flow:update")] }, async (request, reply) => {
+    agentV3TaskIdParamsSchema.parse(request.params); agentV3UndoSchema.parse(request.body); return v3Unavailable(request, reply);
+  });
 }
