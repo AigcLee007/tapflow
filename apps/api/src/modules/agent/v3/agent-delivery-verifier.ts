@@ -14,3 +14,10 @@ export function verifyTaskDelivery(input: { tenantId: string; taskId: string; fl
   const status = verified === items.length && items.length > 0 ? "verified" : verified > 0 ? "partial" : items.some((item) => item.status === "waiting") ? "waiting" : "failed";
   return { status, items };
 }
+
+export function retryFailedSteps<T extends { id: string; status: string; retryCount?: number; idempotencyKey?: string }>(steps: T[]): T[] {
+  return steps.filter((step) => step.status === "failed").map((step) => ({ ...step, retryCount: (step.retryCount ?? 0) + 1, idempotencyKey: `retry:${step.id}:${(step.retryCount ?? 0) + 1}`, status: "pending" }));
+}
+
+export type AgentRuntimeObservability = { firstEventLatencyMs: number; contextSize: number; toolRounds: number; repairCount: number; deliveryDurationMs: number; terminalStatus: string; billingTotal: number };
+export function sanitizeAgentRuntimeObservability(value: AgentRuntimeObservability): AgentRuntimeObservability { return { firstEventLatencyMs: Math.max(0, value.firstEventLatencyMs), contextSize: Math.min(100_000, Math.max(0, value.contextSize)), toolRounds: Math.min(8, Math.max(0, value.toolRounds)), repairCount: Math.min(1, Math.max(0, value.repairCount)), deliveryDurationMs: Math.max(0, value.deliveryDurationMs), terminalStatus: value.terminalStatus.slice(0, 80), billingTotal: Math.max(0, value.billingTotal) }; }
