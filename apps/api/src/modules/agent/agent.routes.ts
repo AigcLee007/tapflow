@@ -26,7 +26,7 @@ import {
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
-import { resolveAgentRuntimeIdentity } from "./agent-runtime-identity.js";
+import { projectAgentRuntimeCapabilities } from "./agent-runtime-identity.js";
 
 function sendError(
   request: FastifyRequest,
@@ -149,10 +149,9 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     { preHandler: [...authHandlers, requirePermission("flow:read")] },
     async (_request, reply) => {
       const env = app.agentService.env;
+      const runtimeCapabilities = projectAgentRuntimeCapabilities(env);
       return reply.send({
-        runtimeIdentity: resolveAgentRuntimeIdentity(env),
-        agentV2Enabled: env.agentV2Enabled === true,
-        agentV2RuntimeEnabled: env.agentV2RuntimeEnabled === true,
+        ...runtimeCapabilities,
         skillAuthoringEnabled: env.agentSkillsEnabled === true && env.agentSkillAuthoringEnabled === true,
         skillRuntimeEnabled: env.agentSkillsEnabled === true && env.agentSkillRuntimeEnabled === true,
         skillsEnabled: env.agentSkillsEnabled === true,

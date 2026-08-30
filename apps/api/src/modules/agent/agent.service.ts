@@ -16,6 +16,7 @@ import { buildSkillLaunchApprovalPlan, type SkillLaunchApprovalPlan } from "./ag
 import type { AgentRunSettingsService } from "./agent-run-settings.service.js";
 import { AgentSessionRepository } from "./agent-session.repository.js";
 import { buildScopedV2AgentContext } from "./agent-v2-context.js";
+import { resolveAgentRuntimeIdentity } from "./agent-runtime-identity.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
 import type { AiModelCatalogService } from "../ai-model-catalog/ai-model-catalog.service.js";
 import type { FlowsService } from "../flows/flows.service.js";
@@ -648,7 +649,7 @@ export class AgentService {
     input: CreateAgentTurnInput & { routeKey?: string; idempotencyKey?: string },
     writeChunk: (chunk: string) => void | Promise<void>,
   ) {
-    if (!this.env.agentV2Enabled || !this.env.agentV2RuntimeEnabled) {
+    if (resolveAgentRuntimeIdentity(this.env) !== "v2_real") {
       throw new AgentApiError(404, "AGENT_V2_DISABLED", "Canvas Agent v2 is disabled.");
     }
     if (input.selectedSkillId && (!this.env.agentSkillsEnabled || !this.env.agentSkillRuntimeEnabled)) {
