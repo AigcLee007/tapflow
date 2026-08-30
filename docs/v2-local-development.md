@@ -125,6 +125,12 @@ when testing the new panel:
 ```env
 AGENT_V2_ENABLED=false
 AGENT_V2_RUNTIME_ENABLED=false
+AGENT_V3_ENABLED=false
+AGENT_V3_RUNTIME_ENABLED=false
+AGENT_V3_MAX_TOOL_ROUNDS=8
+AGENT_V3_MAX_CONTEXT_NODES=60
+AGENT_V3_MAX_VISUAL_CAPTURES=4
+AGENT_V3_REPAIR_ATTEMPTS=1
 AGENT_SKILLS_ENABLED=false
 AGENT_SKILL_AUTHORING_ENABLED=false
 AGENT_SKILL_RUNTIME_ENABLED=false
@@ -132,6 +138,7 @@ AGENT_SKILL_MAX_SOURCE_CHARS=24000
 AGENT_SKILL_MAX_STEPS=12
 AGENT_SKILL_REPAIR_ATTEMPTS=1
 VITE_AGENT_V2_ENABLED=false
+VITE_AGENT_V3_ENABLED=false
 VITE_AGENT_SKILLS_ENABLED=false
 VITE_AGENT_SKILL_AUTHORING_ENABLED=false
 VITE_AGENT_SKILL_RUNTIME_ENABLED=false
@@ -144,6 +151,12 @@ each require their corresponding pair. If a server capability is
 unavailable or a runtime flag is off, the UI must remain on the current Agent
 panel and V2 write requests must be rejected. Never infer enablement from
 `import.meta.env.DEV`.
+
+Agent V3 is also conjunctive: both `AGENT_V3_ENABLED` and
+`AGENT_V3_RUNTIME_ENABLED` must be true before the server reports the
+product-safe `v3_real` runtime identity. Keep it disabled by default. Staging
+and production must not silently fall back to another runtime when V3 is
+enabled but unavailable; inspect the capability response and fail closed.
 
 After changing a `VITE_*` value, restart Vite. API/Worker values are read at
 process start, so restart both processes as well. Use the server capability

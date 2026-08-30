@@ -10,6 +10,7 @@ Last updated: 2026-08-30
 - Skill V2 is defined as a versioned executable contract with typed inputs/outputs, allowlisted tools, approval/pricing/retry policies, delivery checks, optional UI schema, and validated graph templates. Existing Skill IDs and versions remain stable through a restricted V1 adapter.
 - No runtime code, feature flag, database migration, staging configuration, or deployment was changed in this design-only step. V2/Skill runtime flags remain disabled pending the existing authenticated staging gates and the future V3 implementation plan.
 - Implementation plan confirmed at `docs/superpowers/plans/2026-08-30-canvas-agent-v3-implementation.md`. The plan is split into runtime truth/evaluation, server protocol/Director loop, delivery/recovery, frontend Agent Dock V3, and Skill Contract V2/visual context slices with focused tests and commit checkpoints.
+- Task 1 progress: added disabled-by-default V3 server/runtime flags, bounded tool-round configuration, Vite/Compose propagation, and truthful capability runtime identity (`v3_real`, `v2_real`, or `unavailable`) without DEV-based inference.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 

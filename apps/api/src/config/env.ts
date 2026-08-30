@@ -18,6 +18,12 @@ export type ApiEnv = {
   agentPlannerTimeoutMs: number;
   agentV2Enabled: boolean;
   agentV2RuntimeEnabled: boolean;
+  agentV3Enabled?: boolean;
+  agentV3RuntimeEnabled?: boolean;
+  agentV3MaxToolRounds?: number;
+  agentV3MaxContextNodes?: number;
+  agentV3MaxVisualCaptures?: number;
+  agentV3RepairAttempts?: number;
   agentSkillsEnabled: boolean;
   agentSkillAuthoringEnabled: boolean;
   agentSkillRuntimeEnabled: boolean;
@@ -119,6 +125,15 @@ function parsePositiveNumberEnv(name: string, value: string | undefined, fallbac
   return parsed;
 }
 
+function parseClampedIntegerEnv(name: string, value: string | undefined, fallback: number, min: number, max: number): number {
+  const raw = value?.trim() ?? "";
+  const parsed = raw ? Number(raw) : fallback;
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`${name} must be an integer when provided`);
+  }
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export function getApiEnv(): ApiEnv {
   const nodeEnv = process.env.NODE_ENV?.trim() || "development";
   const isProduction = nodeEnv === "production";
@@ -184,6 +199,12 @@ export function getApiEnv(): ApiEnv {
   );
   const agentV2Enabled = parseBooleanEnv("AGENT_V2_ENABLED", process.env.AGENT_V2_ENABLED, false);
   const agentV2RuntimeEnabled = parseBooleanEnv("AGENT_V2_RUNTIME_ENABLED", process.env.AGENT_V2_RUNTIME_ENABLED, false);
+  const agentV3Enabled = parseBooleanEnv("AGENT_V3_ENABLED", process.env.AGENT_V3_ENABLED, false);
+  const agentV3RuntimeEnabled = parseBooleanEnv("AGENT_V3_RUNTIME_ENABLED", process.env.AGENT_V3_RUNTIME_ENABLED, false);
+  const agentV3MaxToolRounds = parseClampedIntegerEnv("AGENT_V3_MAX_TOOL_ROUNDS", process.env.AGENT_V3_MAX_TOOL_ROUNDS, 8, 1, 8);
+  const agentV3MaxContextNodes = parsePositiveIntegerEnv("AGENT_V3_MAX_CONTEXT_NODES", process.env.AGENT_V3_MAX_CONTEXT_NODES, 60);
+  const agentV3MaxVisualCaptures = parsePositiveIntegerEnv("AGENT_V3_MAX_VISUAL_CAPTURES", process.env.AGENT_V3_MAX_VISUAL_CAPTURES, 4);
+  const agentV3RepairAttempts = parsePositiveIntegerEnv("AGENT_V3_REPAIR_ATTEMPTS", process.env.AGENT_V3_REPAIR_ATTEMPTS, 1);
   const agentSkillsEnabled = parseBooleanEnv("AGENT_SKILLS_ENABLED", process.env.AGENT_SKILLS_ENABLED, false);
   const agentSkillAuthoringEnabled = parseBooleanEnv("AGENT_SKILL_AUTHORING_ENABLED", process.env.AGENT_SKILL_AUTHORING_ENABLED, false);
   const agentSkillRuntimeEnabled = parseBooleanEnv("AGENT_SKILL_RUNTIME_ENABLED", process.env.AGENT_SKILL_RUNTIME_ENABLED, false);
@@ -382,6 +403,12 @@ export function getApiEnv(): ApiEnv {
     agentPlannerTimeoutMs,
     agentV2Enabled,
     agentV2RuntimeEnabled,
+    agentV3Enabled,
+    agentV3RuntimeEnabled,
+    agentV3MaxToolRounds,
+    agentV3MaxContextNodes,
+    agentV3MaxVisualCaptures,
+    agentV3RepairAttempts,
     agentSkillsEnabled,
     agentSkillAuthoringEnabled,
     agentSkillRuntimeEnabled,
