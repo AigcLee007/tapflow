@@ -2,7 +2,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z, ZodError } from "zod";
 
 import { requireAuth, requirePermission, requireTenant } from "../../http/auth-middleware.js";
-import type { ApiEnv } from "../../config/env.js";
 import {
   type AgentSessionIdParams,
   type ApproveAgentToolCallInput,
@@ -27,18 +26,7 @@ import {
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
-
-export type AgentRuntimeIdentity = "v3_real" | "v2_real" | "unavailable" | "offline_demo";
-
-export function resolveAgentRuntimeIdentity(env: Pick<ApiEnv, "agentV2Enabled" | "agentV2RuntimeEnabled" | "agentV3Enabled" | "agentV3RuntimeEnabled">): AgentRuntimeIdentity {
-  if (env.agentV3Enabled && env.agentV3RuntimeEnabled) {
-    return "v3_real";
-  }
-  if (env.agentV2Enabled && env.agentV2RuntimeEnabled) {
-    return "v2_real";
-  }
-  return "unavailable";
-}
+import { resolveAgentRuntimeIdentity } from "./agent-runtime-identity.js";
 
 function sendError(
   request: FastifyRequest,

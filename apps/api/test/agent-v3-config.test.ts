@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 
 import { getApiEnv } from "../src/config/env.js";
+import { resolveAgentRuntimeIdentity } from "../src/modules/agent/agent-runtime-identity.js";
 
 const originalEnv = { ...process.env };
 
@@ -9,6 +10,15 @@ afterEach(() => {
 });
 
 describe("Agent V3 configuration", () => {
+  test("fails closed when V3 is partially enabled even if V2 is available", () => {
+    expect(resolveAgentRuntimeIdentity({
+      agentV2Enabled: true,
+      agentV2RuntimeEnabled: true,
+      agentV3Enabled: true,
+      agentV3RuntimeEnabled: false,
+    })).toBe("unavailable");
+  });
+
   test("defaults V3 rollout flags and tool rounds safely", () => {
     process.env = { ...originalEnv, NODE_ENV: "development" };
 
