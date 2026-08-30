@@ -16,7 +16,7 @@ export type AppliedCanvasOperationSet = { revision: number; createdNodeIds: stri
 export class CanvasOperationService {
   private readonly completed = new Map<string, AppliedCanvasOperationSet>();
 
-  constructor(private readonly flows: FlowsGateway, private readonly ownsAsset?: (tenantId: string, assetId: string) => Promise<boolean>) {}
+  constructor(private readonly flows: FlowsGateway, private readonly ownsAsset?: (tenantId: string, assetId: string) => Promise<boolean>, private readonly resolveClientRef?: (tenantId: string, ref: string) => Promise<string | null>) {}
 
   async applyApprovedOperationSet(input: { tenantId: string; projectId: string; flowId: string; taskId: string; operationSet: CanvasOperationEnvelope }): Promise<AppliedCanvasOperationSet> {
     const operationSet = canvasOperationEnvelopeSchema.parse(input.operationSet);
@@ -42,7 +42,7 @@ export class CanvasOperationService {
 
   private async apply(tenantId: string, graph: DraftGraph, operation: CanvasOperation, createdNodeIds: string[], inverse: CanvasOperation[]) {
     if (operation.type === "node.create") { graph.nodes.push(operation.node); createdNodeIds.push(operation.node.id); inverse.push({ type: "node.delete", nodeId: operation.node.id }); return; }
-    if (operation.type === "node.delete") { const index = graph.nodes.findIndex((node) => node.id === operation.nodeId); if (index < 0) throw new CanvasOperationError(409, "AGENT_OPERATION_PRECONDITION_FAILED", "Node is no longer available."); const [node] = graph.nodes.splice(index, 1); inverse.push({ type: "node.create", node: node as never }); return; }
+    if (operation.type === "node.delete") { const nodeId = await this.resolveId(tenantId, operation.nodeId); const index = graph.nodes.findIndex((node) => node.id === nodeId); if (index < 0) throw new CanvasOperationError(409, "AGENT_OPERATION_PRECONDITION_FAILED", "Node is no longer available."); const [node] = graph.nodes.splice(index, 1); inverse.push({ type: "node.create", node: node as never }); return; }
     if (operation.type === "node.update_data") { const node = graph.nodes.find((item) => item.id === operation.nodeId); if (!node) throw new CanvasOperationError(409, "AGENT_OPERATION_PRECONDITION_FAILED", "Node is no longer available."); const previous = (node.data ?? {}) as Record<string, unknown>; node.data = { ...previous, ...operation.data }; inverse.push({ type: "node.update_data", nodeId: operation.nodeId, data: previous }); return; }
     if (operation.type === "edge.connect") { if (!graph.nodes.some((node) => node.id === operation.edge.source) || !graph.nodes.some((node) => node.id === operation.edge.target)) throw new CanvasOperationError(409, "AGENT_OPERATION_PRECONDITION_FAILED", "Edge endpoints are no longer available."); graph.edges.push(operation.edge); inverse.push({ type: "edge.delete", edgeId: operation.edge.id }); return; }
     if (operation.type === "edge.delete") { const index = graph.edges.findIndex((edge) => edge.id === operation.edgeId); if (index < 0) throw new CanvasOperationError(409, "AGENT_OPERATION_PRECONDITION_FAILED", "Edge is no longer available."); const [edge] = graph.edges.splice(index, 1); inverse.push({ type: "edge.connect", edge: edge as never }); return; }
@@ -56,6 +56,8 @@ export class CanvasOperationService {
     }
     throw new CanvasOperationError(400, "AGENT_OPERATION_UNSUPPORTED", `Unsupported operation: ${operation.type}`);
   }
+
+  private async resolveId(tenantId: string, id: string) { if (!id.startsWith("client:")) return id; const resolved = this.resolveClientRef ? await this.resolveClientRef(tenantId, id) : null; if (!resolved) throw new CanvasOperationError(409, "AGENT_CLIENT_REFERENCE_NOT_FOUND", "Client reference no longer resolves."); return resolved; }
 }
 
 export async function applyApprovedOperationSet(service: CanvasOperationService, input: Parameters<CanvasOperationService["applyApprovedOperationSet"]>[0]) {
