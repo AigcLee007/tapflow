@@ -43,7 +43,7 @@ export const operationEnvelopeSchema = z.object({
   operationSetId: id, taskId: id, turnId: id, baseRevision: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(2000),
   risk: z.enum(["safe", "destructive", "paid", "batch"]), requiresApproval: z.boolean(), operations: z.array(canvasOperationSchema).min(1).max(24),
   preconditions: boundedAssertions, expectedEffects: boundedAssertions, inverseOperations: z.array(canvasOperationSchema).max(24).optional(),
-}).strict().superRefine((value, ctx) => { try { rejectUnsafe(value); } catch (error) { if (error instanceof z.ZodError) error.issues.forEach((issue) => ctx.addIssue(issue)); else ctx.addIssue({ code: "custom", message: "Unsafe operation payload." }); } });
+}).strict().superRefine((value, ctx) => { try { rejectUnsafe(value); } catch (error) { if (error instanceof z.ZodError) error.issues.forEach((issue) => ctx.addIssue({ code: "custom", path: issue.path, message: issue.message })); else ctx.addIssue({ code: "custom", message: "Unsafe operation payload." }); } });
 
 export type CanvasOperationEnvelope = z.infer<typeof operationEnvelopeSchema>;
 export const canvasOperationEnvelopeSchema = operationEnvelopeSchema;
