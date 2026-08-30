@@ -1,4 +1,4 @@
-import { buildVisualContextRefs, type VisualContextRef } from "./agent-visual-context.js";
+import { buildVisualContextRefs, type VisualContextRef, type VisualCapture } from "./agent-visual-context.js";
 import { redactV2AgentContextValue } from "../agent-v2-context.js";
 
 export type CanvasNodeSummary = { id: string; type: string; title?: string; position: { x: number; y: number }; selected: boolean; assetId?: string; status?: string };
@@ -40,7 +40,7 @@ function viewport(value: unknown) { const v = record(value); return { x: typeof 
 export async function assembleCanvasDirectorContext(input: {
   tenantId: string; projectId: string; flowId: string; graphRevision: number; prompt: string;
   canvas: CanvasInput; selectedSkill?: { id: string; version: number; name?: string };
-  visual?: { captures?: Array<{ id: string }> }; repositories?: Repo & { visual?: { findCapture: (id: string, tenantId?: string) => Promise<unknown> } };
+  visual?: { captures?: Array<{ id: string }> }; repositories?: Repo & { visual?: { findCapture: (id: string, tenantId?: string) => Promise<VisualCapture | null | undefined> } };
 }): Promise<CanvasDirectorContext> {
   const vp = viewport(input.canvas.viewport); const all = (input.canvas.nodes ?? []).map(nodeSummary).filter((n): n is CanvasNodeSummary => Boolean(n));
   const selectedSet = new Set((input.canvas.selectedNodeIds ?? []).map((v) => safeString(v)).filter((v): v is string => Boolean(v)));

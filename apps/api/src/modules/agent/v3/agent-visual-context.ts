@@ -6,12 +6,12 @@ export type VisualContextRef = {
   expiresAt: string;
 };
 
-type Capture = { id: string; flowId: string; kind: string; width: number; height: number; expiresAt: string };
+export type VisualCapture = { id: string; flowId: string; kind: string; width: number; height: number; expiresAt: string };
 
 export async function buildVisualContextRefs(input: {
   flowId: string;
   captureIds: string[];
-  repository: { findCapture: (id: string) => Promise<Capture | null | undefined> };
+  repository: { findCapture: (id: string) => Promise<VisualCapture | null | undefined> };
   now?: Date;
 }): Promise<VisualContextRef[]> {
   const now = (input.now ?? new Date()).getTime();
