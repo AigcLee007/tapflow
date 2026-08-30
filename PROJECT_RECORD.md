@@ -1,6 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-23
+Last updated: 2026-08-30
+
+## 2026-08-30 - Canvas Agent V3 Redesign Direction
+
+- Approved a new Canvas Agent direction after reviewing the current implementation and relevant open-source canvas/Agent patterns. TapFlow will keep `@xyflow/react` and the existing V2 draft, Workflow Run, Worker, billing, and asset boundaries rather than immediately migrating the production canvas engine.
+- Added the formal V3 design at `docs/superpowers/specs/2026-08-30-canvas-agent-v3-design.md`. It defines a canvas-first Director loop (`observe -> plan -> preview -> approve -> execute -> verify -> repair`), a read/write/run tool boundary, revisioned and reversible canvas operations, dual structured/visual context, durable delivery verification, failed-step retry, and explicit runtime identity without silent production fallback.
+- The approved product direction replaces the overloaded chat-first Agent surface with a bottom canvas command bar, a task-first right sheet, and non-authoritative ghost previews. History, detailed logs, provider connections, and Skill browsing remain secondary surfaces.
+- Skill V2 is defined as a versioned executable contract with typed inputs/outputs, allowlisted tools, approval/pricing/retry policies, delivery checks, optional UI schema, and validated graph templates. Existing Skill IDs and versions remain stable through a restricted V1 adapter.
+- No runtime code, feature flag, database migration, staging configuration, or deployment was changed in this design-only step. V2/Skill runtime flags remain disabled pending the existing authenticated staging gates and the future V3 implementation plan.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 
