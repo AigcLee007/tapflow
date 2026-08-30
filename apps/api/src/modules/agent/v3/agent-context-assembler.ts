@@ -1,4 +1,5 @@
 import { buildVisualContextRefs, type VisualContextRef } from "./agent-visual-context.js";
+import { redactV2AgentContextValue } from "../agent-v2-context.js";
 
 export type CanvasNodeSummary = { id: string; type: string; title?: string; position: { x: number; y: number }; selected: boolean; assetId?: string; status?: string };
 export type CanvasDirectorContext = {
@@ -13,9 +14,12 @@ export type CanvasDirectorContext = {
 };
 
 type CanvasInput = { nodes?: unknown[]; edges?: unknown[]; viewport?: unknown; selectedNodeIds?: unknown[] };
-type Repo = { catalog?: () => Promise<unknown[]>; recentRuns?: () => Promise<unknown[]> };
-const unsafeValue = /(?:https?:\/\/[^\s"'<>]+|data:[^\s"'<>]+|blob:[^\s"'<>]+|\b(?:api[_ -]?key|authorization|credential|provider|route[_ -]?key|signed[_ -]?url)\b\s*[:=]\s*[^\s,;]+)/gi;
-const safeString = (v: unknown, max = 200) => typeof v === "string" && v.trim() ? v.trim().replace(unsafeValue, "[redacted]").slice(0, max) : undefined;
+type Repo = { catalog?: (tenantId: string) => Promise<unknown[]>; pricing?: (tenantId: string, modelIds: string[]) => Promise<unknown[]>; recentRuns?: (tenantId: string, projectId: string, flowId: string) => Promise<unknown[]> };
+const safeString = (v: unknown, max = 200) => {
+  if (typeof v !== "string" || !v.trim()) return undefined;
+  const redacted = redactV2AgentContextValue(v);
+  return typeof redacted === "string" ? redacted.slice(0, max) : undefined;
+};
 const record = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 
 function nodeSummary(value: unknown): CanvasNodeSummary | null {
@@ -36,7 +40,7 @@ function viewport(value: unknown) { const v = record(value); return { x: typeof 
 export async function assembleCanvasDirectorContext(input: {
   tenantId: string; projectId: string; flowId: string; graphRevision: number; prompt: string;
   canvas: CanvasInput; selectedSkill?: { id: string; version: number; name?: string };
-  visual?: { captures?: Array<{ id: string }> }; repositories?: Repo & { visual?: { findCapture: (id: string) => Promise<any> } };
+  visual?: { captures?: Array<{ id: string }> }; repositories?: Repo & { visual?: { findCapture: (id: string, tenantId?: string) => Promise<unknown> } };
 }): Promise<CanvasDirectorContext> {
   const vp = viewport(input.canvas.viewport); const all = (input.canvas.nodes ?? []).map(nodeSummary).filter((n): n is CanvasNodeSummary => Boolean(n));
   const selectedSet = new Set((input.canvas.selectedNodeIds ?? []).map((v) => safeString(v)).filter((v): v is string => Boolean(v)));
@@ -47,10 +51,12 @@ export async function assembleCanvasDirectorContext(input: {
   const offscreen = all.filter((node) => !visible.some((item) => item.id === node.id));
   const clusters = offscreen.length ? [{ id: "offscreen-0", nodeIds: offscreen.map((node) => node.id).slice(0, 60), count: offscreen.length }] : [];
   const edges = (input.canvas.edges ?? []).map((value) => { const e = record(value); const id = safeString(e.id); const source = safeString(e.source); const target = safeString(e.target); return id && source && target ? { id, source, target } : null; }).filter((e): e is { id: string; source: string; target: string } => Boolean(e)).slice(0, 120);
-  const catalog = input.repositories?.catalog ? await input.repositories.catalog() : [];
+  const catalog = input.repositories?.catalog ? await input.repositories.catalog(input.tenantId) : [];
   const productModels = catalog.map((item) => { const m = record(item); const id = safeString(m.id); const displayName = safeString(m.displayName, 160); const modality = safeString(m.modality, 40); return id && displayName && modality ? { id, displayName, modality } : null; }).filter((m): m is { id: string; displayName: string; modality: string } => Boolean(m));
-  const runs = input.repositories?.recentRuns ? await input.repositories.recentRuns() : [];
+  const pricing = input.repositories?.pricing ? await input.repositories.pricing(input.tenantId, productModels.map((model) => model.id)) : [];
+  const pricedModelIds = new Set(pricing.map((item) => safeString(record(item).modelId ?? record(item).id)).filter((id): id is string => Boolean(id)));
+  const runs = input.repositories?.recentRuns ? await input.repositories.recentRuns(input.tenantId, input.projectId, input.flowId) : [];
   const recentRuns = runs.map((item) => { const r = record(item); const id = safeString(r.id); const status = safeString(r.status, 40); return id && status ? { id, status, ...(safeString(r.summary, 240) ? { summary: safeString(r.summary, 240) } : {}) } : null; }).filter((r): r is { id: string; status: string; summary?: string } => Boolean(r)).slice(0, 12);
-  const visualContext = input.visual && input.repositories?.visual ? await buildVisualContextRefs({ flowId: input.flowId, captureIds: input.visual.captures?.map((capture) => capture.id) ?? [], repository: input.repositories.visual }) : [];
-  return { task: { userGoal: safeString(input.prompt, 4000) ?? "", ...(input.selectedSkill ? { selectedSkill: input.selectedSkill } : {}) }, binding: { projectId: input.projectId, flowId: input.flowId, graphRevision: Number.isSafeInteger(input.graphRevision) ? input.graphRevision : 0 }, viewport: { ...vp, visibleNodeIds: visible.map((node) => node.id).slice(0, 60) }, selection: { nodeIds: selected.map((node) => node.id), assetRefs: selected.filter((node) => node.assetId).map((node) => ({ refId: `node-${node.id}`, assetId: node.assetId!, label: node.title ?? node.id })).slice(0, 12) }, graph: { nodes: graphNodes, edges, offscreenClusters: clusters }, catalog: { productModels, pricingAvailability: productModels.map((model) => ({ modelId: model.id, available: true })) }, recentRuns, visualContext };
+  const visualContext = input.visual && input.repositories?.visual ? await buildVisualContextRefs({ flowId: input.flowId, captureIds: input.visual.captures?.map((capture) => capture.id) ?? [], repository: { findCapture: (id) => input.repositories!.visual!.findCapture(id, input.tenantId) } }) : [];
+  return { task: { userGoal: safeString(input.prompt, 4000) ?? "", ...(input.selectedSkill ? { selectedSkill: input.selectedSkill } : {}) }, binding: { projectId: input.projectId, flowId: input.flowId, graphRevision: Number.isSafeInteger(input.graphRevision) ? input.graphRevision : 0 }, viewport: { ...vp, visibleNodeIds: visible.map((node) => node.id).slice(0, 60) }, selection: { nodeIds: selected.map((node) => node.id), assetRefs: selected.filter((node) => node.assetId).map((node) => ({ refId: `node-${node.id}`, assetId: node.assetId!, label: node.title ?? node.id })).slice(0, 12) }, graph: { nodes: graphNodes, edges, offscreenClusters: clusters }, catalog: { productModels, pricingAvailability: productModels.map((model) => ({ modelId: model.id, available: pricedModelIds.has(model.id) })) }, recentRuns, visualContext };
 }

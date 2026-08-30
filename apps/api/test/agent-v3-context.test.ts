@@ -62,12 +62,26 @@ describe("bounded v3 canvas context", () => {
   it("only exposes creator-safe model names and redacts internal or media fields", async () => {
     const result = await assembleCanvasDirectorContext({
       ...input,
-      repositories: { catalog: async () => [{ id: "model-1", displayName: "Creator Image", modality: "image", provider: "provider-secret", credentialId: "cred-secret", routeKey: "route-secret" }] },
+      repositories: { catalog: async () => [{ id: "model-1", displayName: "Creator Image", modality: "image", provider: "provider-secret", credentialId: "cred-secret", routeKey: "route-secret", authorization: "Bearer top-secret" }] },
     });
     const serialized = JSON.stringify(result);
     expect(result.catalog.productModels).toEqual([{ id: "model-1", displayName: "Creator Image", modality: "image" }]);
-    expect(serialized).not.toMatch(/provider-secret|credential-secret|route-secret|data:image|signed\?token/);
+    expect(serialized).not.toMatch(/provider-secret|credential-secret|route-secret|top-secret|data:image|signed\?token/);
     expect(serialized).not.toMatch(/base64|dataUrl|signedUrl|credentialId/);
+  });
+
+  it("passes tenant scope to repositories and marks models unavailable without pricing", async () => {
+    const calls: unknown[][] = [];
+    const result = await assembleCanvasDirectorContext({
+      ...input,
+      repositories: {
+        catalog: async (...args: unknown[]) => { calls.push(args); return [{ id: "model-1", displayName: "Creator Image", modality: "image" }]; },
+        pricing: async (...args: unknown[]) => { calls.push(args); return []; },
+        recentRuns: async (...args: unknown[]) => { calls.push(args); return []; },
+      },
+    });
+    expect(calls.every((args) => args[0] === "tenant-1")).toBe(true);
+    expect(result.catalog.pricingAvailability).toEqual([{ modelId: "model-1", available: false }]);
   });
 });
 
