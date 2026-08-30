@@ -16,6 +16,7 @@ Last updated: 2026-08-30
 - V3 continuation: added asset-backed placement and client-reference checks, delivery verification with partial/waiting/failed states, failed-step retry metadata, frontend task projection/SSE replay, command bar/task sheet, ghost preview overlay, Skill Contract V2 projection, and bounded visual capture metadata. V3 focused validation currently passes 12 files / 43 tests; authenticated staging execution remains the release gate.
 - Final validation note: frontend production build passed. Worker tests had 44 passing tests and 8 suites blocked by pre-existing workspace package-entry resolution errors for `@aigc-flow/redis` and `@aigc-flow/storage`; no V3 worker runtime changes were made to mask those failures.
 - V3 canvas composition: `FlowCanvasPage` now accepts an injected `agentV3RuntimeIdentity` and renders the V3 command bar/task sheet only for `v3_real`; the default remains `unavailable`, preserving the existing V2 path until the server runtime adapter is enabled.
+- Cross-package V3 focused validation: 14 test files / 50 tests passed, API build passed, frontend production build passed, and `git diff --check` passed. Authenticated staging acceptance is still unavailable in this local environment because PostgreSQL, Redis/BullMQ, S3, real priced routes, and browser auth are not configured.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 
