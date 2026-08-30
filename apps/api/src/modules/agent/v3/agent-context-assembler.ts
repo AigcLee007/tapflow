@@ -14,7 +14,8 @@ export type CanvasDirectorContext = {
 
 type CanvasInput = { nodes?: unknown[]; edges?: unknown[]; viewport?: unknown; selectedNodeIds?: unknown[] };
 type Repo = { catalog?: () => Promise<unknown[]>; recentRuns?: () => Promise<unknown[]> };
-const safeString = (v: unknown, max = 200) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+const unsafeValue = /(?:https?:\/\/[^\s"'<>]+|data:[^\s"'<>]+|blob:[^\s"'<>]+|\b(?:api[_ -]?key|authorization|credential|provider|route[_ -]?key|signed[_ -]?url)\b\s*[:=]\s*[^\s,;]+)/gi;
+const safeString = (v: unknown, max = 200) => typeof v === "string" && v.trim() ? v.trim().replace(unsafeValue, "[redacted]").slice(0, max) : undefined;
 const record = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 
 function nodeSummary(value: unknown): CanvasNodeSummary | null {

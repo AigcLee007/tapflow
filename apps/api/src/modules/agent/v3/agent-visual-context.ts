@@ -16,7 +16,8 @@ export async function buildVisualContextRefs(input: {
 }): Promise<VisualContextRef[]> {
   const now = (input.now ?? new Date()).getTime();
   const refs: VisualContextRef[] = [];
-  for (const id of input.captureIds.slice(0, 4)) {
+  for (const id of input.captureIds) {
+    if (refs.length >= 4) break;
     const capture = await input.repository.findCapture(id);
     if (!capture || capture.flowId !== input.flowId) continue;
     const expiry = Date.parse(capture.expiresAt);
