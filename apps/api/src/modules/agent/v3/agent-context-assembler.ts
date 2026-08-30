@@ -1,4 +1,4 @@
-import { buildVisualContextRefs, type VisualContextRef } from "./agent-visual-context";
+import { buildVisualContextRefs, type VisualContextRef } from "./agent-visual-context.js";
 
 export type CanvasNodeSummary = { id: string; type: string; title?: string; position: { x: number; y: number }; selected: boolean; assetId?: string; status?: string };
 export type CanvasDirectorContext = {
