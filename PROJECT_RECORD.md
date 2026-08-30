@@ -17,6 +17,7 @@ Last updated: 2026-08-30
 - Final validation note: frontend production build passed. Worker tests had 44 passing tests and 8 suites blocked by pre-existing workspace package-entry resolution errors for `@aigc-flow/redis` and `@aigc-flow/storage`; no V3 worker runtime changes were made to mask those failures.
 - V3 canvas composition: `FlowCanvasPage` now accepts an injected `agentV3RuntimeIdentity` and renders the V3 command bar/task sheet only for `v3_real`; the default remains `unavailable`, preserving the existing V2 path until the server runtime adapter is enabled.
 - Cross-package V3 focused validation: 14 test files / 50 tests passed, API build passed, frontend production build passed, and `git diff --check` passed. Authenticated staging acceptance is still unavailable in this local environment because PostgreSQL, Redis/BullMQ, S3, real priced routes, and browser auth are not configured.
+- Workspace package validation: after building workspace dependencies, Worker build passed and Worker tests passed with 113 tests and 18 intentional skips; AI Gateway Core passed 176 tests; DB passed 55 tests with 38 infrastructure/DB skips.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 
