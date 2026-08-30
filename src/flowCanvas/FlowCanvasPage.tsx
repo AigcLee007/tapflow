@@ -10,6 +10,9 @@ import { useFlowCanvasStore } from './store/flowCanvasStore';
 import type { FlowNodeKind } from './types';
 import { disposeBackendWorkflowRunStream } from './runtime/v2WorkflowRunner';
 import { isEditableElement } from './utils/isEditableElement';
+import { CanvasAgentCommandBar } from './agent/v3/CanvasAgentCommandBar';
+import { CanvasAgentTaskSheet } from './agent/v3/CanvasAgentTaskSheet';
+import type { CanvasAgentV3RuntimeIdentity, CanvasAgentV3Task } from './agent/v3/canvasAgentV3Types';
 
 const useFlowShortcuts = () => {
   const undo = useFlowCanvasStore((s) => s.undo);
@@ -206,9 +209,11 @@ const FlowCanvasPage: React.FC<{
   enableLocalPersistence?: boolean;
   saveStatus?: CanvasSaveStatusView;
   onServerDraftApplied?: () => void | Promise<void>;
-}> = ({ onServerDraftApplied, saveStatus }) => {
+  agentV3RuntimeIdentity?: CanvasAgentV3RuntimeIdentity;
+}> = ({ onServerDraftApplied, saveStatus, agentV3RuntimeIdentity = 'unavailable' }) => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [v3Task, setV3Task] = useState<CanvasAgentV3Task>();
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
   useFlowShortcuts();
@@ -234,6 +239,10 @@ const FlowCanvasPage: React.FC<{
           {isDebugOverlayEnabled() && <StatsOverlay />}
           {isDebugOverlayEnabled() && <BackendRunOverlay />}
           <EmptyState />
+          {agentV3RuntimeIdentity === 'v3_real' && <>
+            <CanvasAgentCommandBar runtimeIdentity={agentV3RuntimeIdentity} task={v3Task} onSubmit={(prompt) => setV3Task({ id: `local-${Date.now()}`, status: 'planning', lastSequence: 0, events: [{ sequence: 1, type: 'task_created', payload: { prompt } }] })} onCancel={() => setV3Task(undefined)} />
+            <CanvasAgentTaskSheet task={v3Task} />
+          </>}
         </ReactFlowProvider>
       </div>
     </div>
