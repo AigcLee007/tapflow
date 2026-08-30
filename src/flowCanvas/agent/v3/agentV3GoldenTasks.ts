@@ -31,7 +31,8 @@ const hasTerminalEvidence = (
   actual: AgentV3Actual['terminalDelivery'],
   expectedKind: AgentV3GoldenTask['expected']['deliveryKind'],
 ) => {
-  if (!expectedKind || !actual || actual.kind !== expectedKind) return false;
+  if (!expectedKind) return true;
+  if (!actual || actual.kind !== expectedKind) return false;
   if (expectedKind === 'image' || expectedKind === 'video') return Boolean(actual.assetId || actual.deliveryId);
   if (expectedKind === 'graph') return Boolean(actual.graphId || actual.deliveryId);
   if (expectedKind === 'partial') return Boolean(actual.deliveryId || actual.reason);

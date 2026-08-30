@@ -60,4 +60,16 @@ describe('agent v3 golden task matrix', () => {
     expect(result.duplicatePaidStepPrevented).toBe(false);
     expect(result.score).toBeLessThan(1);
   });
+
+  it('treats optional delivery evidence as not applicable', () => {
+    const task = agentV3GoldenTasks.find((item) => item.id === 'approval-required-batch')!;
+    const result = scoreAgentV3Task({
+      planActions: [...task.expected.planActions],
+      requiresApproval: task.expected.requiresApproval,
+      targetNodeKinds: [...(task.expected.targetNodeKinds ?? [])],
+      paidStepIds: ['step-1'],
+    }, task.expected);
+    expect(result.terminalDeliveryEvidence).toBe(true);
+    expect(result.score).toBe(1);
+  });
 });
