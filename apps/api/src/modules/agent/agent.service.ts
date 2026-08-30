@@ -73,9 +73,11 @@ function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
   if (!value || typeof value !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
   const input = value as Record<string, unknown>;
   const targets = Array.isArray(input.targets) ? input.targets : [];
-  if (typeof input.flowId !== "string" || !Number.isSafeInteger(input.graphRevision) || input.graphRevision < 0 || targets.length === 0) {
+  const graphRevisionValue = input.graphRevision;
+  if (typeof input.flowId !== "string" || typeof graphRevisionValue !== "number" || !Number.isSafeInteger(graphRevisionValue) || graphRevisionValue < 0 || targets.length === 0) {
     throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
   }
+  const graphRevision = graphRevisionValue;
   const normalizedTargets = targets.map((target) => {
     if (!target || typeof target !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is invalid.");
     const item = target as Record<string, unknown>;
@@ -87,7 +89,7 @@ function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
   return {
     batch: normalizedTargets.length > 1,
     flowId: input.flowId,
-    graphRevision: input.graphRevision,
+    graphRevision,
     requiresApproval: true,
     targets: normalizedTargets,
   };
@@ -917,7 +919,7 @@ export class AgentService {
           graphRevision: expectedRevision,
           nodes: nodes.map((node) => {
             const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
-            const kind = typeof data.kind === "string" ? data.kind : node.type;
+            const kind = typeof data.kind === "string" ? data.kind : typeof node.type === "string" ? node.type : "unknown";
             // Pricing is resolved by the server-side Workflow Run path. Never
             // trust graph JSON to mark a Skill target as free.
             return { id: String(node.id), type: kind, priced: true };
