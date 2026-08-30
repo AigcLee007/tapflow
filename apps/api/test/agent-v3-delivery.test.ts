@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dedupeDeliveryVerificationEvents, retryFailedSteps, verifyTaskDelivery } from "../src/modules/agent/v3/agent-delivery-verifier.js";
-import { buildAgentRuntimeObservability, sanitizeAgentRuntimeObservability } from "../src/modules/agent/v3/agent-runtime-observability.js";
+import { buildAgentRuntimeObservability, readTerminalDeliveryMetadata, sanitizeAgentRuntimeObservability } from "../src/modules/agent/v3/agent-runtime-observability.js";
 
 describe("v3 delivery verification", () => {
   it("requires terminal structured evidence and reports partial batches", () => {
@@ -39,5 +39,10 @@ describe("v3 delivery verification", () => {
       provider: "secret-provider",
       credentialId: "secret-credential",
     }))).toEqual({ firstEventLatencyMs: 2_500, contextSize: 100_000, toolRounds: 8, repairCount: 1, deliveryDurationMs: 0, terminalStatus: "succeeded", billingTotal: 0 });
+  });
+
+  it("projects only safe terminal delivery metadata from persisted output", () => {
+    expect(readTerminalDeliveryMetadata({ delivery: { status: "verified", verified: true, completedSteps: 2, failedSteps: 0, invalidSteps: 0, provider: "hidden" } })).toEqual({ status: "verified", verified: true, completedSteps: 2, failedSteps: 0, invalidSteps: 0 });
+    expect(readTerminalDeliveryMetadata({ delivery: { status: "unknown", verified: "yes" } })).toBeNull();
   });
 });

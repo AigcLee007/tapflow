@@ -31,5 +31,5 @@ export function dedupeDeliveryVerificationEvents<T extends { idempotencyKey: str
   });
 }
 
-export type AgentRuntimeObservability = { firstEventLatencyMs: number; contextSize: number; toolRounds: number; repairCount: number; deliveryDurationMs: number; terminalStatus: string; billingTotal: number };
-export function sanitizeAgentRuntimeObservability(value: AgentRuntimeObservability): AgentRuntimeObservability { return { firstEventLatencyMs: Math.max(0, value.firstEventLatencyMs), contextSize: Math.min(100_000, Math.max(0, value.contextSize)), toolRounds: Math.min(8, Math.max(0, value.toolRounds)), repairCount: Math.min(1, Math.max(0, value.repairCount)), deliveryDurationMs: Math.max(0, value.deliveryDurationMs), terminalStatus: value.terminalStatus.slice(0, 80), billingTotal: Math.max(0, value.billingTotal) }; }
+export { sanitizeAgentRuntimeObservability } from "./agent-runtime-observability.js";
+export type { AgentRuntimeObservability } from "./agent-runtime-observability.js";
