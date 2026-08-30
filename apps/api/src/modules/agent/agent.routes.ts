@@ -519,7 +519,10 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   const v3Unavailable = async (request: FastifyRequest, reply: FastifyReply) =>
     sendError(request, reply, 503, "AGENT_V3_UNAVAILABLE", "Canvas Agent V3 is not available.");
   const v3Auth = [...authHandlers, requirePermission("flow:read")];
-  app.post("/api/v2/agent/v3/sessions/:sessionId/turns/stream", { preHandler: v3Auth }, v3Unavailable);
+  app.post("/api/v2/agent/v3/sessions/:sessionId/turns/stream", { preHandler: v3Auth }, async (request, reply) => {
+    agentV3SessionTurnParamsSchema.parse(request.params);
+    return v3Unavailable(request, reply);
+  });
   app.get("/api/v2/agent/v3/tasks/:taskId/events", { preHandler: v3Auth }, async (request, reply) => {
     agentV3TaskIdParamsSchema.parse(request.params);
     agentV3EventsQuerySchema.parse(request.query);
