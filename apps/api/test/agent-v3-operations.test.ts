@@ -1,11 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { ZodError } from "zod";
 
-import { canvasOperationSchema, operationEnvelopeSchema } from "../src/modules/agent/v3/canvas-operation-schema.js";
+import { assertCanvasOperationRevision, canvasOperationSchema, operationEnvelopeSchema } from "../src/modules/agent/v3/canvas-operation-schema.js";
 
 const base = {
   operationSetId: "ops-1", taskId: "task-1", turnId: "turn-1", baseRevision: 4,
   summary: "Create a node", risk: "safe" as const, requiresApproval: false,
+  preconditions: [], expectedEffects: [],
   operations: [{ type: "node.create" as const, node: { id: "n1", type: "image", position: { x: 0, y: 0 }, data: { assetId: "a1" } } }],
 };
 
@@ -24,7 +25,7 @@ describe("canvas operation protocol", () => {
 
   test("rejects unknown operation and raw media or secret fields", () => {
     expect(canvasOperationSchema.safeParse({ type: "shell.exec", command: "rm" }).success).toBe(false);
-    for (const value of ["data:image/png;base64,abc", "blob:https://x/y", "https://signed.example/x?X-Amz-Signature=x"]) {
+    for (const value of ["data:image/png;base64,abc", "blob:https://x/y", "https://signed.example/x?X-Amz-Signature=x", "ftp://example.test/file", "javascript:alert(1)", "//example.test/path"]) {
       expect(operationEnvelopeSchema.safeParse({ ...base, operations: [{ type: "node.update_data", nodeId: "n", data: { preview: value } }] }).success).toBe(false);
     }
     expect(operationEnvelopeSchema.safeParse({ ...base, operations: [{ type: "node.update_data", nodeId: "n", data: { authorization: "Bearer x" } }] }).success).toBe(false);
@@ -35,5 +36,20 @@ describe("canvas operation protocol", () => {
     expect(() => operationEnvelopeSchema.parse({ ...base, operations: [] })).toThrow(ZodError);
     expect(() => operationEnvelopeSchema.parse({ ...base, operations: Array.from({ length: 25 }, () => base.operations[0]) })).toThrow(ZodError);
     expect(operationEnvelopeSchema.parse({ ...base, preconditions: [{ revision: 4 }], expectedEffects: [{ nodes: ["created"] }], inverseOperations: base.operations })).toBeTruthy();
+    expect(() => operationEnvelopeSchema.parse({ ...base, preconditions: undefined })).toThrow(ZodError);
+    expect(() => operationEnvelopeSchema.parse({ ...base, expectedEffects: undefined })).toThrow(ZodError);
+  });
+
+  test("accepts a mixed revisioned create/update/connect set", () => {
+    const result = operationEnvelopeSchema.parse({ ...base, operations: [
+      base.operations[0], { type: "node.update_data", nodeId: "n1", data: { label: "updated" } },
+      { type: "edge.connect", edge: { id: "e1", source: "n1", target: "n2" } },
+    ] });
+    expect(result.operations).toHaveLength(3);
+  });
+
+  test("rejects a stale envelope revision before application", () => {
+    expect(() => assertCanvasOperationRevision(base, 5)).toThrow("stale");
+    expect(assertCanvasOperationRevision(base, 4)).toBe(true);
   });
 });

@@ -2,7 +2,10 @@ import { operationEnvelopeSchema, type CanvasOperationEnvelope } from "./canvas-
 
 export type CanvasToolNamespace = "read" | "proposal" | "run" | "control";
 export type CanvasTool = { namespace: CanvasToolNamespace; name: string; sideEffect: "none"; invoke: (input: unknown) => unknown };
-const proposal = (input: any) => ({ kind: "operation_proposal", envelope: operationEnvelopeSchema.safeParse(input).success ? operationEnvelopeSchema.parse(input) : input });
+const proposal = (input: any) => {
+  const parsed = operationEnvelopeSchema.safeParse(input);
+  return parsed.success ? { kind: "operation_proposal", envelope: parsed.data } : { kind: "proposal_rejected", error: "Invalid operation envelope", issues: parsed.error.issues };
+};
 export const canvasToolRegistry = {
   list(): CanvasTool[] { return [
     { namespace: "read", name: "get_graph", sideEffect: "none", invoke: (input) => ({ kind: "graph_context", input }) },

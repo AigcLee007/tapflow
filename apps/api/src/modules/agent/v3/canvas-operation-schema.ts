@@ -18,7 +18,7 @@ export const canvasOperationSchema = z.discriminatedUnion("type", [
 
 export type CanvasOperation = z.infer<typeof canvasOperationSchema>;
 
-const forbidden = /^(?:data:|blob:|file:|https?:\/\/)/i;
+const forbidden = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 const forbiddenKey = /(?:base64|raw(?:media|route)?|signedurl|signed_url|authorization|credential|api[_-]?key|secret|provider|filesystem|shell|mcp|browser|codeexecution|code_execution)/i;
 
 function rejectUnsafe(value: unknown, path: string[] = []): unknown {
@@ -37,8 +37,13 @@ const boundedAssertions = z.array(z.record(z.string().max(200), z.unknown())).ma
 export const operationEnvelopeSchema = z.object({
   operationSetId: id, taskId: id, turnId: id, baseRevision: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(2000),
   risk: z.enum(["safe", "destructive", "paid", "batch"]), requiresApproval: z.boolean(), operations: z.array(canvasOperationSchema).min(1).max(24),
-  preconditions: boundedAssertions.optional(), expectedEffects: boundedAssertions.optional(), inverseOperations: z.array(canvasOperationSchema).max(24).optional(),
+  preconditions: boundedAssertions, expectedEffects: boundedAssertions, inverseOperations: z.array(canvasOperationSchema).max(24).optional(),
 }).strict().superRefine((value, ctx) => { try { rejectUnsafe(value); } catch (error) { if (error instanceof z.ZodError) error.issues.forEach((issue) => ctx.addIssue(issue)); else ctx.addIssue({ code: "custom", message: "Unsafe operation payload." }); } });
 
 export type CanvasOperationEnvelope = z.infer<typeof operationEnvelopeSchema>;
 export const canvasOperationEnvelopeSchema = operationEnvelopeSchema;
+
+export function assertCanvasOperationRevision(envelope: CanvasOperationEnvelope, currentRevision: number): true {
+  if (envelope.baseRevision !== currentRevision) throw new Error(`stale canvas revision: expected ${currentRevision}, received ${envelope.baseRevision}`);
+  return true;
+}
