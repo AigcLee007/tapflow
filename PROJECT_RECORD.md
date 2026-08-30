@@ -12,6 +12,7 @@ Last updated: 2026-08-30
 - Implementation plan confirmed at `docs/superpowers/plans/2026-08-30-canvas-agent-v3-implementation.md`. The plan is split into runtime truth/evaluation, server protocol/Director loop, delivery/recovery, frontend Agent Dock V3, and Skill Contract V2/visual context slices with focused tests and commit checkpoints.
 - Task 1 progress: added disabled-by-default V3 server/runtime flags, bounded tool-round configuration, Vite/Compose propagation, and truthful capability runtime identity (`v3_real`, `v2_real`, or `unavailable`) without DEV-based inference.
 - Task 5 progress: added the dependency-injected V3 Canvas Director loop with persisted mode/status events, bounded rounds, approval/input/run suspension, terminal replay, delivery verification, and one-repair failure semantics. Added authenticated V3 route boundaries that fail closed until the runtime adapter is wired.
+- Task 6 foundation: added a revisioned Canvas Operation Service with strict draft CAS, stable operation-set idempotency, reversible create/connect/delete/update/move changes, and focused regression coverage. Asset ownership and client-reference expansion remain the next slice before wiring an execution route.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 
