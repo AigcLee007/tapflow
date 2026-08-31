@@ -47,7 +47,7 @@ export type AgentV4TaskRepository = {
 const forbiddenKey = /provider|credential|authorization|signedurl|signed_url|rawresponse|raw_response|base64|secret|api[_-]?key/i;
 const forbiddenValue = /(?:data\s*:|blob\s*:|[a-z][a-z0-9+.-]*:\/\/|(?:javascript|mailto):|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
 const allowedKeys = new Set([
-  "taskId", "status", "summary", "text", "errorCode", "callId", "name", "round", "finishReason", "assetId", "nodeId",
+  "taskId", "status", "summary", "text", "errorCode", "callId", "name", "round", "finishReason", "assetId", "nodeId", "runIds",
   "itemId", "itemIds", "assetIds", "items", "references", "referenceIds", "usage", "modelOutput", "toolCall",
   "generationItems", "suitePlan", "visualBible", "promptSet", "dependencyGraph", "appliedCanvas", "conversationId", "turnId",
   "operationSetId", "inverseOperations", "revision", "requiresApproval", "risk", "graphRevision",

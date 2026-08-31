@@ -27,6 +27,7 @@ export type AgentV4SafeToolResult = {
   status?: AgentV4Status;
   taskId?: string;
   itemIds?: string[];
+  runIds?: string[];
   assetIds?: string[];
   assetId?: string;
   revision?: number;
@@ -56,7 +57,7 @@ export function nextV4Status(from: AgentV4Status, to: AgentV4Status): AgentV4Sta
   return to;
 }
 
-const safeKeys = new Set(["ok", "status", "taskId", "itemIds", "assetIds", "assetId", "revision", "errorCode", "summary", "items"]);
+const safeKeys = new Set(["ok", "status", "taskId", "itemIds", "runIds", "assetIds", "assetId", "revision", "errorCode", "summary", "items"]);
 const itemKeys = new Set(["itemId", "status", "assetId", "nodeId", "errorCode"]);
 const forbidden = /provider|credential|authorization|url|base64|blob|rawresponse|raw_response|secret|api[_-]?key/i;
 const forbiddenValueExtended = /(?:data\s*:|blob\s*:|(?:^|[\s([{])[a-z][a-z0-9+.-]*:(?:\/\/|[^\s])|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:bearer)\s+[a-z0-9._~+\/-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
@@ -87,7 +88,7 @@ export function safeToolResult(input: unknown): AgentV4SafeToolResult {
       else if (["revision"].includes(key) && typeof value === "number" && Number.isFinite(value)) output[key] = value;
       else if (["ok"].includes(key) && typeof value === "boolean") output[key] = value;
       else if (key === "status" && typeof value === "string" && allStatuses.has(value)) output[key] = value;
-      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item) && !isUnsafeTransportValue(item))) output[key] = value.map((item) => item.slice(0, 200));
+      else if (["itemIds", "runIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item) && !isUnsafeTransportValue(item))) output[key] = value.map((item) => item.slice(0, 200));
     }
   }
   return output as AgentV4SafeToolResult;
