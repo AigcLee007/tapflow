@@ -787,3 +787,8 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 - Full `npm test` completed with 380 passing, 22 skipped, 32 failing across 15 files and 4 unhandled legacy runtime errors. These remain historical migration, billing/UI fixture, Canvas Agent test-id, production-studio, video-reference, and multipart transport failures. Real authenticated staging acceptance with PostgreSQL, Redis/BullMQ, S3, provider routes, billing, and browser replay is still pending; all Agent/Skill flags remain disabled.
 - Pre-merge review fixed the legacy `agent_turns` status-constraint replacement and system-admin RLS context for official Skill seeding. Focused migration and seed regression tests pass.
 - Do not enable V2/Skill flags yet: the selected-Skill V2 launch path still needs approval-gate enforcement, normalized Skill-step dispatch, and runtime delivery-check integration before staging acceptance.
+## Canvas Agent V4 continuation (2026-09-01)
+
+- V4 task event delivery now uses an authenticated, cancellable fetch-SSE client with shared V2 token refresh on 401 and sequence-aware reconnect behavior.
+- V4 task panel now projects suite plan counts/pages, visual-bible constraints, prompt-set entries and reference counts, dependency edges, generation outcomes, retries, approval, cancellation, and undo controls.
+- Focused V4 UI/API tests plus frontend/API builds pass. This does not close the release gate: authenticated staging with real database, queue, object storage, priced provider, billing, worker terminal projection, replay, CAS conflict, retry, and rollback evidence is still required; all V4 flags remain disabled.

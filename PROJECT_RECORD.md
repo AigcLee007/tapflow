@@ -6849,3 +6849,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Project canvas pages now query the authenticated agent capability identity, reuse or create a project/flow-scoped Agent V4 session, and pass the verified `v4_real` identity and session ID into `FlowCanvasPage`.
 - V4 task event handling now ignores duplicate and stale sequence numbers, preserves ordered replay state, closes on terminal status, and reconnects from the latest acknowledged sequence after stream errors.
 - Validation passed: frontend production build, API TypeScript build, FlowProjectPage tests, and V4 session hook tests (10 assertions). V4 flags remain disabled until real authenticated staging validation proves generation, billing, storage, worker projection, CAS, retry, undo, and rollback behavior.
+## 2026-09-01 - Canvas Agent V4 authorized replay and planning panel
+
+- Replaced the V4 task event `EventSource` client with a cancellable fetch-based SSE connection that sends the V2 bearer token and retries once through the shared refresh-token flow after a 401 response.
+- Expanded the V4 task panel to render the generated suite plan, visual bible, page prompt set with reference-asset counts, dependency graph, approval/cancel controls, failed-item retry, and applied-revision undo entry points.
+- Added focused panel coverage and re-ran the V4 session/API tests; frontend and API production builds pass. V4 flags remain disabled pending authenticated staging execution with real PostgreSQL, Redis/BullMQ, S3, priced provider routes, billing settlement/refund, terminal projection, replay, CAS conflict, retry, and rollback evidence.
