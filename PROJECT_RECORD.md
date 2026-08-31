@@ -6836,3 +6836,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - V4 approval now persists only a schema-validated pending tool call, revalidates it on approval, and invokes the server-side Workflow Run executor. Approval can no longer report `generating_base` without launching the approved work.
 - Worker V4 delivery projection is now enabled only when both V4 server flags are true. It first checks that the linked Workflow Run is terminal, so intermediate `running` and `waiting_provider` states cannot prematurely write task delivery results.
 - Focused API V4 tests (6 assertions), Worker V4/runtime tests (40 assertions; 18 database-dependent tests skipped), and fresh API/Worker TypeScript builds passed. Worker tests still emit the known local Redis connection warning from the broad worker fixture; it does not affect the assertions.
+
+## 2026-08-31 - Canvas Agent V4 Delivery And Terminal Merge
+
+- Wired V4 canvas delivery to the existing tenant-scoped `CanvasOperationService`; verified generation items now produce deterministic asset-only placement operations and persist the applied revision/inverse operations for undo.
+- Added authenticated-compatible V4 stream route aliases and `undo-canvas` compatibility path while retaining existing endpoints.
+- Worker terminal projection now merges updates by stable `itemId`, preserving successful siblings and page metadata during independent batch completion/retry.
+- Validation passed: API delivery/runtime tests (6 tests), Worker terminal-sync tests (3 tests), API and Worker TypeScript builds, and `git diff --check`. V4 flags remain disabled pending frontend and staging acceptance.

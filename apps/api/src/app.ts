@@ -369,7 +369,15 @@ export function buildApp(options?: {
     workflowRunsService,
   });
   const agentV3TaskRepository = new DatabaseAgentV3TaskRepository(pool);
-  const agentV3OperationService = new CanvasOperationService(agentService.flowsService);
+  const ownsTenantAsset = async (tenantId: string, assetId: string): Promise<boolean> => {
+    try {
+      await assetsService.getAsset({ tenantId, userId: null }, assetId);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const agentV3OperationService = new CanvasOperationService(agentService.flowsService, ownsTenantAsset);
   const agentV3Runtime = new AgentV3RuntimeService({
     enabled: env.agentV3Enabled === true && env.agentV3RuntimeEnabled === true,
     adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository, agentV3OperationService),
@@ -379,6 +387,7 @@ export function buildApp(options?: {
     enabled: env.agentV4Enabled === true && env.agentV4RuntimeEnabled === true,
     repository: new DatabaseAgentV4TaskRepository(pool), session: agentSessionRepository, textRuntime: agentTextRuntime,
     generationExecutor: agentService.workflowRunAdapter ? createV4WorkflowGenerationExecutor(agentService.workflowRunAdapter) : undefined,
+    canvasOperations: new CanvasOperationService(agentService.flowsService, ownsTenantAsset),
   });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });

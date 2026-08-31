@@ -54,6 +54,7 @@ const allowedKeys = new Set([
   "operationSetId", "inverseOperations", "revision", "requiresApproval", "risk", "graphRevision", "pendingTool", "arguments",
   "pageKey", "prompt", "referenceAssetIds", "workflowRunId", "retryCount", "purpose", "mainImageCount", "detailPageCount", "targetPlatform",
   "palette", "lighting", "background", "typography", "composition", "prohibitions", "productLock", "operations",
+  "type", "node", "position", "data", "result", "createdNodeIds", "undone",
   "inputTokens", "outputTokens", "totalTokens", "rawCost",
 ]);
 

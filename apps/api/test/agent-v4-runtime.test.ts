@@ -64,4 +64,34 @@ describe("AgentV4RuntimeService", () => {
     expect(repository.updateGenerationItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: "page-2", patch: { workflowRunId: "run-retry-1", status: "running" } }));
     expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({ arguments: expect.objectContaining({ items: expect.arrayContaining([expect.objectContaining({ itemId: "page-1" })]) }) }));
   });
+
+  it("commits verified asset-only delivery and uses its saved inverse operations for undo", async () => {
+    const task: AgentV4TaskRecord = {
+      id: "task-3", tenantId: "tenant-1", sessionId: "session-1", projectId: "project-1", flowId: "flow-1", graphRevision: 4,
+      prompt: "make a suite", status: "succeeded", outputJson: { generationItems: [
+        { itemId: "page-1", pageKey: "main-1", prompt: "hero", referenceAssetIds: ["asset-ref"], nodeId: "node-1", status: "succeeded", assetId: "asset-1" },
+      ] },
+    };
+    const repository: AgentV4TaskRepository = {
+      createTask: vi.fn(), getTask: vi.fn(async () => task), appendEvent: vi.fn(async () => ({ seq: 1 })),
+      updateTask: vi.fn(async (_id, update) => { Object.assign(task, { status: update.status }, update.outputJson ? { outputJson: update.outputJson } : {}); }),
+    };
+    const applyApprovedOperationSet = vi.fn()
+      .mockResolvedValueOnce({ revision: 5, createdNodeIds: ["result-asset-1"], inverseOperations: [{ type: "node.delete", nodeId: "result-asset-1" }] })
+      .mockResolvedValueOnce({ revision: 6, createdNodeIds: [], inverseOperations: [{ type: "node.create", node: { id: "result-asset-1", type: "image", position: { x: 0, y: 0 }, data: { assetId: "asset-1" } } }] });
+    const runtime = new AgentV4RuntimeService({
+      enabled: true, repository, session: { getSession: vi.fn() }, textRuntime: { async *streamText() {} },
+      canvasOperations: { applyApprovedOperationSet },
+    });
+
+    await expect(runtime.commitCanvasDelivery({ taskId: task.id, context: { tenantId: "tenant-1", userId: "user-1" }, expectedRevision: 4 })).resolves.toMatchObject({ status: "succeeded", revision: 5 });
+    await expect(runtime.undo({ taskId: task.id, context: { tenantId: "tenant-1", userId: "user-1" }, expectedRevision: 5 })).resolves.toMatchObject({ status: "succeeded", revision: 6 });
+    expect(applyApprovedOperationSet).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      tenantId: "tenant-1", projectId: "project-1", flowId: "flow-1", taskId: "task-3",
+      operationSet: expect.objectContaining({ baseRevision: 4, operations: [expect.objectContaining({ type: "result.place", result: expect.objectContaining({ assetId: "asset-1" }) })] }),
+    }));
+    expect(applyApprovedOperationSet).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      operationSet: expect.objectContaining({ baseRevision: 5, operations: [{ type: "node.delete", nodeId: "result-asset-1" }] }),
+    }));
+  });
 });

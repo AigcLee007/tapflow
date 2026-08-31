@@ -5,6 +5,9 @@ import { AgentV4TaskStore, type AgentV4TaskRepository } from "./agent-v4-task-st
 import { AgentV4ToolGateway } from "./agent-v4-tool-gateway.js";
 import { safeToolResult } from "./agent-v4-types.js";
 import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./taobao-suite-planner.js";
+import { buildV4DeliveryOperationSet, commitV4Delivery, verifyV4Delivery } from "./agent-delivery-commit.js";
+import type { AppliedCanvasOperationSet, CanvasOperationService } from "../v3/canvas-operation-service.js";
+import type { CanvasOperation, CanvasOperationEnvelope } from "../v3/canvas-operation-schema.js";
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
 type V4GenerationExecutor = (input: { task: any; context: AgentV4RequestContext; tool: string; arguments: Record<string, unknown>; idempotencyKey: string }) => Promise<unknown>;
@@ -20,7 +23,7 @@ export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context
   };
 }
 export class AgentV4RuntimeService {
-  constructor(private readonly options: { enabled: boolean; repository: AgentV4TaskRepository; session: { getSession: (context: AgentV4RequestContext, id: string) => Promise<{ tenantId?: string; projectId?: string | null; flowId?: string | null } | null> }; textRuntime: { streamText: (...args: any[]) => AsyncIterable<any> }; gateway?: AgentV4ToolGateway; generationExecutor?: V4GenerationExecutor }) {}
+  constructor(private readonly options: { enabled: boolean; repository: AgentV4TaskRepository; session: { getSession: (context: AgentV4RequestContext, id: string) => Promise<{ tenantId?: string; projectId?: string | null; flowId?: string | null } | null> }; textRuntime: { streamText: (...args: any[]) => AsyncIterable<any> }; gateway?: AgentV4ToolGateway; generationExecutor?: V4GenerationExecutor; canvasOperations?: Pick<CanvasOperationService, "applyApprovedOperationSet"> }) {}
   private unavailable(): never { throw new AgentApiError(503, "AGENT_V4_UNAVAILABLE", "Canvas Agent V4 is not available."); }
   async startTurn(input: { sessionId: string; context: AgentV4RequestContext; body: unknown }) {
     if (!this.options.enabled) return this.unavailable();
@@ -63,11 +66,14 @@ export class AgentV4RuntimeService {
     } catch {
       throw new AgentApiError(409, "AGENT_V4_PENDING_OPERATION_INVALID", "Task has no valid operation to resume.");
     }
-    await store.append(task, { type: "approval_granted", status: "generating_base", idempotencyKey: `v4:${task.id}:approval:granted`, payload: { taskId: task.id } });
-    await store.update(task, { status: "generating_base" });
-    const rawResult = this.options.generationExecutor
-      ? await this.options.generationExecutor({ task, context: input.context, tool: call.name, arguments: call.arguments, idempotencyKey: `v4:${task.id}:approved:${call.name}` })
-      : { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED" };
+    const initialStatus = call.name === "canvas.commit_operations" ? "verifying" : call.name === "image.generate_batch" ? "generating_batch" : "generating_base";
+    await store.append(task, { type: "approval_granted", status: initialStatus, idempotencyKey: `v4:${task.id}:approval:granted`, payload: { taskId: task.id } });
+    await store.update(task, { status: initialStatus });
+    const rawResult = call.name === "canvas.commit_operations"
+      ? await this.commitCanvasDelivery({ taskId: task.id, context: input.context, expectedRevision: call.arguments.expectedRevision as number })
+      : this.options.generationExecutor
+        ? await this.options.generationExecutor({ task, context: input.context, tool: call.name, arguments: call.arguments, idempotencyKey: `v4:${task.id}:approved:${call.name}` })
+        : { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED" };
     const result = safeToolResult(rawResult);
     const status = result.status ?? "needs_review";
     await store.append(task, { type: "generation_started", status, idempotencyKey: `v4:${task.id}:approved:${call.name}`, payload: result });
@@ -105,5 +111,53 @@ export class AgentV4RuntimeService {
     await store.update(task, { status });
     return { taskId: task.id, status, itemId: item.itemId, retryCount, ...result };
   }
-  async undo(input: { taskId: string; context: AgentV4RequestContext; expectedRevision: number }) { if (!this.options.enabled) return this.unavailable(); await this.getTask(input); throw new AgentApiError(409, "AGENT_V4_INVERSE_OPERATIONS_MISSING", "No verified inverse canvas operations are available for this task."); }
+  async commitCanvasDelivery(input: { taskId: string; context: AgentV4RequestContext; expectedRevision: number }) {
+    if (!this.options.enabled) return this.unavailable();
+    if (!this.options.canvasOperations) throw new AgentApiError(503, "AGENT_V4_CANVAS_OPERATIONS_UNAVAILABLE", "Canvas delivery is not configured.");
+    const task = await this.getTask(input);
+    const generationItems = Array.isArray(task.outputJson?.generationItems) ? task.outputJson.generationItems : [];
+    const expected = generationItems.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).itemId === "string" ? [{ id: (item as Record<string, unknown>).itemId as string, kind: "image" }] : []);
+    const actual = generationItems.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const source = item as Record<string, unknown>;
+      if (typeof source.itemId !== "string" || typeof source.status !== "string") return [];
+      return [{ id: source.itemId, kind: "image", status: source.status, ...(typeof source.assetId === "string" ? { assetId: source.assetId } : {}), ...(typeof source.nodeId === "string" ? { nodeId: source.nodeId } : {}), tenantId: task.tenantId, flowId: task.flowId }];
+    });
+    const delivery = verifyV4Delivery({ tenantId: task.tenantId, taskId: task.id, flowId: task.flowId, expected, actual });
+    if (delivery.status !== "verified") throw new AgentApiError(409, "AGENT_V4_DELIVERY_NOT_VERIFIED", "All generation items require verified asset delivery before committing.");
+    const operationSet = buildV4DeliveryOperationSet({ taskId: task.id, baseRevision: input.expectedRevision, delivery });
+    let applied: AppliedCanvasOperationSet;
+    try {
+      applied = await commitV4Delivery(this.options.canvasOperations as CanvasOperationService, { tenantId: task.tenantId, projectId: task.projectId, flowId: task.flowId, taskId: task.id, operationSet, delivery });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "AGENT_V4_CANVAS_COMMIT_FAILED";
+      throw new AgentApiError(message.includes("REVISION_CONFLICT") ? 409 : 400, message, "Canvas delivery could not be committed.");
+    }
+    const store = new AgentV4TaskStore(this.options.repository);
+    const appliedCanvas = { operationSetId: operationSet.operationSetId, revision: applied.revision, inverseOperations: applied.inverseOperations };
+    await store.append(task, { type: "canvas_delivery_committed", status: "succeeded", idempotencyKey: `v4:${task.id}:canvas:${operationSet.operationSetId}`, payload: { taskId: task.id, revision: applied.revision, operationSetId: operationSet.operationSetId, appliedCanvas } });
+    await store.update(task, { status: "succeeded", outputJson: { ...(task.outputJson ?? {}), appliedCanvas } });
+    return { taskId: task.id, status: "succeeded", revision: applied.revision, operationSetId: operationSet.operationSetId };
+  }
+  async undo(input: { taskId: string; context: AgentV4RequestContext; expectedRevision: number }) {
+    if (!this.options.enabled) return this.unavailable();
+    if (!this.options.canvasOperations) throw new AgentApiError(503, "AGENT_V4_CANVAS_OPERATIONS_UNAVAILABLE", "Canvas delivery is not configured.");
+    const task = await this.getTask(input);
+    const appliedCanvas = task.outputJson?.appliedCanvas;
+    const inverseOperations = appliedCanvas && typeof appliedCanvas === "object" && Array.isArray((appliedCanvas as Record<string, unknown>).inverseOperations) ? (appliedCanvas as Record<string, unknown>).inverseOperations as CanvasOperation[] : [];
+    if (!inverseOperations.length) throw new AgentApiError(409, "AGENT_V4_INVERSE_OPERATIONS_MISSING", "No verified inverse canvas operations are available for this task.");
+    const operationSet: CanvasOperationEnvelope = { operationSetId: `v4:${task.id}:undo:${input.expectedRevision}`, taskId: task.id, turnId: task.id, baseRevision: input.expectedRevision, summary: "Undo Canvas Agent V4 delivery", risk: "safe", requiresApproval: false, preconditions: [], expectedEffects: [], operations: inverseOperations };
+    let applied: AppliedCanvasOperationSet;
+    try {
+      applied = await this.options.canvasOperations.applyApprovedOperationSet({ tenantId: task.tenantId, projectId: task.projectId, flowId: task.flowId, taskId: task.id, operationSet });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "AGENT_V4_CANVAS_UNDO_FAILED";
+      throw new AgentApiError(message.includes("REVISION_CONFLICT") ? 409 : 400, message, "Canvas delivery could not be undone.");
+    }
+    const store = new AgentV4TaskStore(this.options.repository);
+    const nextAppliedCanvas = { operationSetId: operationSet.operationSetId, revision: applied.revision, undone: true };
+    await store.append(task, { type: "canvas_delivery_undone", status: "succeeded", idempotencyKey: `v4:${task.id}:canvas-undo:${input.expectedRevision}`, payload: { taskId: task.id, revision: applied.revision, operationSetId: operationSet.operationSetId } });
+    await store.update(task, { status: "succeeded", outputJson: { ...(task.outputJson ?? {}), appliedCanvas: nextAppliedCanvas } });
+    return { taskId: task.id, status: "succeeded", revision: applied.revision, operationSetId: operationSet.operationSetId };
+  }
 }
