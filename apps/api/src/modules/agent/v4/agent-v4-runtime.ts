@@ -81,7 +81,28 @@ export class AgentV4RuntimeService {
   async retryItem(input: { taskId: string; context: AgentV4RequestContext; itemId: string; idempotencyKey?: string }) {
     if (!this.options.enabled) return this.unavailable();
     const task = await this.getTask(input); if (!["partial_success", "failed", "needs_review"].includes(task.status)) throw new AgentApiError(409, "AGENT_V4_RETRY_STATE_INVALID", "Task has no retryable failed item.");
-    const store = new AgentV4TaskStore(this.options.repository); await store.append(task, { type: "item_retry_requested", status: "repairing", idempotencyKey: input.idempotencyKey ?? `v4:${task.id}:retry:${input.itemId}`, payload: { itemId: input.itemId } }); await store.update(task, { status: "repairing" }); return { taskId: task.id, status: "repairing", itemId: input.itemId };
+    if (!this.options.repository.findGenerationItem || !this.options.repository.updateGenerationItem) throw new AgentApiError(503, "AGENT_V4_GENERATION_STORE_UNAVAILABLE", "Generation item storage is not available.");
+    const item = await this.options.repository.findGenerationItem({ tenantId: input.context.tenantId, taskId: task.id, itemId: input.itemId });
+    if (!item || item.status !== "failed") throw new AgentApiError(409, "AGENT_V4_ITEM_NOT_RETRYABLE", "Only failed generation items can be retried.");
+    const retryCount = (item.retryCount ?? 0) + 1;
+    if (retryCount > 3) throw new AgentApiError(409, "AGENT_V4_RETRY_LIMIT_EXCEEDED", "The generation item has reached its retry limit.");
+    const idempotencyKey = input.idempotencyKey ?? `v4:${task.id}:retry:${input.itemId}:${retryCount}`;
+    const store = new AgentV4TaskStore(this.options.repository);
+    await this.options.repository.updateGenerationItem({ tenantId: input.context.tenantId, taskId: task.id, itemId: item.itemId, patch: { status: "queued", retryCount, errorCode: undefined, assetId: undefined, workflowRunId: undefined } });
+    await store.append(task, { type: "item_retry_requested", status: "repairing", idempotencyKey, payload: { itemId: item.itemId, retryCount } });
+    await store.update(task, { status: "repairing" });
+    const rawResult = this.options.generationExecutor
+      ? await this.options.generationExecutor({ task, context: input.context, tool: "image.generate_batch", arguments: { items: [{ itemId: item.itemId, pageKey: item.pageKey, prompt: item.prompt, referenceAssetIds: item.referenceAssetIds, ...(item.nodeId ? { nodeId: item.nodeId } : {}) }] }, idempotencyKey })
+      : { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED" };
+    const result = safeToolResult(rawResult);
+    const status = result.ok ? (result.status ?? "generating_batch") : "needs_review";
+    const workflowRunId = result.runIds?.[0];
+    if (workflowRunId) {
+      await this.options.repository.updateGenerationItem({ tenantId: input.context.tenantId, taskId: task.id, itemId: item.itemId, patch: { workflowRunId, status: "running" } });
+    }
+    await store.append(task, { type: "item_retry_started", status, idempotencyKey: `${idempotencyKey}:started`, payload: { itemId: item.itemId, retryCount, ...result } });
+    await store.update(task, { status });
+    return { taskId: task.id, status, itemId: item.itemId, retryCount, ...result };
   }
   async undo(input: { taskId: string; context: AgentV4RequestContext; expectedRevision: number }) { if (!this.options.enabled) return this.unavailable(); await this.getTask(input); throw new AgentApiError(409, "AGENT_V4_INVERSE_OPERATIONS_MISSING", "No verified inverse canvas operations are available for this task."); }
 }

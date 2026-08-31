@@ -35,4 +35,33 @@ describe("AgentV4RuntimeService", () => {
     await runtime.approve({ taskId: "task-1", context: { tenantId: "tenant-1", userId: "user-1" }, approved: true });
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({ tool: "image.generate_base", arguments: { prompt: "product hero", referenceAssetIds: ["asset-1"], nodeId: "node-1" } }));
   });
+
+  it("relaunches only the requested failed generation item", async () => {
+    const task: AgentV4TaskRecord = {
+      id: "task-2", tenantId: "tenant-1", sessionId: "session-1", projectId: "project-1", flowId: "flow-1", graphRevision: 4,
+      prompt: "make a suite", status: "partial_success",
+      outputJson: { generationItems: [
+        { itemId: "page-1", pageKey: "main-1", prompt: "hero", referenceAssetIds: ["asset-1"], nodeId: "node-1", status: "succeeded", assetId: "asset-success" },
+        { itemId: "page-2", pageKey: "main-2", prompt: "detail", referenceAssetIds: ["asset-1"], nodeId: "node-2", status: "failed", errorCode: "PROVIDER_TIMEOUT" },
+      ] },
+    };
+    const repository: AgentV4TaskRepository = {
+      createTask: vi.fn(), getTask: vi.fn(async () => task), appendEvent: vi.fn(async () => ({ seq: 1 })),
+      updateTask: vi.fn(async (_id, update) => { Object.assign(task, { status: update.status }, update.outputJson ? { outputJson: update.outputJson } : {}); }),
+      findGenerationItem: vi.fn(async ({ itemId }) => (task.outputJson?.generationItems as Array<any>).find((item) => item.itemId === itemId) ?? null),
+      updateGenerationItem: vi.fn(async ({ itemId, patch }) => {
+        const item = (task.outputJson?.generationItems as Array<any>).find((candidate) => candidate.itemId === itemId);
+        Object.assign(item, patch);
+        return item;
+      }),
+    };
+    const execute = vi.fn(async () => ({ ok: true, status: "generating_batch", runIds: ["run-retry-1"] }));
+    const runtime = new AgentV4RuntimeService({ enabled: true, repository, session: { getSession: vi.fn() }, textRuntime: { async *streamText() {} }, generationExecutor: execute });
+
+    await expect(runtime.retryItem({ taskId: task.id, context: { tenantId: "tenant-1", userId: "user-1" }, itemId: "page-2" })).resolves.toMatchObject({ status: "generating_batch", itemId: "page-2" });
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ tool: "image.generate_batch", arguments: { items: [expect.objectContaining({ itemId: "page-2", nodeId: "node-2" })] } }));
+    expect(repository.updateGenerationItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: "page-2", patch: expect.objectContaining({ status: "queued", retryCount: 1 }) }));
+    expect(repository.updateGenerationItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: "page-2", patch: { workflowRunId: "run-retry-1", status: "running" } }));
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({ arguments: expect.objectContaining({ items: expect.arrayContaining([expect.objectContaining({ itemId: "page-1" })]) }) }));
+  });
 });

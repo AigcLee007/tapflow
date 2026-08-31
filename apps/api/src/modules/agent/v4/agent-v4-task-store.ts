@@ -52,7 +52,7 @@ const allowedKeys = new Set([
   "itemId", "itemIds", "assetIds", "items", "references", "referenceIds", "usage", "modelOutput", "toolCall",
   "generationItems", "suitePlan", "visualBible", "promptSet", "dependencyGraph", "appliedCanvas", "conversationId", "turnId",
   "operationSetId", "inverseOperations", "revision", "requiresApproval", "risk", "graphRevision", "pendingTool", "arguments",
-  "pageKey", "prompt", "referenceAssetIds", "purpose", "mainImageCount", "detailPageCount", "targetPlatform",
+  "pageKey", "prompt", "referenceAssetIds", "workflowRunId", "retryCount", "purpose", "mainImageCount", "detailPageCount", "targetPlatform",
   "palette", "lighting", "background", "typography", "composition", "prohibitions", "productLock", "operations",
   "inputTokens", "outputTokens", "totalTokens", "rawCost",
 ]);

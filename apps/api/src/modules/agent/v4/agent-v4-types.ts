@@ -19,6 +19,8 @@ export type AgentV4GenerationItem = {
   status: "queued" | "running" | "succeeded" | "failed";
   assetId?: string;
   nodeId?: string;
+  workflowRunId?: string;
+  retryCount?: number;
   errorCode?: string;
 };
 
@@ -33,7 +35,7 @@ export type AgentV4SafeToolResult = {
   revision?: number;
   errorCode?: string;
   summary?: string;
-  items?: Array<Pick<AgentV4GenerationItem, "itemId" | "status" | "assetId" | "nodeId" | "errorCode">>;
+  items?: Array<Pick<AgentV4GenerationItem, "itemId" | "status" | "assetId" | "nodeId" | "workflowRunId" | "retryCount" | "errorCode">>;
 };
 
 const transitions: ReadonlyMap<AgentV4Status, readonly AgentV4Status[]> = new Map([
@@ -58,7 +60,7 @@ export function nextV4Status(from: AgentV4Status, to: AgentV4Status): AgentV4Sta
 }
 
 const safeKeys = new Set(["ok", "status", "taskId", "itemIds", "runIds", "assetIds", "assetId", "revision", "errorCode", "summary", "items"]);
-const itemKeys = new Set(["itemId", "status", "assetId", "nodeId", "errorCode"]);
+const itemKeys = new Set(["itemId", "status", "assetId", "nodeId", "workflowRunId", "retryCount", "errorCode"]);
 const forbidden = /provider|credential|authorization|url|base64|blob|rawresponse|raw_response|secret|api[_-]?key/i;
 const forbiddenValueExtended = /(?:data\s*:|blob\s*:|(?:^|[\s([{])[a-z][a-z0-9+.-]*:(?:\/\/|[^\s])|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:bearer)\s+[a-z0-9._~+\/-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
 const bareHostValue = /(?:^|[\s([{])(?:(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:[\/?#][^\s]*)?|localhost(?:\:\d+)?(?:[\/?#][^\s]*)?|(?:\d{1,3}\.){3}\d{1,3}(?:\:\d+)?(?:[\/?#][^\s]*)?)(?=$|[\s)\]}>,!?;])/i;
@@ -78,7 +80,7 @@ export function safeToolResult(input: unknown): AgentV4SafeToolResult {
           if (!itemKeys.has(itemKey) || forbidden.test(itemKey)) continue;
           if (itemKey === "status" && typeof itemValue === "string" && ["queued", "running", "succeeded", "failed"].includes(itemValue)) clean[itemKey] = itemValue;
           else if (itemKey !== "status" && typeof itemValue === "string" && !forbidden.test(itemValue) && !isUnsafeTransportValue(itemValue)) clean[itemKey] = itemValue.slice(0, 200);
-          else if (typeof itemValue === "number" && Number.isFinite(itemValue)) clean[itemKey] = itemValue;
+          else if (itemKey === "retryCount" && typeof itemValue === "number" && Number.isInteger(itemValue) && itemValue >= 0 && itemValue <= 3) clean[itemKey] = itemValue;
         }
         return clean;
       });
