@@ -26,6 +26,7 @@
     "cleanup:stuck-runs": "tsx scripts/cleanup-stuck-workflow-runs.ts",
     "smoke:concurrent-runs": "tsx scripts/smoke-concurrent-target-node-runs.ts",
     "smoke:tapflow-agent": "tsx scripts/smoke-tapflow-agent.ts",
+    "smoke:agent-v4": "tsx scripts/smoke-agent-v4-staging.ts",
     "start:api": "npm run start --workspace @aigc-flow/api",
     "start:worker": "npm run start --workspace @aigc-flow/worker",
     "start:v2": "concurrently \"npm run start:api\" \"npm run start:worker\"",

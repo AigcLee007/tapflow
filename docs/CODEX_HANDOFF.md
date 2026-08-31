@@ -792,3 +792,7 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 - V4 task event delivery now uses an authenticated, cancellable fetch-SSE client with shared V2 token refresh on 401 and sequence-aware reconnect behavior.
 - V4 task panel now projects suite plan counts/pages, visual-bible constraints, prompt-set entries and reference counts, dependency edges, generation outcomes, retries, approval, cancellation, and undo controls.
 - Focused V4 UI/API tests plus frontend/API builds pass. This does not close the release gate: authenticated staging with real database, queue, object storage, priced provider, billing, worker terminal projection, replay, CAS conflict, retry, and rollback evidence is still required; all V4 flags remain disabled.
+## Canvas Agent V4 continuation (2026-09-01, staging smoke)
+
+- Added `scripts/smoke-agent-v4-staging.ts` and the `smoke:agent-v4` package script. It is an authenticated, planning-only staging probe with bounded SSE collection and redacted evidence output; it does not approve or launch paid generation.
+- Run it only with a test tenant and the documented `TAPFLOW_*` variables in `docs/agent-v4-staging-runbook.md`. Real eight-scenario staging acceptance remains pending and V4 flags stay disabled by default.

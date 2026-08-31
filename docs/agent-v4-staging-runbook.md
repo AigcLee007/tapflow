@@ -13,6 +13,20 @@ V4 默认关闭。仅对测试租户开启 `AGENT_V4_ENABLED=true`、`AGENT_V4_R
 
 ## Golden Flow
 
+可重复的只到审批前的 smoke 命令（不会自动批准付费生成）：
+
+```bash
+TAPFLOW_API_URL=https://staging.example.com \
+TAPFLOW_ACCESS_TOKEN='<测试账号 access token>' \
+TAPFLOW_PROJECT_ID='<project id>' \
+TAPFLOW_FLOW_ID='<primary flow id>' \
+TAPFLOW_REFERENCE_ASSET_IDS='<asset id 1>,<asset id 2>' \
+TAPFLOW_V4_COMMIT='<deployed commit>' \
+npm run smoke:agent-v4
+```
+
+命令只输出运行时身份、序列、事件类型/状态和资源 ID；不会输出令牌、URL、Provider、凭据或原始响应。要执行审批后的付费流程，必须在浏览器验收中显式点击批准，并把证据记录在本清单的“证据记录”部分。
+
 1. 测试账号登录，进入项目主画布。
 2. 上传一张商品实拍图，确认画布和 `/assets` 只保存 `assetId`。
 3. 发送“生成淘宝主图和详情页套图”，确认 Agent 依次执行观察、商品分析、套图规划、视觉圣经和逐页提示词。
