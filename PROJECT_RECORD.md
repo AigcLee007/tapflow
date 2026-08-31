@@ -6824,3 +6824,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Added the V4 staging acceptance and rollback runbook at `docs/agent-v4-staging-runbook.md`. It keeps every V4 flag disabled by default, defines the authenticated Taobao-product golden flow, and requires evidence for billing, worker delivery, asset lineage, event replay, canvas CAS, retry, cancellation, and rollback before any production claim.
 - V4 implementation remains in progress on `codex/canvas-agent-v3`. The remaining release-critical work is to resume approved generation, project actual workflow terminal results into V4 tasks, and apply verified assets to the canvas through persisted CAS/inverse operations. No V4 feature flag should be enabled in staging until those paths and the runbook have passed.
+
+## 2026-08-31 - Canvas Agent V4 Runtime Resume
+
+- V4 approval now persists only a schema-validated pending tool call, revalidates it on approval, and invokes the server-side Workflow Run executor. Approval can no longer report `generating_base` without launching the approved work.
+- Worker V4 delivery projection is now enabled only when both V4 server flags are true. It first checks that the linked Workflow Run is terminal, so intermediate `running` and `waiting_provider` states cannot prematurely write task delivery results.
+- Focused API V4 tests (6 assertions), Worker V4/runtime tests (40 assertions; 18 database-dependent tests skipped), and fresh API/Worker TypeScript builds passed. Worker tests still emit the known local Redis connection warning from the broad worker fixture; it does not affect the assertions.

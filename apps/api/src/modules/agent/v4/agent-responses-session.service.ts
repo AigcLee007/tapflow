@@ -128,7 +128,10 @@ export class AgentResponsesSessionService {
       const result = safeToolResult(rawResult);
       await this.store.append(task, { type: "tool_result", status: result.status ?? "planning", idempotencyKey: `v4:${task.id}:tool:${turn.toolCall.callId}`, payload: { round: round + 1, name: call.name, callId: turn.toolCall.callId, ...result } });
       if (result.status === "waiting_for_approval" || result.status === "waiting_for_continuation") {
-        await this.store.update?.(task, { status: result.status, outputJson: result as Record<string, unknown> });
+        const pendingTool = result.status === "waiting_for_approval"
+          ? { name: call.name, arguments: call.arguments }
+          : undefined;
+        await this.store.update?.(task, { status: result.status, outputJson: { ...result, ...(pendingTool ? { pendingTool } : {}) } as Record<string, unknown> });
         return { taskId: task.id, status: result.status ?? "planning", ...result };
       }
       const refs = referenceTags(round + 1, result);

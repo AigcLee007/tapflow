@@ -18,7 +18,7 @@ import type { ApiEnv } from "../../api/src/config/env.js";
 import { buildApp } from "../../api/src/app.js";
 import { WorkflowRunsService } from "../../api/src/modules/workflow-runs/workflow-runs.service.js";
 import { getWorkerEnv } from "../src/config/env.js";
-import { createWorkerRuntime, WORKER_RUNTIME_QUEUE_NAMES } from "../src/main.js";
+import { createWorkerRuntime, isAgentV4TerminalSyncEnabled, WORKER_RUNTIME_QUEUE_NAMES } from "../src/main.js";
 import { getWorkerErrorFields, type WorkerLogger } from "../src/logger.js";
 import { processNodeExecuteJob } from "../src/processors/node-execute.processor.js";
 import { processProviderPollJob } from "../src/processors/provider-poll.processor.js";
@@ -604,6 +604,12 @@ afterAll(() => {
 });
 
 describe("worker skeleton", () => {
+  test("enables V4 terminal synchronization only when both V4 flags are enabled", () => {
+    expect(isAgentV4TerminalSyncEnabled({ AGENT_V4_ENABLED: "true", AGENT_V4_RUNTIME_ENABLED: "true" })).toBe(true);
+    expect(isAgentV4TerminalSyncEnabled({ AGENT_V4_ENABLED: "true", AGENT_V4_RUNTIME_ENABLED: "false" })).toBe(false);
+    expect(isAgentV4TerminalSyncEnabled({ AGENT_V4_ENABLED: "false", AGENT_V4_RUNTIME_ENABLED: "true" })).toBe(false);
+  });
+
   test("normalizes safe PostgreSQL fields for worker failure logs", () => {
     const error = Object.assign(new Error("column reference user_id is ambiguous"), {
       code: "42702",

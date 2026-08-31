@@ -13,6 +13,7 @@ export type AgentV4TaskRecord = {
   graphRevision: number;
   prompt: string;
   status: AgentV4Status;
+  outputJson?: Record<string, unknown>;
 };
 
 export type AgentV4TaskEvent = {
@@ -50,7 +51,7 @@ const allowedKeys = new Set([
   "taskId", "status", "summary", "text", "errorCode", "callId", "name", "round", "finishReason", "assetId", "nodeId", "runIds",
   "itemId", "itemIds", "assetIds", "items", "references", "referenceIds", "usage", "modelOutput", "toolCall",
   "generationItems", "suitePlan", "visualBible", "promptSet", "dependencyGraph", "appliedCanvas", "conversationId", "turnId",
-  "operationSetId", "inverseOperations", "revision", "requiresApproval", "risk", "graphRevision",
+  "operationSetId", "inverseOperations", "revision", "requiresApproval", "risk", "graphRevision", "pendingTool", "arguments",
   "pageKey", "prompt", "referenceAssetIds", "purpose", "mainImageCount", "detailPageCount", "targetPlatform",
   "palette", "lighting", "background", "typography", "composition", "prohibitions", "productLock", "operations",
   "inputTokens", "outputTokens", "totalTokens", "rawCost",
@@ -128,8 +129,8 @@ export class DatabaseAgentV4TaskRepository implements AgentV4TaskRepository {
 
   async getTask(input: { tenantId: string; taskId: string }): Promise<AgentV4TaskRecord | null> {
     return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
-      const result = await client.query<AgentV4TaskRecord & { tenant_id: string; session_id: string; project_id?: string; flow_id?: string; graph_revision?: number; input_json: Record<string, unknown> }>(
-        `SELECT id::text AS id, tenant_id::text AS tenant_id, session_id::text AS session_id, graph_revision, input_json, status
+      const result = await client.query<AgentV4TaskRecord & { tenant_id: string; session_id: string; project_id?: string; flow_id?: string; graph_revision?: number; input_json: Record<string, unknown>; output_json: Record<string, unknown> | null }>(
+        `SELECT id::text AS id, tenant_id::text AS tenant_id, session_id::text AS session_id, graph_revision, input_json, output_json, status
          FROM agent_tasks WHERE tenant_id = $1::uuid AND id = $2::uuid AND agent_version = 'v4' LIMIT 1`,
         [input.tenantId, input.taskId],
       );
@@ -143,6 +144,7 @@ export class DatabaseAgentV4TaskRepository implements AgentV4TaskRepository {
         graphRevision: Number(row.graph_revision ?? taskInput.graphRevision ?? 0),
         prompt: typeof taskInput.prompt === "string" ? taskInput.prompt : "",
         status: row.status as AgentV4Status,
+        outputJson: sanitizeV4EventPayload(row.output_json ?? {}),
       };
     }, this.pool);
   }
@@ -197,7 +199,7 @@ export class AgentV4TaskStore {
       graphRevision, prompt: input.prompt, taskType: "responses_session", title: input.prompt.slice(0, 120), status: "draft",
       inputJson: { prompt: input.prompt, projectId: input.projectId, flowId: input.flowId, graphRevision },
     });
-    return { id: created.id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision, prompt: input.prompt, status: "draft" };
+    return { id: created.id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision, prompt: input.prompt, status: "draft", outputJson: {} };
   }
 
   async append(task: AgentV4TaskRecord, event: AgentV4TaskEvent): Promise<{ id?: string; seq?: number } | null> {
@@ -214,6 +216,7 @@ export class AgentV4TaskStore {
   async update(task: AgentV4TaskRecord, input: { status: AgentV4Status; outputJson?: Record<string, unknown>; errorJson?: Record<string, unknown> | null }) {
     await this.repository.updateTask?.(task.id, { tenantId: task.tenantId, ...input });
     task.status = input.status;
+    if (input.outputJson) task.outputJson = input.outputJson;
   }
 }
 

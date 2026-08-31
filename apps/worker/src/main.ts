@@ -27,6 +27,7 @@ import { MediaAssetStore } from "./workflow-runtime/media-asset-store.js";
 import { ImageVariantProcessor } from "./workflow-runtime/image-variant-processor.js";
 import { VideoReferenceVariantProcessor } from "./workflow-runtime/video-reference-variant-processor.js";
 import { ReferenceVideoVariantReconciler } from "./workflow-runtime/reference-video-variant-reconciler.js";
+import { createDatabaseV4TerminalProjector } from "./workflow-runtime/agent-v4-terminal-sync.js";
 import { WorkflowNodeExecutionService } from "./workflow-runtime/service.js";
 
 type Closable = {
@@ -67,6 +68,11 @@ export const WORKER_RUNTIME_QUEUE_NAMES = [
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const REFERENCE_VIDEO_VARIANT_RECONCILE_INTERVAL_MS = 60_000;
+
+export function isAgentV4TerminalSyncEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.AGENT_V4_ENABLED?.trim().toLowerCase() === "true"
+    && env.AGENT_V4_RUNTIME_ENABLED?.trim().toLowerCase() === "true";
+}
 
 export function createWorkerRuntime(options?: {
   env?: WorkerEnv;
@@ -162,6 +168,20 @@ export function createWorkerRuntime(options?: {
     pool,
     queue: assetVideoReferenceVariantQueue,
   });
+  const terminalProjector = options?.agentV4TerminalSync
+    ?? (isAgentV4TerminalSyncEnabled()
+      ? (() => {
+        const project = createDatabaseV4TerminalProjector(pool);
+        return {
+          onNodeExecute: async ({ job }: { job: { tenantId: string; workflowRunId: string } }) => {
+            await project({ tenantId: job.tenantId, workflowRunId: job.workflowRunId });
+          },
+          onProviderPoll: async ({ job }: { job: { tenantId: string; workflowRunId?: string | null } }) => {
+            if (job.workflowRunId) await project({ tenantId: job.tenantId, workflowRunId: job.workflowRunId });
+          },
+        };
+      })()
+      : undefined);
   const referenceVideoVariantReconcileTimer = setInterval(() => {
     void referenceVideoVariantReconciler.reconcile().catch((error) => {
       logger.error(
@@ -201,7 +221,7 @@ export function createWorkerRuntime(options?: {
     queueFactory,
     workbenchGenerationService,
       workflowNodeExecutionService,
-      agentV4TerminalSync: options?.agentV4TerminalSync,
+      agentV4TerminalSync: terminalProjector,
   });
 
   let shuttingDown = false;

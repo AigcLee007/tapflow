@@ -1,8 +1,9 @@
 import { AgentApiError } from "../agent.service.js";
-import { agentV4TurnInputSchema } from "./agent-v4-schemas.js";
+import { agentV4TurnInputSchema, parseV4ToolCall } from "./agent-v4-schemas.js";
 import { AgentResponsesSessionService } from "./agent-responses-session.service.js";
 import { AgentV4TaskStore, type AgentV4TaskRepository } from "./agent-v4-task-store.js";
 import { AgentV4ToolGateway } from "./agent-v4-tool-gateway.js";
+import { safeToolResult } from "./agent-v4-types.js";
 import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./taobao-suite-planner.js";
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
@@ -53,9 +54,24 @@ export class AgentV4RuntimeService {
     const task = await this.getTask(input); const store = new AgentV4TaskStore(this.options.repository);
     if (!input.approved) { await store.update(task, { status: "cancelled", errorJson: { code: "AGENT_APPROVAL_REJECTED" } }); return { taskId: task.id, status: "cancelled" }; }
     if (task.status !== "waiting_for_approval") throw new AgentApiError(409, "AGENT_V4_APPROVAL_STATE_INVALID", "Task is not waiting for approval.");
+    const pending = task.outputJson?.pendingTool;
+    if (!pending || typeof pending !== "object") throw new AgentApiError(409, "AGENT_V4_PENDING_OPERATION_MISSING", "Task has no approved operation to resume.");
+    let call;
+    try {
+      call = parseV4ToolCall({ name: (pending as Record<string, unknown>).name as string, arguments: (pending as Record<string, unknown>).arguments });
+    } catch {
+      throw new AgentApiError(409, "AGENT_V4_PENDING_OPERATION_INVALID", "Task has no valid operation to resume.");
+    }
     await store.append(task, { type: "approval_granted", status: "generating_base", idempotencyKey: `v4:${task.id}:approval:granted`, payload: { taskId: task.id } });
     await store.update(task, { status: "generating_base" });
-    return { taskId: task.id, status: "generating_base" };
+    const rawResult = this.options.generationExecutor
+      ? await this.options.generationExecutor({ task, context: input.context, tool: call.name, arguments: call.arguments, idempotencyKey: `v4:${task.id}:approved:${call.name}` })
+      : { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED" };
+    const result = safeToolResult(rawResult);
+    const status = result.status ?? "needs_review";
+    await store.append(task, { type: "generation_started", status, idempotencyKey: `v4:${task.id}:approved:${call.name}`, payload: result });
+    await store.update(task, { status, outputJson: { ...result } });
+    return { taskId: task.id, status, ...result };
   }
   async cancel(input: { taskId: string; context: AgentV4RequestContext }) {
     if (!this.options.enabled) return this.unavailable();
