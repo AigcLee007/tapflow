@@ -11,6 +11,7 @@ export async function processNodeExecuteJob(
   logger: WorkerLogger,
   options?: {
     executionService?: WorkflowNodeExecutionService;
+    onTerminal?: (input: { job: NodeExecuteJobPayload; result: ProcessorResult }) => Promise<void>;
   },
 ): Promise<ProcessorResult> {
   if (options?.executionService) {
@@ -31,6 +32,7 @@ export async function processNodeExecuteJob(
       "processing node.execute job",
     );
     const result = await options.executionService.executeNode(job.data, logger);
+    if (options.onTerminal) await options.onTerminal({ job: job.data, result: result as ProcessorResult });
     logger.info(
       {
         end_to_end_ms: Math.max(0, Date.now() - submittedAt),

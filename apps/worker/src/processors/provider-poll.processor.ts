@@ -11,6 +11,7 @@ export async function processProviderPollJob(
   logger: WorkerLogger,
   options?: {
     executionService?: WorkflowNodeExecutionService;
+    onTerminal?: (input: { job: ProviderPollJobPayload; result: ProcessorResult }) => Promise<void>;
   },
 ): Promise<ProcessorResult> {
   if (options?.executionService) {
@@ -27,6 +28,7 @@ export async function processProviderPollJob(
       "processing provider.poll job",
     );
     const result = await options.executionService.pollProviderTask(job.data, logger);
+    if (options.onTerminal) await options.onTerminal({ job: job.data, result: result as ProcessorResult });
     logger.info(
       {
         jobId: job.id ?? null,
