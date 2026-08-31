@@ -8,13 +8,14 @@ import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./t
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
 type V4GenerationExecutor = (input: { task: any; context: AgentV4RequestContext; tool: string; arguments: Record<string, unknown>; idempotencyKey: string }) => Promise<unknown>;
-export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context: AgentV4RequestContext, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[]; agentV4TaskId?: string }) => Promise<{ runs: Array<{ nodeId: string; runId: string }> }> }): V4GenerationExecutor {
+export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context: AgentV4RequestContext, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[]; agentV4TaskId?: string; agentV4ItemIds?: Record<string, string> }) => Promise<{ runs: Array<{ nodeId: string; runId: string }> }> }): V4GenerationExecutor {
   return async ({ task, context, tool, arguments: args, idempotencyKey }) => {
     const nodeIds = tool === "image.generate_batch"
       ? (Array.isArray(args.items) ? args.items.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).nodeId === "string" ? [(item as Record<string, unknown>).nodeId as string] : []) : [])
       : (typeof args.nodeId === "string" ? [args.nodeId] : []);
     if (!nodeIds.length) return { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_NODE_ID_REQUIRED" };
-    const launched = await adapter.runNodes(context, { flowId: task.flowId, graphRevision: task.graphRevision, idempotencyKey, nodeIds, agentV4TaskId: task.id });
+    const agentV4ItemIds = Object.fromEntries((Array.isArray(args.items) ? args.items : []).flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).nodeId === "string" && typeof (item as Record<string, unknown>).itemId === "string" ? [[(item as Record<string, unknown>).nodeId as string, (item as Record<string, unknown>).itemId as string]] : []));
+    const launched = await adapter.runNodes(context, { flowId: task.flowId, graphRevision: task.graphRevision, idempotencyKey, nodeIds, agentV4TaskId: task.id, agentV4ItemIds });
     return { ok: true, status: tool === "image.generate_batch" ? "generating_batch" : "generating_base", taskId: task.id, itemIds: launched.runs.map((run) => run.nodeId), runIds: launched.runs.map((run) => run.runId), summary: `${launched.runs.length} generation run(s) queued.` };
   };
 }

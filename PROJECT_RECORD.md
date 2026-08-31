@@ -5,6 +5,7 @@ Last updated: 2026-08-31
 ## 2026-08-31 - Canvas Agent V4 Failed-Item Retry
 
 - V4 retry now relaunches only a persisted failed generation item. It records a bounded retry count, preserves successful sibling items, and attaches the newly launched Workflow Run ID to the retried item for Worker terminal projection.
+- Workflow launch and terminal projection now retain the stable V4 item ID independently from the canvas node ID, so a completed retry is applied to the planned page that requested it.
 - Focused API runtime tests and the API TypeScript build passed. V4 remains disabled by default; real asset-to-canvas delivery, inverse operations, frontend completion, and staging acceptance are still required before enabling it.
 
 ## 2026-08-31 - Canvas Agent V4 Responses Session and Tool Gateway
