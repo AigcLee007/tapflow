@@ -4,6 +4,17 @@ import { canvasOperationSchema } from "../v3/canvas-operation-schema.js";
 
 const id = z.string().trim().min(1).max(200);
 const loose = z.record(z.string(), z.unknown());
+const suitePlanSchema = z.object({
+  mainImageCount: z.number().int().min(1).max(24).optional(),
+  detailPageCount: z.number().int().min(1).max(24).optional(),
+  targetPlatform: z.string().max(120).optional(),
+  pages: z.array(z.object({ pageKey: id, purpose: z.string().max(1000) }).strict()).max(24).optional(),
+}).strict();
+const visualBibleSchema = z.object({
+  productLock: z.string().max(2000).optional(), palette: z.array(z.string().max(120)).max(24).optional(),
+  lighting: z.string().max(1000).optional(), background: z.string().max(1000).optional(), typography: z.string().max(1000).optional(),
+  composition: z.string().max(1000).optional(), prohibitions: z.array(z.string().max(500)).max(24).optional(),
+}).strict();
 const refIds = z.array(id).max(16);
 const batchItem = z.object({ itemId: id, pageKey: id, prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds }).strict();
 
@@ -12,8 +23,8 @@ export const v4ToolInputSchemas = {
   "reference.inspect": z.object({ referenceAssetIds: refIds }).strict(),
   "product.analyze": z.object({ referenceAssetIds: refIds, prompt: z.string().trim().max(4000).optional() }).strict(),
   "suite.plan": z.object({ prompt: z.string().trim().min(1).max(8000), mainImageCount: z.number().int().min(1).max(24).optional(), detailPageCount: z.number().int().min(1).max(24).optional() }).strict(),
-  "visual_bible.create": z.object({ productSummary: z.string().trim().min(1).max(8000), suitePlan: loose }).strict(),
-  "prompt_set.create": z.object({ visualBible: loose, suitePlan: loose, pages: z.array(z.object({ pageKey: id, purpose: z.string().trim().min(1).max(1000) }).strict()).min(1).max(24) }).strict(),
+  "visual_bible.create": z.object({ productSummary: z.string().trim().min(1).max(8000), suitePlan: suitePlanSchema }).strict(),
+  "prompt_set.create": z.object({ visualBible: visualBibleSchema, suitePlan: suitePlanSchema, pages: z.array(z.object({ pageKey: id, purpose: z.string().trim().min(1).max(1000) }).strict()).min(1).max(24) }).strict(),
   "image.generate_base": z.object({ prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds }).strict(),
   "image.generate_batch": z.object({ items: z.array(batchItem).min(2).max(12) }).strict().superRefine((value, ctx) => {
     const itemIds = new Set<string>(); const pageKeys = new Set<string>();
@@ -23,6 +34,13 @@ export const v4ToolInputSchemas = {
   "canvas.preview_operations": z.object({ operations: z.array(canvasOperationSchema).max(24), expectedRevision: z.number().int().nonnegative().optional() }).strict(),
   "canvas.commit_operations": z.object({ expectedRevision: z.number().int().nonnegative(), operations: z.array(canvasOperationSchema).max(24), operationSetId: id.optional() }).strict(),
 } satisfies Record<AgentV4ToolName, z.ZodTypeAny>;
+
+/** OpenAI Responses-compatible function definitions. Zod strict objects emit additionalProperties:false. */
+export const v4ToolJsonSchemas = Object.fromEntries(
+  Object.entries(v4ToolInputSchemas).map(([name, schema]) => [name, z.toJSONSchema(schema as z.ZodType)]),
+) as unknown as Record<AgentV4ToolName, Record<string, unknown>>;
+export const v4ToolDefinitions = V4_TOOL_NAMES.map((name) => ({ type: "function" as const, name, description: `Agent V4 ${name} operation`, parameters: v4ToolJsonSchemas[name] }));
+export const getV4ToolDefinitions = () => v4ToolDefinitions;
 
 export const agentV4TurnInputSchema = z.object({ prompt: z.string().trim().min(1).max(20_000), snapshot: loose.optional(), referenceContext: z.array(z.object({ assetId: id, refId: id.optional(), label: z.string().max(200).optional() }).strict()).max(16).optional(), idempotencyKey: id.optional(), expectedGraphRevision: z.number().int().nonnegative().optional() }).strict();
 export const agentV4RetryItemInputSchema = z.object({ itemId: id, idempotencyKey: id.optional() }).strict();

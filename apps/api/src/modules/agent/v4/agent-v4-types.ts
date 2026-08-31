@@ -59,6 +59,7 @@ export function nextV4Status(from: AgentV4Status, to: AgentV4Status): AgentV4Sta
 const safeKeys = new Set(["ok", "status", "taskId", "itemIds", "assetIds", "assetId", "revision", "errorCode", "summary", "items"]);
 const itemKeys = new Set(["itemId", "status", "assetId", "nodeId", "errorCode"]);
 const forbidden = /provider|credential|authorization|url|base64|blob|rawresponse|raw_response|secret|api[_-]?key/i;
+const allStatuses = new Set<string>(["draft", "observing", "planning", "preview_ready", "waiting_for_approval", "generating_base", "generating_batch", "waiting_for_continuation", "verifying", "repairing", ...V4_TERMINAL_STATUSES]);
 
 export function safeToolResult(input: unknown): AgentV4SafeToolResult {
   const source = (input && typeof input === "object" && !Array.isArray(input)) ? input as Record<string, unknown> : {};
@@ -69,11 +70,19 @@ export function safeToolResult(input: unknown): AgentV4SafeToolResult {
       output.items = value.map((item) => {
         if (!item || typeof item !== "object") return {};
         const clean: Record<string, unknown> = {};
-        for (const [itemKey, itemValue] of Object.entries(item as Record<string, unknown>)) if (itemKeys.has(itemKey) && !forbidden.test(itemKey)) clean[itemKey] = itemValue;
+        for (const [itemKey, itemValue] of Object.entries(item as Record<string, unknown>)) {
+          if (!itemKeys.has(itemKey) || forbidden.test(itemKey)) continue;
+          if (typeof itemValue === "string" || typeof itemValue === "number") clean[itemKey] = itemValue;
+        }
         return clean;
       });
     } else if (!forbidden.test(key)) {
-      output[key] = value;
+      if (key === "summary") { if (typeof value === "string") output.summary = value.slice(0, 2000); }
+      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string") output[key] = value;
+      else if (["revision"].includes(key) && typeof value === "number" && Number.isFinite(value)) output[key] = value;
+      else if (["ok"].includes(key) && typeof value === "boolean") output[key] = value;
+      else if (key === "status" && typeof value === "string" && allStatuses.has(value)) output[key] = value;
+      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.every((item) => typeof item === "string")) output[key] = value;
     }
   }
   return output as AgentV4SafeToolResult;
@@ -84,5 +93,3 @@ export type AgentV4ToolCall = { name: AgentV4ToolName; arguments: Record<string,
 export function isV4TerminalStatus(status: AgentV4Status): boolean {
   return (V4_TERMINAL_STATUSES as readonly string[]).includes(status);
 }
-
-export { parseV4ToolCall } from "./agent-v4-schemas.js";

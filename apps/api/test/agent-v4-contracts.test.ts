@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   nextV4Status,
-  parseV4ToolCall,
   safeToolResult,
   V4_TERMINAL_STATUSES,
 } from "../src/modules/agent/v4/agent-v4-types.js";
-import { v4ToolInputSchemas } from "../src/modules/agent/v4/agent-v4-schemas.js";
+import { v4ToolInputSchemas, v4ToolJsonSchemas, v4ToolDefinitions, parseV4ToolCall } from "../src/modules/agent/v4/agent-v4-schemas.js";
 
 describe("Agent V4 contracts", () => {
   it("enforces strict state transitions and terminal states", () => {
@@ -36,6 +35,12 @@ describe("Agent V4 contracts", () => {
   });
 
   it("redacts unsafe provider and transport fields from tool results", () => {
-    expect(safeToolResult({ assetId: "a", signedUrl: "https://secret", provider: "internal", nested: { base64: "abc" }, status: "succeeded" })).toEqual({ assetId: "a", status: "succeeded" });
+    expect(safeToolResult({ assetId: "a", signedUrl: "https://secret", provider: "internal", nested: { base64: "abc" }, summary: { provider: "x", url: "secret" }, status: "succeeded" })).toEqual({ assetId: "a", status: "succeeded" });
+  });
+
+  it("exports strict Responses tool definitions", () => {
+    expect(v4ToolDefinitions).toHaveLength(11);
+    expect(v4ToolJsonSchemas["image.generate_batch"]).toMatchObject({ additionalProperties: false });
+    expect((v4ToolJsonSchemas["image.generate_batch"] as any).properties.items.items.additionalProperties).toBe(false);
   });
 });
