@@ -3,6 +3,7 @@ import type { AgentV3TaskRepository } from "./agent-v3-task-store.js";
 import { AgentV3TaskStore } from "./agent-v3-task-store.js";
 import type { AgentService } from "../agent.service.js";
 import type { CreateAgentTurnInput } from "../agent.schemas.js";
+import { verifyTaskDelivery } from "./agent-delivery-verifier.js";
 
 export type AgentV3TurnInput = {
   prompt: string;
@@ -98,7 +99,16 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
         await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "run_started", status: "running", workflowRuns: launched.runs })}\\n\\n`);
         const terminal = await agentService.workflowRunAdapter.awaitResults(request.context, launched.runs.map((run) => run.runId));
         if (!terminal.allTerminal) return { taskId: task.id, status: "running", workflowRuns: launched.runs };
-        return { taskId: task.id, status: "running", workflowRuns: launched.runs };
+        if (!agentService.workflowRunAdapter.getDeliveryActuals) {
+          await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "needs_review", errorJson: { code: "DELIVERY_DETAILS_UNAVAILABLE" } });
+          return { taskId: task.id, status: "needs_review", workflowRuns: launched.runs };
+        }
+        const actual = await agentService.workflowRunAdapter.getDeliveryActuals(request.context, launched.runs.map((run) => run.runId));
+        const delivery = verifyTaskDelivery({ tenantId: request.context.tenantId, taskId: task.id, flowId, expected: launched.runs.map((run) => ({ id: run.runId, kind: "image" })), actual });
+        const status = delivery.status === "verified" ? "succeeded" : delivery.status === "partial" ? "partial_success" : delivery.status === "waiting" ? "needs_review" : "failed";
+        await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status, outputJson: { workflowRuns: launched.runs, delivery } });
+        await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "delivery_verified", status, delivery })}\\n\\n`);
+        return { taskId: task.id, status, workflowRuns: launched.runs, delivery };
       }
       await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running" });
       await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "approval_granted", status: "running" })}\\n\\n`);

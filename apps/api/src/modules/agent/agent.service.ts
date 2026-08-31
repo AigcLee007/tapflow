@@ -385,7 +385,7 @@ export class AgentService {
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
     skillService?: Pick<SkillService, "getPublishedVersion" | "getPublishedVersionByNumber"> | null;
     skillRunService?: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "replaceBudgetSnapshot" | "claimApprovalLaunch" | "approve" | "cancel"> | null;
-    workflowRunsService?: Pick<import("../workflow-runs/workflow-runs.service.js").WorkflowRunsService, "createWorkflowRun" | "getWorkflowRunStatus">;
+    workflowRunsService?: Pick<import("../workflow-runs/workflow-runs.service.js").WorkflowRunsService, "createWorkflowRun" | "getWorkflowRunStatus" | "getWorkflowRun">;
   }) {
     this.env = options.env;
     this.aiModelCatalogService = options.aiModelCatalogService ?? null;
