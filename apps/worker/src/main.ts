@@ -75,6 +75,7 @@ export function createWorkerRuntime(options?: {
   queueFactory?: QueueFactoryLike;
   redisConnection?: Redis;
   workflowNodeExecutionService?: WorkflowNodeExecutionService;
+  agentV4TerminalSync?: Parameters<typeof registerWorkerQueues>[0]["agentV4TerminalSync"];
 }) {
   const env = options?.env ?? getWorkerEnv();
   const logger = options?.logger ?? createConsoleWorkerLogger();
@@ -199,7 +200,8 @@ export function createWorkerRuntime(options?: {
     logger,
     queueFactory,
     workbenchGenerationService,
-    workflowNodeExecutionService,
+      workflowNodeExecutionService,
+      agentV4TerminalSync: options?.agentV4TerminalSync,
   });
 
   let shuttingDown = false;

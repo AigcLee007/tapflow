@@ -120,6 +120,7 @@ export function registerWorkerQueues(options: {
   queueFactory: QueueFactoryLike;
   workbenchGenerationService?: WorkbenchGenerationService;
   workflowNodeExecutionService?: WorkflowNodeExecutionService;
+  agentV4TerminalSync?: { onNodeExecute: (input: any) => Promise<void>; onProviderPoll: (input: any) => Promise<void> };
 }) {
   const workers: Closable[] = [];
   const queueEvents: Closable[] = [];
@@ -138,11 +139,13 @@ export function registerWorkerQueues(options: {
           ? (job: unknown) =>
               processNodeExecuteJob(job as never, options.logger, {
                 executionService: options.workflowNodeExecutionService,
+                onTerminal: options.agentV4TerminalSync?.onNodeExecute,
               })
         : queueName === QUEUE_NAMES.providerPoll
           ? (job: unknown) =>
               processProviderPollJob(job as never, options.logger, {
                 executionService: options.workflowNodeExecutionService,
+                onTerminal: options.agentV4TerminalSync?.onProviderPoll,
               })
         : queueName === QUEUE_NAMES.assetImageVariant
           ? (job: unknown) => {
