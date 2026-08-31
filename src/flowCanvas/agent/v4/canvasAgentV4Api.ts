@@ -15,7 +15,7 @@ export function openV4EventStream(
 ): V4EventStream {
   const controller = new AbortController();
   let closed = false;
-  const consume = async (tokenOverride?: string) => {
+  const consume = async (tokenOverride?: string, refreshed = false) => {
     const token = tokenOverride ?? getStoredAccessToken();
     const query = new URLSearchParams({ afterSeq: String(afterSeq) });
     const response = await fetch(`/api/v2/agent/v4/tasks/${encodeURIComponent(taskId)}/events?${query}`, {
@@ -24,9 +24,9 @@ export function openV4EventStream(
       method: "GET",
       signal: controller.signal,
     });
-    if (response.status === 401 && !closed) {
+    if (response.status === 401 && !closed && !refreshed) {
       const refreshed = await refreshAccessToken();
-      return consume(refreshed.accessToken);
+      return consume(refreshed.accessToken, true);
     }
     if (!response.ok) throw new Error(`Canvas Agent V4 stream failed with status ${response.status}`);
     await readAgentSseStream(response, {

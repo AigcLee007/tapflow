@@ -6854,3 +6854,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Replaced the V4 task event `EventSource` client with a cancellable fetch-based SSE connection that sends the V2 bearer token and retries once through the shared refresh-token flow after a 401 response.
 - Expanded the V4 task panel to render the generated suite plan, visual bible, page prompt set with reference-asset counts, dependency graph, approval/cancel controls, failed-item retry, and applied-revision undo entry points.
 - Added focused panel coverage and re-ran the V4 session/API tests; frontend and API production builds pass. V4 flags remain disabled pending authenticated staging execution with real PostgreSQL, Redis/BullMQ, S3, priced provider routes, billing settlement/refund, terminal projection, replay, CAS conflict, retry, and rollback evidence.
+## 2026-09-01 - Canvas Agent V4 stream refresh retry bound
+
+- V4 authenticated SSE now permits at most one token-refresh retry per connection. If the refreshed access token is rejected, the connection reports an error and lets the session hook apply its bounded reconnect policy instead of recursively refreshing forever.
+- Added regression coverage for the rejected-refreshed-token path; V4 API tests remain green.

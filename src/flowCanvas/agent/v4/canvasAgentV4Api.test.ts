@@ -25,4 +25,19 @@ describe("Canvas Agent V4 API actions", () => {
     vi.unstubAllGlobals();
     setStoredTokens({ accessToken: null, refreshToken: null });
   });
+
+  it("does not loop forever when the refreshed token is also rejected", async () => {
+    setStoredTokens({ accessToken: "expired", refreshToken: "refresh" });
+    const fetchMock = vi.fn(async (url: string) => url.includes("/auth/refresh")
+      ? new Response(JSON.stringify({ accessToken: "still-invalid", refreshToken: "refresh-2" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      : new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onError = vi.fn();
+    const stream = openV4EventStream("task-1", 0, undefined, onError);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    stream.close();
+    vi.unstubAllGlobals();
+    setStoredTokens({ accessToken: null, refreshToken: null });
+  });
 });
