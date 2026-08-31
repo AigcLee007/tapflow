@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { withTenantTransaction } from "@aigc-flow/db";
 
-export type AgentV3TaskRecord = { id: string; tenantId: string; sessionId: string; projectId: string; flowId: string; prompt: string; status: string };
+export type AgentV3TaskRecord = { id: string; tenantId: string; sessionId: string; projectId: string; flowId: string; graphRevision: number; prompt: string; status: string };
 export type AgentV3TaskEvent = { type: string; status: string; payload?: Record<string, unknown> };
 
 export type AgentV3TaskRepository = {
@@ -74,7 +74,7 @@ export class DatabaseAgentV3TaskRepository implements AgentV3TaskRepository {
 export class AgentV3TaskStore {
   constructor(private readonly repository: AgentV3TaskRepository) {}
 
-  async create(input: { tenantId: string; sessionId: string; projectId: string; flowId: string; prompt: string; idempotencyKey?: string }): Promise<AgentV3TaskRecord> {
+  async create(input: { tenantId: string; sessionId: string; projectId: string; flowId: string; graphRevision?: number; prompt: string; idempotencyKey?: string }): Promise<AgentV3TaskRecord> {
     const idempotencyKey = input.idempotencyKey?.trim() || `agent-v3:${input.sessionId}:${randomUUID()}`;
     const created = await this.repository.createTask({
       idempotencyKey,
@@ -85,9 +85,9 @@ export class AgentV3TaskStore {
       taskType: "canvas_director",
       title: input.prompt.slice(0, 120),
       status: "observing",
-      inputJson: { prompt: input.prompt, projectId: input.projectId, flowId: input.flowId },
+      inputJson: { prompt: input.prompt, projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision ?? 0 },
     });
-    return { id: created.id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, prompt: input.prompt, status: "observing" };
+    return { id: created.id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision ?? 0, prompt: input.prompt, status: "observing" };
   }
 
   async append(task: AgentV3TaskRecord, event: AgentV3TaskEvent): Promise<void> {

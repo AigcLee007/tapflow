@@ -69,7 +69,7 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       }
       const projectId = session.projectId ?? input.snapshot.projectId;
       if (!projectId) throw new AgentApiError(400, "AGENT_PROJECT_REQUIRED", "Agent session is not bound to a project.");
-      const task = await store.create({ tenantId: request.context.tenantId, sessionId: request.sessionId, projectId, flowId: session.flowId, prompt: input.prompt, idempotencyKey: input.idempotencyKey });
+      const task = await store.create({ tenantId: request.context.tenantId, sessionId: request.sessionId, projectId, flowId: session.flowId, graphRevision: draft.revision, prompt: input.prompt, idempotencyKey: input.idempotencyKey });
       const emit = async (type: string, status: string, payload: Record<string, unknown> = {}) => {
         await store.append(task, { type, status, payload });
         await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type, status, ...payload })}\\n\\n`);
@@ -87,6 +87,17 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       const task = await repository.getTask({ tenantId: request.context.tenantId, taskId: request.taskId });
       if (!task) throw new AgentApiError(404, "AGENT_TASK_NOT_FOUND", "Agent task was not found.");
       if (!request.approved) { await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "cancelled", errorJson: { code: "AGENT_APPROVAL_REJECTED" } }); return { taskId: task.id, status: "cancelled" }; }
+      const flowId = typeof task.inputJson.flowId === "string" ? task.inputJson.flowId : null;
+      const graphRevision = typeof task.inputJson.graphRevision === "number" ? task.inputJson.graphRevision : null;
+      const runNodeIds = Array.isArray(task.outputJson.proposedOps)
+        ? task.outputJson.proposedOps.flatMap((operation) => operation && typeof operation === "object" && (operation as Record<string, unknown>).type === "run_node" && typeof (operation as Record<string, unknown>).nodeId === "string" ? [(operation as Record<string, unknown>).nodeId as string] : [])
+        : [];
+      if (flowId && graphRevision !== null && runNodeIds.length && agentService.workflowRunAdapter) {
+        const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:approve`, nodeIds: runNodeIds });
+        await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { workflowRuns: launched.runs.map((run) => ({ nodeId: run.nodeId, runId: run.runId })) } });
+        await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "run_started", status: "running", workflowRuns: launched.runs })}\\n\\n`);
+        return { taskId: task.id, status: "running", workflowRuns: launched.runs };
+      }
       await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running" });
       await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "approval_granted", status: "running" })}\\n\\n`);
       return { taskId: task.id, status: "running" };
