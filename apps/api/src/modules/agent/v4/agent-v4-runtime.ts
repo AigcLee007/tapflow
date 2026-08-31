@@ -7,7 +7,7 @@ import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./t
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
 type V4GenerationExecutor = (input: { task: any; context: AgentV4RequestContext; tool: string; arguments: Record<string, unknown>; idempotencyKey: string }) => Promise<unknown>;
-export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context: AgentV4RequestContext, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[] }) => Promise<{ runs: Array<{ nodeId: string; runId: string }> }> }): V4GenerationExecutor {
+export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context: AgentV4RequestContext, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[]; agentV4TaskId?: string }) => Promise<{ runs: Array<{ nodeId: string; runId: string }> }> }): V4GenerationExecutor {
   return async ({ task, context, tool, arguments: args, idempotencyKey }) => {
     const nodeIds = tool === "image.generate_batch"
       ? (Array.isArray(args.items) ? args.items.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).nodeId === "string" ? [(item as Record<string, unknown>).nodeId as string] : []) : [])
@@ -42,8 +42,30 @@ export class AgentV4RuntimeService {
     return service.run({ task, context: input.context, prompt: body.prompt, safeContext: body.snapshot });
   }
   async replayEvents(input: { tenantId: string; taskId: string; afterSeq: number }) { if (!this.options.enabled) return this.unavailable(); return new AgentV4TaskStore(this.options.repository).listEvents(input); }
-  async approve(_input?: unknown) { return this.unavailable(); }
-  async cancel(_input?: unknown) { return this.unavailable(); }
-  async retryItem(_input?: unknown) { return this.unavailable(); }
-  async undo(_input?: unknown) { return this.unavailable(); }
+  private async getTask(input: { taskId: string; context: AgentV4RequestContext }) {
+    if (!this.options.repository.getTask) throw new AgentApiError(503, "AGENT_V4_TASK_STORE_UNAVAILABLE", "V4 task store is not available.");
+    const task = await this.options.repository.getTask({ tenantId: input.context.tenantId, taskId: input.taskId });
+    if (!task) throw new AgentApiError(404, "AGENT_TASK_NOT_FOUND", "Agent task was not found.");
+    return task;
+  }
+  async approve(input: { taskId: string; context: AgentV4RequestContext; approved: boolean }) {
+    if (!this.options.enabled) return this.unavailable();
+    const task = await this.getTask(input); const store = new AgentV4TaskStore(this.options.repository);
+    if (!input.approved) { await store.update(task, { status: "cancelled", errorJson: { code: "AGENT_APPROVAL_REJECTED" } }); return { taskId: task.id, status: "cancelled" }; }
+    if (task.status !== "waiting_for_approval") throw new AgentApiError(409, "AGENT_V4_APPROVAL_STATE_INVALID", "Task is not waiting for approval.");
+    await store.append(task, { type: "approval_granted", status: "generating_base", idempotencyKey: `v4:${task.id}:approval:granted`, payload: { taskId: task.id } });
+    await store.update(task, { status: "generating_base" });
+    return { taskId: task.id, status: "generating_base" };
+  }
+  async cancel(input: { taskId: string; context: AgentV4RequestContext }) {
+    if (!this.options.enabled) return this.unavailable();
+    const task = await this.getTask(input); if (["succeeded", "failed", "cancelled"].includes(task.status)) return { taskId: task.id, status: task.status };
+    const store = new AgentV4TaskStore(this.options.repository); await store.append(task, { type: "cancelled", status: "cancelled", idempotencyKey: `v4:${task.id}:cancel`, payload: { taskId: task.id } }); await store.update(task, { status: "cancelled", errorJson: { code: "AGENT_TASK_CANCELLED" } }); return { taskId: task.id, status: "cancelled" };
+  }
+  async retryItem(input: { taskId: string; context: AgentV4RequestContext; itemId: string; idempotencyKey?: string }) {
+    if (!this.options.enabled) return this.unavailable();
+    const task = await this.getTask(input); if (!["partial_success", "failed", "needs_review"].includes(task.status)) throw new AgentApiError(409, "AGENT_V4_RETRY_STATE_INVALID", "Task has no retryable failed item.");
+    const store = new AgentV4TaskStore(this.options.repository); await store.append(task, { type: "item_retry_requested", status: "repairing", idempotencyKey: input.idempotencyKey ?? `v4:${task.id}:retry:${input.itemId}`, payload: { itemId: input.itemId } }); await store.update(task, { status: "repairing" }); return { taskId: task.id, status: "repairing", itemId: input.itemId };
+  }
+  async undo(input: { taskId: string; context: AgentV4RequestContext; expectedRevision: number }) { if (!this.options.enabled) return this.unavailable(); await this.getTask(input); throw new AgentApiError(409, "AGENT_V4_INVERSE_OPERATIONS_MISSING", "No verified inverse canvas operations are available for this task."); }
 }
