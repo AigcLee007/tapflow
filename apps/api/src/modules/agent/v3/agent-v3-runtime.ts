@@ -110,10 +110,17 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       if (!request.approved) { await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "cancelled", errorJson: { code: "AGENT_APPROVAL_REJECTED" } }); return { taskId: task.id, status: "cancelled" }; }
       const flowId = typeof task.inputJson.flowId === "string" ? task.inputJson.flowId : null;
       const graphRevision = typeof task.inputJson.graphRevision === "number" ? task.inputJson.graphRevision : null;
-      const runNodeIds = Array.isArray(task.outputJson.proposedOps)
-        ? task.outputJson.proposedOps.flatMap((operation) => operation && typeof operation === "object" && (operation as Record<string, unknown>).type === "run_node" && typeof (operation as Record<string, unknown>).nodeId === "string" ? [(operation as Record<string, unknown>).nodeId as string] : [])
-        : [];
-      const canvasOperations = Array.isArray(task.outputJson.proposedOps) ? task.outputJson.proposedOps.flatMap((operation, index) => mapPlannerOperation(operation, task.id, index)) : [];
+      const proposedOps = Array.isArray(task.outputJson.proposedOps) ? task.outputJson.proposedOps : [];
+      const clientRefs = new Map<string, string>();
+      proposedOps.forEach((operation, index) => {
+        if (operation && typeof operation === "object" && (operation as Record<string, unknown>).type === "add_node") {
+          const item = operation as Record<string, unknown>;
+          if (typeof item.clientId === "string") clientRefs.set(`client:${item.clientId}`, item.clientId);
+        }
+      });
+      const resolveClientRef = (value: string) => clientRefs.get(value) ?? value;
+      const runNodeIds = proposedOps.flatMap((operation) => operation && typeof operation === "object" && (operation as Record<string, unknown>).type === "run_node" && typeof (operation as Record<string, unknown>).nodeId === "string" ? [resolveClientRef((operation as Record<string, unknown>).nodeId as string)] : []);
+      const canvasOperations = proposedOps.flatMap((operation, index) => mapPlannerOperation(operation, task.id, index, resolveClientRef));
       let appliedCanvas: unknown = null;
       if (operationService && flowId && graphRevision !== null && canvasOperations.length) {
         appliedCanvas = await operationService.applyApprovedOperationSet({
@@ -195,7 +202,7 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
   };
 }
 
-function mapPlannerOperation(value: unknown, taskId = "task", operationIndex = 0): CanvasOperation[] {
+function mapPlannerOperation(value: unknown, taskId = "task", operationIndex = 0, resolveClientRef: (value: string) => string = (value) => value): CanvasOperation[] {
   if (!value || typeof value !== "object") return [];
   const operation = value as Record<string, unknown>;
   switch (operation.type) {
@@ -211,7 +218,7 @@ function mapPlannerOperation(value: unknown, taskId = "task", operationIndex = 0
     case "connect_nodes": {
       if (typeof operation.source !== "string" || typeof operation.target !== "string") return [];
       const id = typeof operation.edgeId === "string" ? operation.edgeId : `v3-edge-${taskId}-${operationIndex}`;
-      return [{ type: "edge.connect", edge: { id, source: operation.source, target: operation.target, ...(typeof operation.sourceHandle === "string" ? { sourceHandle: operation.sourceHandle } : {}), ...(typeof operation.targetHandle === "string" ? { targetHandle: operation.targetHandle } : {}) } }];
+      return [{ type: "edge.connect", edge: { id, source: resolveClientRef(operation.source), target: resolveClientRef(operation.target), ...(typeof operation.sourceHandle === "string" ? { sourceHandle: operation.sourceHandle } : {}), ...(typeof operation.targetHandle === "string" ? { targetHandle: operation.targetHandle } : {}) } }];
     }
     case "delete_edges": return Array.isArray(operation.edgeIds) ? operation.edgeIds.filter((id): id is string => typeof id === "string").map((edgeId) => ({ type: "edge.delete", edgeId })) : [];
     case "select_nodes": return Array.isArray(operation.nodeIds) ? [{ type: "selection.set", nodeIds: operation.nodeIds.filter((id): id is string => typeof id === "string") }] : [];

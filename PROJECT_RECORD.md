@@ -6803,3 +6803,4 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Planner-generated node and edge IDs are deterministic per task and operation index, preserving idempotent retries and replay behavior.
 - Added the official provider-agnostic `taobao-product-image-suite` Skill for real-product-photo analysis, main/detail page planning, visual bible generation, per-page prompts, batch node creation, consistency checks, and targeted retries.
 - Focused validation passed: official Skill, V3 runtime, and delivery suites (12 tests); API, DB, and AI Gateway builds passed. V3 remains fail-closed until authenticated staging acceptance with real provider routes, billing, object storage, and worker execution is completed.
+- Approval now resolves planner `client:*` references consistently across created nodes, edges, and `run_node` operations before applying or launching work, preventing invalid edge endpoints and stale client IDs during real execution.
