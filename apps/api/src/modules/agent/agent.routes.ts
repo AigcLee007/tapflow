@@ -551,7 +551,11 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     }
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/approve", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); agentV3ApprovalSchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_APPROVAL_UNAVAILABLE", "Canvas Agent V3 approval is not available.");
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const body = agentV3ApprovalSchema.parse(request.body);
+      return reply.send(await app.agentV3Runtime.approve({ taskId: params.taskId, context: getAgentContext(request), approved: body.approved !== false }));
+    } catch (error) { return handleRouteError(error, request, reply); }
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/cancel", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
     agentV3TaskIdParamsSchema.parse(request.params); return sendError(request, reply, 503, "AGENT_V3_CANCEL_UNAVAILABLE", "Canvas Agent V3 cancellation is not available.");

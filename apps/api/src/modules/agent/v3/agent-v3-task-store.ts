@@ -10,6 +10,7 @@ export type AgentV3TaskRepository = {
   appendEvent(input: { tenantId: string; sessionId: string; taskId: string; agentNamespace: string; agentVersion: "v3"; eventType: string; eventJson: Record<string, unknown> }): Promise<unknown>;
   updateTask?(id: string, input: { tenantId: string; status: string; outputJson?: Record<string, unknown>; errorJson?: Record<string, unknown> | null }): Promise<void>;
   getEvents?(input: { tenantId: string; taskId: string; afterSeq: number }): Promise<Array<{ seq: number; eventType: string; eventJson: Record<string, unknown> }>>;
+  getTask?(input: { tenantId: string; taskId: string }): Promise<{ id: string; sessionId: string; inputJson: Record<string, unknown>; outputJson: Record<string, unknown>; status: string } | null>;
 };
 
 export class DatabaseAgentV3TaskRepository implements AgentV3TaskRepository {
@@ -55,6 +56,17 @@ export class DatabaseAgentV3TaskRepository implements AgentV3TaskRepository {
         [input.tenantId, input.taskId, input.afterSeq],
       );
       return result.rows.map((row) => ({ seq: Number(row.seq), eventType: row.event_type, eventJson: row.event_json ?? {} }));
+    }, this.pool);
+  }
+
+  async getTask(input: { tenantId: string; taskId: string }) {
+    return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
+      const result = await client.query<{ id: string; session_id: string; input_json: Record<string, unknown>; output_json: Record<string, unknown>; status: string }>(
+        `SELECT id::text AS id, session_id::text AS session_id, input_json, output_json, status FROM agent_tasks WHERE tenant_id = $1::uuid AND id = $2::uuid LIMIT 1`,
+        [input.tenantId, input.taskId],
+      );
+      const row = result.rows[0];
+      return row ? { id: row.id, sessionId: row.session_id, inputJson: row.input_json ?? {}, outputJson: row.output_json ?? {}, status: row.status } : null;
     }, this.pool);
   }
 }
