@@ -14,6 +14,8 @@ import { CanvasAgentCommandBar } from './agent/v3/CanvasAgentCommandBar';
 import { CanvasAgentTaskSheet } from './agent/v3/CanvasAgentTaskSheet';
 import { CanvasAgentV4TaskPanel } from './agent/v4/CanvasAgentV4TaskPanel';
 import type { CanvasAgentV4Task } from './agent/v4/canvasAgentV4Types';
+import { useCanvasAgentV4Session } from './agent/v4/useCanvasAgentV4Session';
+import { useCanvasAgentV4TaskControls } from './agent/v4/useCanvasAgentV4TaskControls';
 import type { CanvasAgentV3RuntimeIdentity } from './agent/v3/canvasAgentV3Types';
 import { useCanvasAgentTask } from './agent/v3/useCanvasAgentTask';
 
@@ -218,10 +220,14 @@ const FlowCanvasPage: React.FC<{
   onAgentV4Approve?: () => void;
   onAgentV4Cancel?: () => void;
   onAgentV4Retry?: (itemId: string) => void;
-}> = ({ onServerDraftApplied, saveStatus, agentV3RuntimeIdentity = 'unavailable', agentV3SessionId, agentV4Task, onAgentV4Approve, onAgentV4Cancel, onAgentV4Retry }) => {
+  agentV4RuntimeIdentity?: 'v4_real' | 'unavailable';
+  agentV4SessionId?: string;
+}> = ({ onServerDraftApplied, saveStatus, agentV3RuntimeIdentity = 'unavailable', agentV3SessionId, agentV4Task, onAgentV4Approve, onAgentV4Cancel, onAgentV4Retry, agentV4RuntimeIdentity = 'unavailable', agentV4SessionId }) => {
   const [cullingEnabled, setCullingEnabled] = useState(true);
   const [agentOpen, setAgentOpen] = useState(false);
   const v3 = useCanvasAgentTask({ sessionId: agentV3SessionId, runtimeIdentity: agentV3RuntimeIdentity });
+  const v4Session = useCanvasAgentV4Session({ sessionId: agentV4SessionId, enabled: agentV4RuntimeIdentity === 'v4_real' });
+  const v4Controls = useCanvasAgentV4TaskControls(agentV4Task ?? v4Session.task);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
   useFlowShortcuts();
@@ -251,7 +257,7 @@ const FlowCanvasPage: React.FC<{
             <CanvasAgentCommandBar runtimeIdentity={agentV3RuntimeIdentity} task={v3.task ?? undefined} onSubmit={(prompt) => void v3.sendPrompt(prompt)} onCancel={() => void v3.cancel()} />
             <CanvasAgentTaskSheet task={v3.task ?? undefined} onApprove={() => void v3.approve(true)} />
           </>}
-          {agentV4Task && <CanvasAgentV4TaskPanel task={agentV4Task} onApprove={onAgentV4Approve} onCancel={onAgentV4Cancel} onRetry={onAgentV4Retry} />}
+          {agentV4RuntimeIdentity === 'v4_real' && <CanvasAgentV4TaskPanel task={v4Controls.task} onApprove={onAgentV4Approve ?? (() => void v4Controls.approve())} onCancel={onAgentV4Cancel ?? (() => void v4Controls.cancel())} onRetry={onAgentV4Retry ?? ((itemId) => void v4Controls.retry(itemId))} />}
         </ReactFlowProvider>
       </div>
     </div>
