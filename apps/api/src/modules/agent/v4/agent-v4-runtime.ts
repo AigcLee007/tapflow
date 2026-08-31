@@ -3,6 +3,7 @@ import { agentV4TurnInputSchema } from "./agent-v4-schemas.js";
 import { AgentResponsesSessionService } from "./agent-responses-session.service.js";
 import { AgentV4TaskStore, type AgentV4TaskRepository } from "./agent-v4-task-store.js";
 import { AgentV4ToolGateway } from "./agent-v4-tool-gateway.js";
+import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./taobao-suite-planner.js";
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
 export class AgentV4RuntimeService {
@@ -16,7 +17,14 @@ export class AgentV4RuntimeService {
     if (!session.projectId || !session.flowId) throw new AgentApiError(400, "AGENT_PROJECT_FLOW_REQUIRED", "Agent session is not bound to a project and flow.");
     const store = new AgentV4TaskStore(this.options.repository);
     const task = await store.create({ tenantId: input.context.tenantId, sessionId: input.sessionId, projectId: session.projectId, flowId: session.flowId, graphRevision: body.expectedGraphRevision, prompt: body.prompt, idempotencyKey: body.idempotencyKey });
-    const service = new AgentResponsesSessionService({ textRuntime: this.options.textRuntime, store, gateway: this.options.gateway ?? new AgentV4ToolGateway() });
+    const service = new AgentResponsesSessionService({ textRuntime: this.options.textRuntime, store, gateway: this.options.gateway ?? new AgentV4ToolGateway({ handlers: {
+      "canvas.observe": async ({ task }) => ({ ok: true, status: "planning", taskId: task.id, summary: `Canvas ${task.flowId} observed at revision ${task.graphRevision}` }),
+      "reference.inspect": async ({ call }) => ({ ok: true, status: "planning", assetIds: call.arguments.referenceAssetIds }),
+      "product.analyze": async ({ call }) => ({ ok: true, status: "planning", summary: `商品主体分析完成。参考素材 ${Array.isArray(call.arguments.referenceAssetIds) ? call.arguments.referenceAssetIds.length : 0} 个；以实拍图中的外形、材质、颜色、结构和标识为不可改变特征。` }),
+      "suite.plan": async ({ call }) => ({ ok: true, status: "preview_ready", suitePlan: createTaobaoSuitePlan({ mainImageCount: call.arguments.mainImageCount as number | undefined, detailPageCount: call.arguments.detailPageCount as number | undefined, prompt: call.arguments.prompt as string | undefined }) }),
+      "visual_bible.create": async ({ call }) => ({ ok: true, status: "preview_ready", visualBible: createVisualBible(String(call.arguments.productSummary ?? "")) }),
+      "prompt_set.create": async ({ call }) => ({ ok: true, status: "preview_ready", items: createPromptItems(call.arguments.suitePlan as ReturnType<typeof createTaobaoSuitePlan>, call.arguments.visualBible as ReturnType<typeof createVisualBible>, []) }),
+    } }) });
     return service.run({ task, context: input.context, prompt: body.prompt, safeContext: body.snapshot });
   }
   async replayEvents(input: { tenantId: string; taskId: string; afterSeq: number }) { if (!this.options.enabled) return this.unavailable(); return new AgentV4TaskStore(this.options.repository).listEvents(input); }
