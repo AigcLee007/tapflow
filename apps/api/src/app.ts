@@ -34,6 +34,9 @@ import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentV3RuntimeService, createAgentV3PlanningAdapter } from "./modules/agent/v3/agent-v3-runtime.js";
 import { DatabaseAgentV3TaskRepository } from "./modules/agent/v3/agent-v3-task-store.js";
 import { CanvasOperationService } from "./modules/agent/v3/canvas-operation-service.js";
+import { registerAgentV4Routes } from "./modules/agent/v4/agent-v4.routes.js";
+import { AgentV4RuntimeService } from "./modules/agent/v4/agent-v4-runtime.js";
+import { DatabaseAgentV4TaskRepository } from "./modules/agent/v4/agent-v4-task-store.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
 import { AgentReferenceAssetRepository } from "./modules/agent/agent-reference-context.js";
@@ -372,6 +375,7 @@ export function buildApp(options?: {
     adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository, agentV3OperationService),
     repository: agentV3TaskRepository,
   });
+  const agentV4Runtime = new AgentV4RuntimeService({ enabled: false, repository: new DatabaseAgentV4TaskRepository(pool), session: agentSessionRepository, textRuntime: agentTextRuntime });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });
@@ -390,6 +394,7 @@ export function buildApp(options?: {
   app.decorate("adminService", adminService);
   app.decorate("agentService", agentService);
   app.decorate("agentV3Runtime", agentV3Runtime);
+  app.decorate("agentV4Runtime", agentV4Runtime);
   app.decorate("skillService", skillService);
   app.decorate("skillRunService", skillRunService);
   app.decorate("aiGatewayService", aiGatewayService);
@@ -517,6 +522,7 @@ export function buildApp(options?: {
 
   registerAdminRoutes(app);
   registerAgentRoutes(app);
+  registerAgentV4Routes(app);
   registerSkillRoutes(app, skillService, new SkillAuthoringService({
     repairAttempts: env.agentSkillRepairAttempts,
     generate: async (prompt, runtimeContext) => {
