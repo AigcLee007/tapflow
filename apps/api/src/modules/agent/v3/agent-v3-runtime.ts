@@ -21,6 +21,7 @@ export type AgentV3RuntimeAdapter = {
   }): Promise<unknown>;
   approve?(input: { taskId: string; context: AgentV3RequestContext; approved: boolean; writeChunk: (chunk: string) => void | Promise<void> }): Promise<unknown>;
   cancel?(input: { taskId: string; context: AgentV3RequestContext }): Promise<unknown>;
+  retryStep?(input: { taskId: string; context: AgentV3RequestContext; stepId: string }): Promise<unknown>;
 };
 
 export class AgentV3RuntimeService {
@@ -57,6 +58,11 @@ export class AgentV3RuntimeService {
   async cancel(input: { taskId: string; context: AgentV3RequestContext }) {
     if (!this.enabled || !this.adapter?.cancel) throw Object.assign(new AgentApiError(503, "AGENT_V3_CANCEL_UNAVAILABLE", "Canvas Agent V3 cancellation is not available."), { statusCode: 503 });
     return this.adapter.cancel(input);
+  }
+
+  async retryStep(input: { taskId: string; context: AgentV3RequestContext; stepId: string }) {
+    if (!this.enabled || !this.adapter?.retryStep) throw Object.assign(new AgentApiError(503, "AGENT_V3_RETRY_UNAVAILABLE", "Canvas Agent V3 retry is not available."), { statusCode: 503 });
+    return this.adapter.retryStep(input);
   }
 }
 
@@ -127,6 +133,19 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       if (["succeeded", "failed", "cancelled"].includes(task.status)) return { taskId: task.id, status: task.status };
       await repository.updateTask(task.id, { tenantId: request.context.tenantId, status: "cancelled", errorJson: { code: "AGENT_TASK_CANCELLED" } });
       return { taskId: task.id, status: "cancelled" };
+    },
+    async retryStep(request) {
+      if (!repository.getTask || !agentService.workflowRunAdapter) throw new AgentApiError(503, "AGENT_V3_RETRY_UNAVAILABLE", "Canvas Agent V3 retry is not available.");
+      const task = await repository.getTask({ tenantId: request.context.tenantId, taskId: request.taskId });
+      if (!task) throw new AgentApiError(404, "AGENT_TASK_NOT_FOUND", "Agent task was not found.");
+      const flowId = typeof task.inputJson.flowId === "string" ? task.inputJson.flowId : null;
+      const graphRevision = typeof task.inputJson.graphRevision === "number" ? task.inputJson.graphRevision : null;
+      if (!flowId || graphRevision === null) throw new AgentApiError(409, "AGENT_RETRY_CONTEXT_MISSING", "Agent retry context is missing.");
+      const failedNode = typeof request.stepId === "string" && request.stepId.trim() ? request.stepId.trim() : null;
+      if (!failedNode) throw new AgentApiError(400, "AGENT_RETRY_STEP_REQUIRED", "A failed step is required.");
+      const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:retry:${failedNode}`, nodeIds: [failedNode] });
+      await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { retryStepId: failedNode, workflowRuns: launched.runs } });
+      return { taskId: task.id, status: "running", retriedStepId: failedNode, workflowRuns: launched.runs };
     },
   };
 }
