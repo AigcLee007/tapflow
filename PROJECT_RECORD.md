@@ -1,6 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
+
+## 2026-08-31 - Canvas Agent V4 Responses Session and Tool Gateway
+
+- Added the V4 Responses multi-round session loop with normalized text/tool-call streaming, durable replay events, stable tool idempotency keys, safe asset reference injection, continuation/approval suspension, and bounded round failure handling.
+- Added the server-side V4 Tool Gateway boundary with tenant checks, schema validation, approval gating for paid generation and canvas commits, handler dispatch, and safe result projection.
+- Added deterministic Taobao suite planning helpers for editable main-image/detail-page counts, dependency graphs, shared visual bible, and per-page self-contained prompts with reference asset IDs.
+- Focused validation passed: 12 API tests across V4 session, task store, gateway, and Taobao planner; API build and diff check passed. V4 remains disabled by default pending generation orchestration, delivery verification, canvas commit, UI, and staging acceptance.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
