@@ -76,7 +76,7 @@ async function main() {
   const sessionId = typeof session.id === "string" ? session.id : "";
   if (!sessionId) throw new Error("Session creation returned no id");
   const turn = record(await requestJson(`${apiUrl}/api/v2/agent/v4/sessions/${encodeURIComponent(sessionId)}/turns`, token, {
-    body: JSON.stringify({ prompt: optional("TAPFLOW_V4_PROMPT") ?? "分析这张商品实拍图并规划淘宝主图和详情页套图", referenceContext: { assetIds: referenceAssetIds } }), method: "POST",
+    body: JSON.stringify({ prompt: optional("TAPFLOW_V4_PROMPT") ?? "分析这张商品实拍图并规划淘宝主图和详情页套图", referenceContext: referenceAssetIds.map((assetId) => ({ assetId })) }), method: "POST",
   }));
   const taskId = typeof turn.taskId === "string" ? turn.taskId : "";
   if (!taskId) throw new Error("V4 turn returned no taskId");
