@@ -40,12 +40,15 @@ describe("Agent V4 contracts", () => {
     expect(v4ToolInputSchemas["generation.continue"].safeParse({ prompt: "continue" }).success).toBe(false);
     expect(v4ToolInputSchemas["canvas.commit_operations"].safeParse({ expectedRevision: 1, operations: [{ type: "node.update_data", nodeId: "n1", data: { imageUrl: "https://x" } }] }).success).toBe(false);
     expect(v4ToolInputSchemas["canvas.commit_operations"].safeParse({ expectedRevision: 1, operations: [{ type: "node.update_data", nodeId: "n1", data: { note: " visit https://x" } }] }).success).toBe(false);
+    expect(v4ToolInputSchemas["canvas.commit_operations"].safeParse({ expectedRevision: 1, operations: [{ type: "node.update_data", nodeId: "n1", data: { note: "token=secret" } }] }).success).toBe(false);
+    expect(v4ToolInputSchemas["canvas.commit_operations"].safeParse({ expectedRevision: 1, operations: [{ type: "node.update_data", nodeId: "n1", data: { file: new Blob(["x"]) } }] }).success).toBe(false);
   });
 
   it("redacts unsafe provider and transport fields from tool results", () => {
     expect(safeToolResult({ assetId: "a", signedUrl: "https://secret", provider: "internal", nested: { base64: "abc" }, summary: { provider: "x", url: "secret" }, status: "succeeded" })).toEqual({ assetId: "a", status: "succeeded" });
     expect(safeToolResult({ assetId: "https://secret", summary: "https://secret", ok: true, revision: Number.NaN, items: [{ itemId: "i", status: "succeeded", assetId: "a", url: "x" }] })).toEqual({ ok: true, items: [{ itemId: "i", status: "succeeded", assetId: "a" }] });
     expect(safeToolResult({ assetId: "https://x", summary: "visit https://x", items: [{ itemId: "i", status: "succeeded", assetId: "http://x" }] })).toEqual({ items: [{ itemId: "i", status: "succeeded" }] });
+    expect(safeToolResult({ summary: "javascript:alert(1)", items: [{ itemId: "i", status: "unexpected", assetId: "a" }] })).toEqual({ items: [{ itemId: "i", assetId: "a" }] });
   });
 
   it("exports strict Responses tool definitions", () => {
