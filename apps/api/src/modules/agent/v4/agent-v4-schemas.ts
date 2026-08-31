@@ -16,7 +16,7 @@ const visualBibleSchema = z.object({
   composition: z.string().max(1000).optional(), prohibitions: z.array(z.string().max(500)).max(24).optional(),
 }).strict();
 const refIds = z.array(id).max(16);
-const batchItem = z.object({ itemId: id, pageKey: id, prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds }).strict();
+const batchItem = z.object({ itemId: id, pageKey: id, prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds, nodeId: id.optional() }).strict();
 const unsafeOperationKey = /(?:base64|raw(?:media|route)?|signedurl|signed_url|authorization|credential|api[_-]?key|secret|provider|filesystem|shell|mcp|browser|codeexecution|code_execution|token|password)/i;
 const unsafeTransportValue = /(?:data\s*:|blob\s*:|(?:^|[\s([{])[a-z][a-z0-9+.-]*:(?:\/\/|[^\s])|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:bearer)\s+[a-z0-9._~+\/-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
 const bareHostValue = /(?:^|[\s([{])(?:(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:[\/?#][^\s]*)?|localhost(?:\:\d+)?(?:[\/?#][^\s]*)?|(?:\d{1,3}\.){3}\d{1,3}(?:\:\d+)?(?:[\/?#][^\s]*)?)(?=$|[\s)\]}>,!?;])/i;
@@ -82,7 +82,7 @@ export const v4ToolInputSchemas = {
   "suite.plan": z.object({ prompt: z.string().trim().min(1).max(8000), mainImageCount: z.number().int().min(1).max(24).optional(), detailPageCount: z.number().int().min(1).max(24).optional() }).strict(),
   "visual_bible.create": z.object({ productSummary: z.string().trim().min(1).max(8000), suitePlan: suitePlanSchema }).strict(),
   "prompt_set.create": z.object({ visualBible: visualBibleSchema, suitePlan: suitePlanSchema, pages: z.array(z.object({ pageKey: id, purpose: z.string().trim().min(1).max(1000) }).strict()).min(1).max(24) }).strict(),
-  "image.generate_base": z.object({ prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds }).strict(),
+  "image.generate_base": z.object({ prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds, nodeId: id.optional() }).strict(),
   "image.generate_batch": z.object({ items: z.array(batchItem).min(2).max(12) }).strict().superRefine((value, ctx) => {
     const itemIds = new Set<string>(); const pageKeys = new Set<string>();
     value.items.forEach((item, index) => { if (itemIds.has(item.itemId)) ctx.addIssue({ code: "custom", path: ["items", index, "itemId"], message: "itemId must be unique" }); itemIds.add(item.itemId); if (pageKeys.has(item.pageKey)) ctx.addIssue({ code: "custom", path: ["items", index, "pageKey"], message: "pageKey must be unique" }); pageKeys.add(item.pageKey); });

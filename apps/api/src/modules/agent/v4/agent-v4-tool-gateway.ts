@@ -1,5 +1,6 @@
 import { parseV4ToolCall } from "./agent-v4-schemas.js";
-import type { AgentV4SafeToolResult, AgentV4Status, AgentV4TaskRecord, AgentV4ToolCall, AgentV4ToolName } from "./agent-v4-types.js";
+import type { AgentV4SafeToolResult, AgentV4ToolCall, AgentV4ToolName } from "./agent-v4-types.js";
+import type { AgentV4TaskRecord } from "./agent-v4-task-store.js";
 import { safeToolResult } from "./agent-v4-types.js";
 
 export type AgentV4GatewayContext = { tenantId: string; userId: string | null };

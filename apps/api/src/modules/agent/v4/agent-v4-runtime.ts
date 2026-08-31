@@ -32,8 +32,8 @@ export class AgentV4RuntimeService {
     return service.run({ task, context: input.context, prompt: body.prompt, safeContext: body.snapshot });
   }
   async replayEvents(input: { tenantId: string; taskId: string; afterSeq: number }) { if (!this.options.enabled) return this.unavailable(); return new AgentV4TaskStore(this.options.repository).listEvents(input); }
-  async approve() { return this.unavailable(); }
-  async cancel() { return this.unavailable(); }
-  async retryItem() { return this.unavailable(); }
-  async undo() { return this.unavailable(); }
+  async approve(_input?: unknown) { return this.unavailable(); }
+  async cancel(_input?: unknown) { return this.unavailable(); }
+  async retryItem(_input?: unknown) { return this.unavailable(); }
+  async undo(_input?: unknown) { return this.unavailable(); }
 }

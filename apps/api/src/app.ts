@@ -375,7 +375,19 @@ export function buildApp(options?: {
     adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository, agentV3OperationService),
     repository: agentV3TaskRepository,
   });
-  const agentV4Runtime = new AgentV4RuntimeService({ enabled: env.agentV4Enabled === true && env.agentV4RuntimeEnabled === true, repository: new DatabaseAgentV4TaskRepository(pool), session: agentSessionRepository, textRuntime: agentTextRuntime });
+  const agentV4Runtime = new AgentV4RuntimeService({
+    enabled: env.agentV4Enabled === true && env.agentV4RuntimeEnabled === true,
+    repository: new DatabaseAgentV4TaskRepository(pool), session: agentSessionRepository, textRuntime: agentTextRuntime,
+    generationExecutor: async ({ task, context, tool, arguments: args, idempotencyKey }) => {
+      if (!agentService.workflowRunAdapter) return { ok: false, status: "needs_review", taskId: task.id, errorCode: "WORKFLOW_RUNNER_NOT_CONFIGURED" };
+      const nodeIds = tool === "image.generate_batch"
+        ? (Array.isArray(args.items) ? args.items.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).nodeId === "string" ? [(item as Record<string, unknown>).nodeId as string] : []) : [])
+        : (typeof args.nodeId === "string" ? [args.nodeId] : []);
+      if (!nodeIds.length) return { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_NODE_ID_REQUIRED" };
+      const launched = await agentService.workflowRunAdapter.runNodes(context, { flowId: task.flowId, graphRevision: task.graphRevision, idempotencyKey, nodeIds });
+      return { ok: true, status: tool === "image.generate_batch" ? "generating_batch" : "generating_base", taskId: task.id, itemIds: nodeIds, summary: `${launched.runs.length} generation run(s) queued.` };
+    },
+  });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });

@@ -4,7 +4,7 @@ export type GenerationExecutor = (item: AgentV4GenerationItem, idempotencyKey: s
 
 export async function runGenerationBatch(items: AgentV4GenerationItem[], execute: GenerationExecutor, options: { concurrency?: number; signal?: AbortSignal } = {}): Promise<AgentV4GenerationItem[]> {
   const concurrency = Math.max(1, Math.min(8, options.concurrency ?? 3));
-  const output = items.map((item) => ({ ...item, status: "queued" as const }));
+  const output: AgentV4GenerationItem[] = items.map((item) => ({ ...item, status: "queued" }));
   let cursor = 0;
   async function worker() {
     while (true) {
