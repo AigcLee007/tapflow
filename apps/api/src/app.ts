@@ -375,7 +375,7 @@ export function buildApp(options?: {
     adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository, agentV3OperationService),
     repository: agentV3TaskRepository,
   });
-  const agentV4Runtime = new AgentV4RuntimeService({ enabled: false, repository: new DatabaseAgentV4TaskRepository(pool), session: agentSessionRepository, textRuntime: agentTextRuntime });
+  const agentV4Runtime = new AgentV4RuntimeService({ enabled: env.agentV4Enabled === true && env.agentV4RuntimeEnabled === true, repository: new DatabaseAgentV4TaskRepository(pool), session: agentSessionRepository, textRuntime: agentTextRuntime });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });
