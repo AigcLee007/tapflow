@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAuth, requirePermission, requireTenant } from "../../../http/auth-middleware.js";
 import { agentV4RetryItemInputSchema, agentV4TurnInputSchema, agentV4UndoInputSchema } from "./agent-v4-schemas.js";
 import { ZodError } from "zod";
+import { readAgentV4RouteResponse } from "./agent-v4-route-contract.js";
 
 export function sendV4Error(error: unknown, reply: any) {
   const statusCode = error && typeof error === "object" && "statusCode" in error ? Number((error as any).statusCode) : error instanceof ZodError ? 400 : 500;
@@ -11,16 +12,16 @@ export function sendV4Error(error: unknown, reply: any) {
 export function registerAgentV4Routes(app: FastifyInstance): void {
   const read = [requireAuth, requireTenant, requirePermission("flow:read")];
   const run = [requireAuth, requireTenant, requirePermission("flow:run")];
-  const startTurn = async (request: any, reply: any) => {
+  const startTurn = (stream: boolean) => async (request: any, reply: any) => {
     try { const result = await app.agentV4Runtime.startTurn({ sessionId: String(request.params.sessionId), context: { tenantId: request.ctx.tenantId!, userId: request.ctx.userId }, body: agentV4TurnInputSchema.parse(request.body) });
+      if (!stream) return reply.send(result);
       reply.raw.setHeader("cache-control", "no-cache"); reply.raw.setHeader("connection", "keep-alive"); reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8"); reply.hijack();
-      reply.raw.write(`event: event\ndata: ${JSON.stringify({ taskId: result.taskId, type: "task_started", status: result.status })}\n\n`);
-      reply.raw.write(`event: done\ndata: ${JSON.stringify(result)}\n\n`); reply.raw.end(); return reply;
+      reply.raw.write(readAgentV4RouteResponse(true, result)); reply.raw.end(); return reply;
     }
     catch (error) { return sendV4Error(error, reply); }
   };
-  app.post("/api/v2/agent/v4/sessions/:sessionId/turns", { preHandler: read }, startTurn);
-  app.post("/api/v2/agent/v4/sessions/:sessionId/turns/stream", { preHandler: read }, startTurn);
+  app.post("/api/v2/agent/v4/sessions/:sessionId/turns", { preHandler: read }, startTurn(false));
+  app.post("/api/v2/agent/v4/sessions/:sessionId/turns/stream", { preHandler: read }, startTurn(true));
   app.get("/api/v2/agent/v4/tasks/:taskId/events", { preHandler: read }, async (request, reply) => {
     try {
       const params = request.params as { taskId: string }; const query = request.query as { afterSeq?: string | number };

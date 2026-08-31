@@ -804,3 +804,7 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 
 - V4 route start-turn validation now maps malformed input to `400 INVALID_REQUEST`; typed runtime errors retain their status codes. Focused route tests and API build pass.
 - This closes a local API contract gap but does not substitute for authenticated staging verification.
+## Canvas Agent V4 continuation (2026-09-01, turn response wiring)
+
+- Normal V4 turn requests now return JSON and stream requests remain SSE, matching the two frontend clients. This closes a real prompt-submission integration defect.
+- Response-shape, route-error, and Golden Task tests pass; authenticated staging is still required before enabling V4.

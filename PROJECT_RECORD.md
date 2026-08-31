@@ -6874,3 +6874,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Fixed the V4 start-turn route so Zod validation failures return `400 INVALID_REQUEST` instead of being misreported as HTTP 500. All V4 route handlers now share the typed error mapper, preserving runtime `503`, `404`, and `409` codes.
 - Added focused route error-contract tests; API build passes.
+## 2026-09-01 - Canvas Agent V4 turn response wiring
+
+- Fixed the V4 route contract mismatch: `/api/v2/agent/v4/sessions/:sessionId/turns` now returns JSON for the `createV4Turn` client, while only `/turns/stream` emits SSE. Previously the normal client path received SSE and failed JSON parsing during real prompt submission.
+- Added response-shape coverage and revalidated the V4 route, Golden Task tests, and API build.
