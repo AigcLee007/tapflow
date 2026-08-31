@@ -23,7 +23,7 @@ export type AgentV4GenerationItem = {
 };
 
 export type AgentV4SafeToolResult = {
-  ok: boolean;
+  ok?: boolean;
   status?: AgentV4Status;
   taskId?: string;
   itemIds?: string[];
@@ -35,22 +35,22 @@ export type AgentV4SafeToolResult = {
   items?: Array<Pick<AgentV4GenerationItem, "itemId" | "status" | "assetId" | "nodeId" | "errorCode">>;
 };
 
-const transitions: Record<AgentV4Status, readonly AgentV4Status[]> = {
-  draft: ["observing", "cancelled"],
-  observing: ["planning", "failed", "cancelled"],
-  planning: ["preview_ready", "failed", "cancelled"],
-  preview_ready: ["waiting_for_approval", "generating_base", "cancelled"],
-  waiting_for_approval: ["generating_base", "cancelled"],
-  generating_base: ["generating_batch", "waiting_for_continuation", "verifying", "failed", "cancelled"],
-  generating_batch: ["waiting_for_continuation", "verifying", "repairing", "partial_success", "failed", "cancelled"],
-  waiting_for_continuation: ["generating_batch", "verifying", "cancelled"],
-  verifying: ["repairing", "succeeded", "partial_success", "needs_review", "failed", "cancelled"],
-  repairing: ["generating_batch", "verifying", "partial_success", "failed", "cancelled"],
-  succeeded: [], partial_success: [], needs_review: [], failed: [], cancelled: [],
-};
+const transitions: ReadonlyMap<AgentV4Status, readonly AgentV4Status[]> = new Map([
+  ["draft", ["observing", "cancelled"]],
+  ["observing", ["planning", "failed", "cancelled"]],
+  ["planning", ["preview_ready", "failed", "cancelled"]],
+  ["preview_ready", ["waiting_for_approval", "generating_base", "cancelled"]],
+  ["waiting_for_approval", ["generating_base", "cancelled"]],
+  ["generating_base", ["generating_batch", "waiting_for_continuation", "verifying", "failed", "cancelled"]],
+  ["generating_batch", ["waiting_for_continuation", "verifying", "repairing", "partial_success", "failed", "cancelled"]],
+  ["waiting_for_continuation", ["generating_batch", "verifying", "cancelled"]],
+  ["verifying", ["repairing", "succeeded", "partial_success", "needs_review", "failed", "cancelled"]],
+  ["repairing", ["generating_batch", "verifying", "partial_success", "failed", "cancelled"]],
+  ["succeeded", []], ["partial_success", []], ["needs_review", []], ["failed", []], ["cancelled", []],
+]);
 
 export function nextV4Status(from: AgentV4Status, to: AgentV4Status): AgentV4Status {
-  if (typeof from !== "string" || typeof to !== "string" || !(from in transitions) || !(to in transitions) || !transitions[from as AgentV4Status].includes(to as AgentV4Status)) {
+  if (typeof from !== "string" || typeof to !== "string" || !transitions.has(from as AgentV4Status) || !transitions.has(to as AgentV4Status) || !transitions.get(from as AgentV4Status)?.includes(to as AgentV4Status)) {
     throw new Error(`AGENT_V4_INVALID_TRANSITION: ${from} -> ${to}`);
   }
   return to;
@@ -67,22 +67,23 @@ export function safeToolResult(input: unknown): AgentV4SafeToolResult {
   for (const [key, value] of Object.entries(source)) {
     if (!safeKeys.has(key) || forbidden.test(key)) continue;
     if (key === "items" && Array.isArray(value)) {
-      output.items = value.map((item) => {
+      output.items = value.slice(0, 24).map((item) => {
         if (!item || typeof item !== "object") return {};
         const clean: Record<string, unknown> = {};
         for (const [itemKey, itemValue] of Object.entries(item as Record<string, unknown>)) {
           if (!itemKeys.has(itemKey) || forbidden.test(itemKey)) continue;
-          if (typeof itemValue === "string" || typeof itemValue === "number") clean[itemKey] = itemValue;
+          if (typeof itemValue === "string" && !forbidden.test(itemValue)) clean[itemKey] = itemValue.slice(0, 200);
+          else if (typeof itemValue === "number" && Number.isFinite(itemValue)) clean[itemKey] = itemValue;
         }
         return clean;
       });
     } else if (!forbidden.test(key)) {
-      if (key === "summary") { if (typeof value === "string") output.summary = value.slice(0, 2000); }
-      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string") output[key] = value;
+      if (key === "summary") { if (typeof value === "string" && !forbidden.test(value)) output.summary = value.slice(0, 2000); }
+      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string" && !forbidden.test(value)) output[key] = value.slice(0, 200);
       else if (["revision"].includes(key) && typeof value === "number" && Number.isFinite(value)) output[key] = value;
       else if (["ok"].includes(key) && typeof value === "boolean") output[key] = value;
       else if (key === "status" && typeof value === "string" && allStatuses.has(value)) output[key] = value;
-      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.every((item) => typeof item === "string")) output[key] = value;
+      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item))) output[key] = value.map((item) => item.slice(0, 200));
     }
   }
   return output as AgentV4SafeToolResult;
