@@ -6843,3 +6843,4 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added authenticated-compatible V4 stream route aliases and `undo-canvas` compatibility path while retaining existing endpoints.
 - Worker terminal projection now merges updates by stable `itemId`, preserving successful siblings and page metadata during independent batch completion/retry.
 - Validation passed: API delivery/runtime tests (6 tests), Worker terminal-sync tests (3 tests), API and Worker TypeScript builds, and `git diff --check`. V4 flags remain disabled pending frontend and staging acceptance.
+- V4 task routes now return consistent `INVALID_REQUEST`, task error, 409, 503, and 500 envelopes for replay, approval, cancellation, retry, and undo paths.
