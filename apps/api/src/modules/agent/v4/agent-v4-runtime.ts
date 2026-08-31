@@ -13,7 +13,7 @@ export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context
       ? (Array.isArray(args.items) ? args.items.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).nodeId === "string" ? [(item as Record<string, unknown>).nodeId as string] : []) : [])
       : (typeof args.nodeId === "string" ? [args.nodeId] : []);
     if (!nodeIds.length) return { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_NODE_ID_REQUIRED" };
-    const launched = await adapter.runNodes(context, { flowId: task.flowId, graphRevision: task.graphRevision, idempotencyKey, nodeIds });
+    const launched = await adapter.runNodes(context, { flowId: task.flowId, graphRevision: task.graphRevision, idempotencyKey, nodeIds, agentV4TaskId: task.id });
     return { ok: true, status: tool === "image.generate_batch" ? "generating_batch" : "generating_base", taskId: task.id, itemIds: launched.runs.map((run) => run.nodeId), runIds: launched.runs.map((run) => run.runId), summary: `${launched.runs.length} generation run(s) queued.` };
   };
 }

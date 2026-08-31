@@ -8,7 +8,7 @@ export class V2WorkflowRunAdapter {
     workflowRuns: Pick<WorkflowRunsService, "createWorkflowRun"> & Partial<Pick<WorkflowRunsService, "getWorkflowRunStatus" | "getWorkflowRun">>;
   }) {}
 
-  async runNodes(context: Context, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[]; skillRunId?: string; skillVersionId?: string; skillStepIds?: Record<string, string> }) {
+  async runNodes(context: Context, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[]; skillRunId?: string; skillVersionId?: string; skillStepIds?: Record<string, string>; agentV4TaskId?: string }) {
     const revision = await this.options.getFlowRevision(context, input.flowId);
     if (revision !== input.graphRevision) throw new Error("FLOW_DRAFT_REVISION_CONFLICT");
     const runs = [];
@@ -19,6 +19,7 @@ export class V2WorkflowRunAdapter {
           agentSkillRunId: input.skillRunId ?? null,
           agentSkillStepId: input.skillStepIds?.[nodeId] ?? null,
           agentSkillVersionId: input.skillVersionId ?? null,
+          agentV4TaskId: input.agentV4TaskId ?? null,
           runMode: "target_node",
           targetNodeId: nodeId,
         },
