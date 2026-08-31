@@ -23,7 +23,7 @@ export type AgentV4GenerationItem = {
 };
 
 export type AgentV4SafeToolResult = {
-  ok?: boolean;
+  ok: boolean;
   status?: AgentV4Status;
   taskId?: string;
   itemIds?: string[];
@@ -39,7 +39,7 @@ const transitions: ReadonlyMap<AgentV4Status, readonly AgentV4Status[]> = new Ma
   ["draft", ["observing", "cancelled"]],
   ["observing", ["planning", "failed", "cancelled"]],
   ["planning", ["preview_ready", "failed", "cancelled"]],
-  ["preview_ready", ["waiting_for_approval", "generating_base", "cancelled"]],
+  ["preview_ready", ["waiting_for_approval", "cancelled"]],
   ["waiting_for_approval", ["generating_base", "cancelled"]],
   ["generating_base", ["generating_batch", "waiting_for_continuation", "verifying", "failed", "cancelled"]],
   ["generating_batch", ["waiting_for_continuation", "verifying", "repairing", "partial_success", "failed", "cancelled"]],
@@ -59,13 +59,14 @@ export function nextV4Status(from: AgentV4Status, to: AgentV4Status): AgentV4Sta
 const safeKeys = new Set(["ok", "status", "taskId", "itemIds", "assetIds", "assetId", "revision", "errorCode", "summary", "items"]);
 const itemKeys = new Set(["itemId", "status", "assetId", "nodeId", "errorCode"]);
 const forbidden = /provider|credential|authorization|url|base64|blob|rawresponse|raw_response|secret|api[_-]?key/i;
-const forbiddenValue = /(?:data:|blob:|https?:\/\/|ftp:\/\/|\/\/)/i;
-const forbiddenValueExtended = /(?:data\s*:|blob\s*:|[a-z][a-z0-9+.-]*:\/\/|(?:javascript|mailto):|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
+const forbiddenValueExtended = /(?:data\s*:|blob\s*:|(?:^|[\s([{])[a-z][a-z0-9+.-]*:(?:\/\/|[^\s])|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:bearer)\s+[a-z0-9._~+\/-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
+const bareHostValue = /(?:^|[\s([{])(?:(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:[\/?#][^\s]*)?|localhost(?:\:\d+)?(?:[\/?#][^\s]*)?|(?:\d{1,3}\.){3}\d{1,3}(?:\:\d+)?(?:[\/?#][^\s]*)?)(?=$|[\s)\]}>,!?;])/i;
+const isUnsafeTransportValue = (value: string) => forbidden.test(value) || forbiddenValueExtended.test(value) || bareHostValue.test(value);
 const allStatuses = new Set<string>(["draft", "observing", "planning", "preview_ready", "waiting_for_approval", "generating_base", "generating_batch", "waiting_for_continuation", "verifying", "repairing", ...V4_TERMINAL_STATUSES]);
 
 export function safeToolResult(input: unknown): AgentV4SafeToolResult {
   const source = (input && typeof input === "object" && !Array.isArray(input)) ? input as Record<string, unknown> : {};
-  const output: Record<string, unknown> = {};
+  const output: Record<string, unknown> = { ok: source.ok === true };
   for (const [key, value] of Object.entries(source)) {
     if (!safeKeys.has(key) || forbidden.test(key)) continue;
     if (key === "items" && Array.isArray(value)) {
@@ -75,18 +76,18 @@ export function safeToolResult(input: unknown): AgentV4SafeToolResult {
         for (const [itemKey, itemValue] of Object.entries(item as Record<string, unknown>)) {
           if (!itemKeys.has(itemKey) || forbidden.test(itemKey)) continue;
           if (itemKey === "status" && typeof itemValue === "string" && ["queued", "running", "succeeded", "failed"].includes(itemValue)) clean[itemKey] = itemValue;
-          else if (itemKey !== "status" && typeof itemValue === "string" && !forbidden.test(itemValue) && !forbiddenValueExtended.test(itemValue)) clean[itemKey] = itemValue.slice(0, 200);
+          else if (itemKey !== "status" && typeof itemValue === "string" && !forbidden.test(itemValue) && !isUnsafeTransportValue(itemValue)) clean[itemKey] = itemValue.slice(0, 200);
           else if (typeof itemValue === "number" && Number.isFinite(itemValue)) clean[itemKey] = itemValue;
         }
         return clean;
       });
     } else if (!forbidden.test(key)) {
-      if (key === "summary") { if (typeof value === "string" && !forbidden.test(value) && !forbiddenValueExtended.test(value)) output.summary = value.slice(0, 2000); }
-      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string" && !forbidden.test(value) && !forbiddenValueExtended.test(value)) output[key] = value.slice(0, 200);
+      if (key === "summary") { if (typeof value === "string" && !forbidden.test(value) && !isUnsafeTransportValue(value)) output.summary = value.slice(0, 2000); }
+      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string" && !forbidden.test(value) && !isUnsafeTransportValue(value)) output[key] = value.slice(0, 200);
       else if (["revision"].includes(key) && typeof value === "number" && Number.isFinite(value)) output[key] = value;
       else if (["ok"].includes(key) && typeof value === "boolean") output[key] = value;
       else if (key === "status" && typeof value === "string" && allStatuses.has(value)) output[key] = value;
-      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item) && !forbiddenValueExtended.test(item))) output[key] = value.map((item) => item.slice(0, 200));
+      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item) && !isUnsafeTransportValue(item))) output[key] = value.map((item) => item.slice(0, 200));
     }
   }
   return output as AgentV4SafeToolResult;

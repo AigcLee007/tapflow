@@ -17,12 +17,19 @@ const visualBibleSchema = z.object({
 }).strict();
 const refIds = z.array(id).max(16);
 const batchItem = z.object({ itemId: id, pageKey: id, prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds }).strict();
-const unsafeOperationKey = /(?:base64|raw(?:media|route)?|signedurl|signed_url|authorization|credential|api[_-]?key|secret|provider|filesystem|shell|mcp|browser|codeexecution|code_execution)/i;
-const unsafeOperationValue = /(?:data\s*:|blob\s*:|[a-z][a-z0-9+.-]*:\/\/|(?:javascript|mailto):|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
+const unsafeOperationKey = /(?:base64|raw(?:media|route)?|signedurl|signed_url|authorization|credential|api[_-]?key|secret|provider|filesystem|shell|mcp|browser|codeexecution|code_execution|token|password)/i;
+const unsafeTransportValue = /(?:data\s*:|blob\s*:|(?:^|[\s([{])[a-z][a-z0-9+.-]*:(?:\/\/|[^\s])|\b(?:sk|rk|pk)-[a-z0-9_-]{8,}|\b(?:bearer)\s+[a-z0-9._~+\/-]{8,}|\b(?:token|api[_-]?key|secret)\s*[:=])/i;
+const bareHostValue = /(?:^|[\s([{])(?:(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\:\d+)?(?:[\/?#][^\s]*)?|localhost(?:\:\d+)?(?:[\/?#][^\s]*)?|(?:\d{1,3}\.){3}\d{1,3}(?:\:\d+)?(?:[\/?#][^\s]*)?)(?=$|[\s)\]}>,!?;])/i;
+const isUnsafeTransportValue = (value: string) => unsafeTransportValue.test(value) || bareHostValue.test(value);
+const normalizedKey = (key: string) => key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+function isUnsafeCapabilityKey(key: string): boolean {
+  const normalized = normalizedKey(key);
+  return unsafeOperationKey.test(key) || normalized === "url" || normalized === "uri" || normalized === "href" || normalized === "imageurl" || normalized.endsWith("url") || normalized.endsWith("uri");
+}
 function assertSafeOperationPayload(value: unknown, path: (string | number)[] = []): string | null {
   if (path.length > 100) return "Operation payload is too deep.";
   if ((typeof File !== "undefined" && value instanceof File) || (typeof Blob !== "undefined" && value instanceof Blob)) return "File and Blob values are not allowed.";
-  if (typeof value === "string") return unsafeOperationValue.test(value.trim()) || value.length > 100_000 ? "Raw media, URLs, or secrets are not allowed." : null;
+  if (typeof value === "string") return isUnsafeTransportValue(value.trim()) || value.length > 100_000 ? "Raw media, URLs, or secrets are not allowed." : null;
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index += 1) {
       const issue = assertSafeOperationPayload(value[index], [...path, index]);
@@ -32,7 +39,7 @@ function assertSafeOperationPayload(value: unknown, path: (string | number)[] = 
   }
   if (value && typeof value === "object") {
     for (const [key, child] of Object.entries(value)) {
-      if (unsafeOperationKey.test(key)) return "Secret or external capability fields are not allowed.";
+      if (isUnsafeCapabilityKey(key)) return "Secret or external capability fields are not allowed.";
       const issue = assertSafeOperationPayload(child, [...path, key]);
       if (issue) return issue;
     }
@@ -41,6 +48,30 @@ function assertSafeOperationPayload(value: unknown, path: (string | number)[] = 
 }
 const safeCanvasOperations = z.array(canvasOperationSchema).max(24).superRefine((value, ctx) => {
   const issue = assertSafeOperationPayload(value);
+  if (issue) ctx.addIssue({ code: "custom", message: issue });
+});
+
+function assertSafeSnapshot(value: unknown, depth = 0): string | null {
+  if (depth > 32) return "Snapshot is too deep.";
+  if ((typeof File !== "undefined" && value instanceof File) || (typeof Blob !== "undefined" && value instanceof Blob)) return "File and Blob values are not allowed.";
+  if (typeof value === "string") return isUnsafeTransportValue(value.trim()) || value.length > 100_000 ? "Snapshot contains raw media, URLs, or secrets." : null;
+  if (Array.isArray(value)) {
+    if (value.length > 256) return "Snapshot array is too large.";
+    for (const child of value) { const issue = assertSafeSnapshot(child, depth + 1); if (issue) return issue; }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 256) return "Snapshot object is too large.";
+    for (const [key, child] of entries) {
+      if (isUnsafeCapabilityKey(key)) return "Snapshot contains secret or external capability fields.";
+      const issue = assertSafeSnapshot(child, depth + 1); if (issue) return issue;
+    }
+  }
+  return null;
+}
+const snapshot = loose.superRefine((value, ctx) => {
+  const issue = assertSafeSnapshot(value);
   if (issue) ctx.addIssue({ code: "custom", message: issue });
 });
 
@@ -68,7 +99,7 @@ export const v4ToolJsonSchemas = Object.fromEntries(
 export const v4ToolDefinitions = V4_TOOL_NAMES.map((name) => ({ type: "function" as const, name, description: `Agent V4 ${name} operation`, parameters: v4ToolJsonSchemas[name] }));
 export const getV4ToolDefinitions = () => v4ToolDefinitions;
 
-export const agentV4TurnInputSchema = z.object({ prompt: z.string().trim().min(1).max(20_000), snapshot: loose.optional(), referenceContext: z.array(z.object({ assetId: id, refId: id.optional(), label: z.string().max(200).optional() }).strict()).max(16).optional(), idempotencyKey: id.optional(), expectedGraphRevision: z.number().int().nonnegative().optional() }).strict();
+export const agentV4TurnInputSchema = z.object({ prompt: z.string().trim().min(1).max(20_000), snapshot: snapshot.optional(), referenceContext: z.array(z.object({ assetId: id, refId: id.optional(), label: z.string().max(200).optional() }).strict()).max(16).optional(), idempotencyKey: id.optional(), expectedGraphRevision: z.number().int().nonnegative().optional() }).strict();
 export const agentV4RetryItemInputSchema = z.object({ itemId: id, idempotencyKey: id.optional() }).strict();
 export const agentV4UndoInputSchema = z.object({ expectedRevision: z.number().int().nonnegative(), idempotencyKey: id.optional() }).strict();
 export const retryV4ItemSchema = agentV4RetryItemInputSchema;
