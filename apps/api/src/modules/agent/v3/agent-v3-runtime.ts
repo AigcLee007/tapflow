@@ -165,7 +165,17 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       if (!flowId || graphRevision === null) throw new AgentApiError(409, "AGENT_RETRY_CONTEXT_MISSING", "Agent retry context is missing.");
       const failedNode = typeof request.stepId === "string" && request.stepId.trim() ? request.stepId.trim() : null;
       if (!failedNode) throw new AgentApiError(400, "AGENT_RETRY_STEP_REQUIRED", "A failed step is required.");
-      const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:retry:${failedNode}`, nodeIds: [failedNode] });
+      const deliveryItems = task.outputJson.delivery && typeof task.outputJson.delivery === "object" && !Array.isArray(task.outputJson.delivery)
+        ? (task.outputJson.delivery as Record<string, unknown>).items
+        : null;
+      if (Array.isArray(deliveryItems)) {
+        const item = deliveryItems.find((candidate) => candidate && typeof candidate === "object" && (candidate as Record<string, unknown>).nodeId === failedNode) as Record<string, unknown> | undefined;
+        if (!item || !["failed", "waiting"].includes(String(item.status))) {
+          throw new AgentApiError(409, "AGENT_RETRY_STEP_NOT_FAILED", "Only a failed or waiting delivery step can be retried.");
+        }
+      }
+      const currentDraft = await agentService.flowsService.getFlowDraft(request.context, flowId);
+      const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision: currentDraft.revision, idempotencyKey: `v3:${task.id}:retry:${failedNode}`, nodeIds: [failedNode] });
       await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { retryStepId: failedNode, workflowRuns: launched.runs } });
       return { taskId: task.id, status: "running", retriedStepId: failedNode, workflowRuns: launched.runs };
     },
