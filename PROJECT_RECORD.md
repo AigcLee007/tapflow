@@ -10,6 +10,7 @@ Last updated: 2026-08-31
 - Focused validation passed: 12 API tests across V4 session, task store, gateway, and Taobao planner; API build and diff check passed. V4 remains disabled by default pending generation orchestration, delivery verification, canvas commit, UI, and staging acceptance.
 - Added bounded V4 generation orchestration with stable per-item keys, cancellation handling, concurrency limits, and failed-item-only retries. Added delivery verification and a commit boundary that refuses partial/unverified results before delegating to revision-CAS canvas operations. Focused API validation now covers these paths; staging integration with real Workflow, Worker, billing, assets, and authenticated UI remains pending.
 - Added V4 API/SSE routes, feature-flag-aware runtime assembly, safe planning handlers, a frontend V4 event client/task panel, and initial Golden Task acceptance fixtures. API and frontend production builds pass. Paid generation handlers, full canvas interaction, and authenticated staging acceptance remain release gates.
+- V4 generation results now carry sanitized Workflow Run IDs through the task/event contract, enabling asynchronous Worker terminal synchronization without exposing provider internals or re-running idempotent jobs. API build and V4 focused tests remain green.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
