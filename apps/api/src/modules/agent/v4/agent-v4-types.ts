@@ -59,6 +59,7 @@ export function nextV4Status(from: AgentV4Status, to: AgentV4Status): AgentV4Sta
 const safeKeys = new Set(["ok", "status", "taskId", "itemIds", "assetIds", "assetId", "revision", "errorCode", "summary", "items"]);
 const itemKeys = new Set(["itemId", "status", "assetId", "nodeId", "errorCode"]);
 const forbidden = /provider|credential|authorization|url|base64|blob|rawresponse|raw_response|secret|api[_-]?key/i;
+const forbiddenValue = /(?:data:|blob:|https?:\/\/|ftp:\/\/|\/\/)/i;
 const allStatuses = new Set<string>(["draft", "observing", "planning", "preview_ready", "waiting_for_approval", "generating_base", "generating_batch", "waiting_for_continuation", "verifying", "repairing", ...V4_TERMINAL_STATUSES]);
 
 export function safeToolResult(input: unknown): AgentV4SafeToolResult {
@@ -72,18 +73,18 @@ export function safeToolResult(input: unknown): AgentV4SafeToolResult {
         const clean: Record<string, unknown> = {};
         for (const [itemKey, itemValue] of Object.entries(item as Record<string, unknown>)) {
           if (!itemKeys.has(itemKey) || forbidden.test(itemKey)) continue;
-          if (typeof itemValue === "string" && !forbidden.test(itemValue)) clean[itemKey] = itemValue.slice(0, 200);
+          if (typeof itemValue === "string" && !forbidden.test(itemValue) && !forbiddenValue.test(itemValue)) clean[itemKey] = itemValue.slice(0, 200);
           else if (typeof itemValue === "number" && Number.isFinite(itemValue)) clean[itemKey] = itemValue;
         }
         return clean;
       });
     } else if (!forbidden.test(key)) {
-      if (key === "summary") { if (typeof value === "string" && !forbidden.test(value)) output.summary = value.slice(0, 2000); }
-      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string" && !forbidden.test(value)) output[key] = value.slice(0, 200);
+      if (key === "summary") { if (typeof value === "string" && !forbidden.test(value) && !forbiddenValue.test(value)) output.summary = value.slice(0, 2000); }
+      else if (["taskId", "assetId", "errorCode"].includes(key) && typeof value === "string" && !forbidden.test(value) && !forbiddenValue.test(value)) output[key] = value.slice(0, 200);
       else if (["revision"].includes(key) && typeof value === "number" && Number.isFinite(value)) output[key] = value;
       else if (["ok"].includes(key) && typeof value === "boolean") output[key] = value;
       else if (key === "status" && typeof value === "string" && allStatuses.has(value)) output[key] = value;
-      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item))) output[key] = value.map((item) => item.slice(0, 200));
+      else if (["itemIds", "assetIds"].includes(key) && Array.isArray(value) && value.length <= 24 && value.every((item) => typeof item === "string" && !forbidden.test(item) && !forbiddenValue.test(item))) output[key] = value.map((item) => item.slice(0, 200));
     }
   }
   return output as AgentV4SafeToolResult;

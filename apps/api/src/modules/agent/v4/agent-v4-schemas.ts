@@ -18,10 +18,10 @@ const visualBibleSchema = z.object({
 const refIds = z.array(id).max(16);
 const batchItem = z.object({ itemId: id, pageKey: id, prompt: z.string().trim().min(1).max(8000), referenceAssetIds: refIds }).strict();
 const unsafeOperationKey = /(?:base64|raw(?:media|route)?|signedurl|signed_url|authorization|credential|api[_-]?key|secret|provider|filesystem|shell|mcp|browser|codeexecution|code_execution)/i;
-const unsafeOperationValue = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+const unsafeOperationValue = /(?:data:|blob:|https?:\/\/|ftp:\/\/|\/\/)/i;
 function assertSafeOperationPayload(value: unknown, path: (string | number)[] = []): string | null {
   if (path.length > 100) return "Operation payload is too deep.";
-  if (typeof value === "string") return unsafeOperationValue.test(value) || value.length > 100_000 ? "Raw media, URLs, or secrets are not allowed." : null;
+  if (typeof value === "string") return unsafeOperationValue.test(value.trim()) || value.length > 100_000 ? "Raw media, URLs, or secrets are not allowed." : null;
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index += 1) {
       const issue = assertSafeOperationPayload(value[index], [...path, index]);
