@@ -534,9 +534,21 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     }
   });
   app.get("/api/v2/agent/v3/tasks/:taskId/events", { preHandler: v3Auth }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params);
-    agentV3EventsQuerySchema.parse(request.query);
-    return sendError(request, reply, 503, "AGENT_V3_EVENT_REPLAY_UNAVAILABLE", "Canvas Agent V3 event replay is not available.");
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const query = agentV3EventsQuerySchema.parse(request.query);
+      const events = await app.agentV3Runtime.replayEvents({ tenantId: getAgentContext(request).tenantId, taskId: params.taskId, afterSeq: query.after ?? 0 });
+      reply.raw.setHeader("cache-control", "no-cache");
+      reply.raw.setHeader("connection", "keep-alive");
+      reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+      reply.hijack();
+      for (const event of events) reply.raw.write(`event: event\\ndata: ${JSON.stringify({ sequence: event.seq, type: event.eventType, ...event.eventJson })}\\n\\n`);
+      reply.raw.write(formatStreamEvent("done", { taskId: params.taskId, after: query.after ?? 0 }));
+      reply.raw.end();
+      return reply;
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/approve", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
     agentV3TaskIdParamsSchema.parse(request.params); agentV3ApprovalSchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_APPROVAL_UNAVAILABLE", "Canvas Agent V3 approval is not available.");

@@ -9,6 +9,7 @@ export type AgentV3TaskRepository = {
   createTask(input: { idempotencyKey: string; tenantId: string; sessionId: string; projectId: string; flowId: string; taskType: string; title: string; status: string; inputJson: Record<string, unknown> }): Promise<{ id: string }>;
   appendEvent(input: { tenantId: string; sessionId: string; taskId: string; agentNamespace: string; agentVersion: "v3"; eventType: string; eventJson: Record<string, unknown> }): Promise<unknown>;
   updateTask?(id: string, input: { tenantId: string; status: string; outputJson?: Record<string, unknown>; errorJson?: Record<string, unknown> | null }): Promise<void>;
+  getEvents?(input: { tenantId: string; taskId: string; afterSeq: number }): Promise<Array<{ seq: number; eventType: string; eventJson: Record<string, unknown> }>>;
 };
 
 export class DatabaseAgentV3TaskRepository implements AgentV3TaskRepository {
@@ -44,6 +45,16 @@ export class DatabaseAgentV3TaskRepository implements AgentV3TaskRepository {
   async updateTask(id: string, input: { tenantId: string; status: string; outputJson?: Record<string, unknown>; errorJson?: Record<string, unknown> | null }): Promise<void> {
     await withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
       await client.query(`UPDATE agent_tasks SET status = $3, output_json = COALESCE($4::jsonb, output_json), error_json = $5::jsonb, updated_at = now(), finished_at = CASE WHEN $3 IN ('succeeded', 'partial_success', 'failed', 'cancelled') THEN now() ELSE finished_at END WHERE tenant_id = $1::uuid AND id = $2::uuid`, [input.tenantId, id, input.status, input.outputJson ? JSON.stringify(input.outputJson) : null, input.errorJson === undefined ? null : JSON.stringify(input.errorJson)]);
+    }, this.pool);
+  }
+
+  async getEvents(input: { tenantId: string; taskId: string; afterSeq: number }) {
+    return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
+      const result = await client.query<{ seq: string; event_type: string; event_json: Record<string, unknown> }>(
+        `SELECT seq::text AS seq, event_type, event_json FROM agent_task_events WHERE tenant_id = $1::uuid AND task_id = $2::uuid AND seq > $3::bigint ORDER BY seq ASC`,
+        [input.tenantId, input.taskId, input.afterSeq],
+      );
+      return result.rows.map((row) => ({ seq: Number(row.seq), eventType: row.event_type, eventJson: row.event_json ?? {} }));
     }, this.pool);
   }
 }
