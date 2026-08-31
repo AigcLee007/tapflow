@@ -1,5 +1,12 @@
 # Codex Handoff
 
+## Canvas Agent V4 Continuation (2026-08-31)
+
+- V4 delivery now commits verified `assetId` references through tenant-scoped canvas CAS and stores inverse operations for undo; stale revisions remain fail-closed.
+- Worker terminal projection merges independent item updates by stable `itemId`, preserving successful siblings and page metadata.
+- V4 frontend panel now supports authenticated prompt submission, approval, cancellation, per-item retry, result listing, and undo entry points.
+- Golden acceptance fixture now defines all eight required scenarios. V4 flags remain disabled until authenticated staging execution proves the full real-provider, billing, S3, replay, CAS, retry, and rollback flow.
+
 ## Canvas Skill Workbench UI Handoff (2026-08-21)
 
 - The Canvas Agent now exposes a persistent Skill bar and picker, including truthful unavailable state while `VITE_AGENT_SKILLS_ENABLED` or server Skill runtime flags are off.
