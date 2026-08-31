@@ -12,6 +12,7 @@ export type AgentV4TaskRecord = {
   flowId: string;
   graphRevision: number;
   prompt: string;
+  referenceAssetIds?: string[];
   status: AgentV4Status;
   outputJson?: Record<string, unknown>;
 };
@@ -144,6 +145,7 @@ export class DatabaseAgentV4TaskRepository implements AgentV4TaskRepository {
         flowId: typeof taskInput.flowId === "string" ? taskInput.flowId : "",
         graphRevision: Number(row.graph_revision ?? taskInput.graphRevision ?? 0),
         prompt: typeof taskInput.prompt === "string" ? taskInput.prompt : "",
+        referenceAssetIds: Array.isArray(taskInput.referenceAssetIds) ? taskInput.referenceAssetIds.filter((value): value is string => typeof value === "string").slice(0, 16) : [],
         status: row.status as AgentV4Status,
         outputJson: sanitizeV4EventPayload(row.output_json ?? {}),
       };
@@ -192,15 +194,15 @@ export class DatabaseAgentV4TaskRepository implements AgentV4TaskRepository {
 export class AgentV4TaskStore {
   constructor(private readonly repository: AgentV4TaskRepository) {}
 
-  async create(input: { tenantId: string; sessionId: string; projectId: string; flowId: string; graphRevision?: number; prompt: string; idempotencyKey?: string }): Promise<AgentV4TaskRecord> {
+  async create(input: { tenantId: string; sessionId: string; projectId: string; flowId: string; graphRevision?: number; prompt: string; referenceAssetIds?: string[]; idempotencyKey?: string }): Promise<AgentV4TaskRecord> {
     const idempotencyKey = input.idempotencyKey?.trim() || `agent-v4:${input.sessionId}:${randomUUID()}`;
     const graphRevision = input.graphRevision ?? 0;
     const created = await this.repository.createTask({
       idempotencyKey, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId,
       graphRevision, prompt: input.prompt, taskType: "responses_session", title: input.prompt.slice(0, 120), status: "draft",
-      inputJson: { prompt: input.prompt, projectId: input.projectId, flowId: input.flowId, graphRevision },
+      inputJson: { prompt: input.prompt, projectId: input.projectId, flowId: input.flowId, graphRevision, referenceAssetIds: input.referenceAssetIds?.slice(0, 16) ?? [] },
     });
-    return { id: created.id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision, prompt: input.prompt, status: "draft", outputJson: {} };
+    return { id: created.id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision, prompt: input.prompt, referenceAssetIds: input.referenceAssetIds?.slice(0, 16) ?? [], status: "draft", outputJson: {} };
   }
 
   async append(task: AgentV4TaskRecord, event: AgentV4TaskEvent): Promise<{ id?: string; seq?: number } | null> {

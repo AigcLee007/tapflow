@@ -44,6 +44,14 @@ describe("AgentV4TaskStore", () => {
     expect(repository.createTask).toHaveBeenCalledTimes(2);
   });
 
+  it("persists only bounded reference asset IDs for continuation planning", async () => {
+    const { repository } = repositoryMock();
+    const store = new AgentV4TaskStore(repository);
+    const task = await store.create({ tenantId: "tenant-1", sessionId: "session-1", projectId: "project-1", flowId: "flow-1", prompt: "make a set", referenceAssetIds: ["asset-1", "asset-2"] });
+    expect(task.referenceAssetIds).toEqual(["asset-1", "asset-2"]);
+    expect((repository.createTask as ReturnType<typeof vi.fn>).mock.calls[0]?.[0].inputJson).toMatchObject({ referenceAssetIds: ["asset-1", "asset-2"] });
+  });
+
   it("does not duplicate an event and replays only events after afterSeq", async () => {
     const { repository } = repositoryMock();
     const store = new AgentV4TaskStore(repository);
