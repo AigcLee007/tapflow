@@ -7,6 +7,16 @@ import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./t
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
 type V4GenerationExecutor = (input: { task: any; context: AgentV4RequestContext; tool: string; arguments: Record<string, unknown>; idempotencyKey: string }) => Promise<unknown>;
+export function createV4WorkflowGenerationExecutor(adapter: { runNodes: (context: AgentV4RequestContext, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[] }) => Promise<{ runs: Array<{ nodeId: string }> }> }): V4GenerationExecutor {
+  return async ({ task, context, tool, arguments: args, idempotencyKey }) => {
+    const nodeIds = tool === "image.generate_batch"
+      ? (Array.isArray(args.items) ? args.items.flatMap((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>).nodeId === "string" ? [(item as Record<string, unknown>).nodeId as string] : []) : [])
+      : (typeof args.nodeId === "string" ? [args.nodeId] : []);
+    if (!nodeIds.length) return { ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_NODE_ID_REQUIRED" };
+    const launched = await adapter.runNodes(context, { flowId: task.flowId, graphRevision: task.graphRevision, idempotencyKey, nodeIds });
+    return { ok: true, status: tool === "image.generate_batch" ? "generating_batch" : "generating_base", taskId: task.id, itemIds: launched.runs.map((run) => run.nodeId), summary: `${launched.runs.length} generation run(s) queued.` };
+  };
+}
 export class AgentV4RuntimeService {
   constructor(private readonly options: { enabled: boolean; repository: AgentV4TaskRepository; session: { getSession: (context: AgentV4RequestContext, id: string) => Promise<{ tenantId?: string; projectId?: string | null; flowId?: string | null } | null> }; textRuntime: { streamText: (...args: any[]) => AsyncIterable<any> }; gateway?: AgentV4ToolGateway; generationExecutor?: V4GenerationExecutor }) {}
   private unavailable(): never { throw new AgentApiError(503, "AGENT_V4_UNAVAILABLE", "Canvas Agent V4 is not available."); }
