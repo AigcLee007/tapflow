@@ -14,6 +14,7 @@ Last updated: 2026-08-31
 - Added Worker-side V4 terminal result projection with stable delivery idempotency keys and safe generation item/task status updates. Worker focused test and build pass; wiring the projector into the live terminal processor and authenticated staging verification remain pending.
 - Added optional terminal projector hooks to the Worker node-execute and provider-poll processors, preserving existing default behavior while allowing V4 delivery sync to be installed at runtime. Worker build and focused sync tests pass.
 - Wired the optional V4 terminal projector through Worker queue registration and runtime options so deployments can install task/event synchronization without changing existing processors by default. Worker build and focused sync tests pass.
+- Added task-scoped V4 frontend control API methods for approve, cancel, retry-item, and undo, with focused client coverage and a successful production build. Real authenticated browser acceptance and staging rollback evidence remain pending.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
