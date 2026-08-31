@@ -520,7 +520,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       const params = agentV3SessionTurnParamsSchema.parse(request.params);
       const body = createAgentTurnSchema.parse(request.body);
       const streamBody: string[] = [];
-      const result = await app.agentV3Runtime.startTurn({ sessionId: params.sessionId, input: body, writeChunk: (chunk) => { streamBody.push(chunk); } });
+      const result = await app.agentV3Runtime.startTurn({ sessionId: params.sessionId, input: body, context: getAgentContext(request), writeChunk: (chunk) => { streamBody.push(chunk); } });
       reply.raw.setHeader("cache-control", "no-cache");
       reply.raw.setHeader("connection", "keep-alive");
       reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");

@@ -31,7 +31,7 @@ import { registerSkillRunRoutes } from "./modules/agent/skill-run.routes.js";
 import { SkillService } from "./modules/agent/skill.service.js";
 import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
-import { AgentV3RuntimeService } from "./modules/agent/v3/agent-v3-runtime.js";
+import { AgentV3RuntimeService, createAgentV3PlanningAdapter } from "./modules/agent/v3/agent-v3-runtime.js";
 import { DatabaseAgentV3TaskRepository } from "./modules/agent/v3/agent-v3-task-store.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
@@ -364,9 +364,11 @@ export function buildApp(options?: {
     skillRunService,
     workflowRunsService,
   });
+  const agentV3TaskRepository = new DatabaseAgentV3TaskRepository(pool);
   const agentV3Runtime = new AgentV3RuntimeService({
     enabled: env.agentV3Enabled === true && env.agentV3RuntimeEnabled === true,
-    repository: new DatabaseAgentV3TaskRepository(pool),
+    adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository),
+    repository: agentV3TaskRepository,
   });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
