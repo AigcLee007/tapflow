@@ -96,6 +96,8 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
         const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:approve`, nodeIds: runNodeIds });
         await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { workflowRuns: launched.runs.map((run) => ({ nodeId: run.nodeId, runId: run.runId })) } });
         await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "run_started", status: "running", workflowRuns: launched.runs })}\\n\\n`);
+        const terminal = await agentService.workflowRunAdapter.awaitResults(request.context, launched.runs.map((run) => run.runId));
+        if (!terminal.allTerminal) return { taskId: task.id, status: "running", workflowRuns: launched.runs };
         return { taskId: task.id, status: "running", workflowRuns: launched.runs };
       }
       await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running" });
