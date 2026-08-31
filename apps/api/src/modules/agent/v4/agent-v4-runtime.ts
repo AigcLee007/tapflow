@@ -6,8 +6,9 @@ import { AgentV4ToolGateway } from "./agent-v4-tool-gateway.js";
 import { createPromptItems, createTaobaoSuitePlan, createVisualBible } from "./taobao-suite-planner.js";
 
 export type AgentV4RequestContext = { tenantId: string; userId: string | null };
+type V4GenerationExecutor = (input: { task: any; context: AgentV4RequestContext; tool: string; arguments: Record<string, unknown>; idempotencyKey: string }) => Promise<unknown>;
 export class AgentV4RuntimeService {
-  constructor(private readonly options: { enabled: boolean; repository: AgentV4TaskRepository; session: { getSession: (context: AgentV4RequestContext, id: string) => Promise<{ tenantId?: string; projectId?: string | null; flowId?: string | null } | null> }; textRuntime: { streamText: (...args: any[]) => AsyncIterable<any> }; gateway?: AgentV4ToolGateway }) {}
+  constructor(private readonly options: { enabled: boolean; repository: AgentV4TaskRepository; session: { getSession: (context: AgentV4RequestContext, id: string) => Promise<{ tenantId?: string; projectId?: string | null; flowId?: string | null } | null> }; textRuntime: { streamText: (...args: any[]) => AsyncIterable<any> }; gateway?: AgentV4ToolGateway; generationExecutor?: V4GenerationExecutor }) {}
   private unavailable(): never { throw new AgentApiError(503, "AGENT_V4_UNAVAILABLE", "Canvas Agent V4 is not available."); }
   async startTurn(input: { sessionId: string; context: AgentV4RequestContext; body: unknown }) {
     if (!this.options.enabled) return this.unavailable();
@@ -24,6 +25,9 @@ export class AgentV4RuntimeService {
       "suite.plan": async ({ call }) => ({ ok: true, status: "preview_ready", suitePlan: createTaobaoSuitePlan({ mainImageCount: call.arguments.mainImageCount as number | undefined, detailPageCount: call.arguments.detailPageCount as number | undefined, prompt: call.arguments.prompt as string | undefined }) }),
       "visual_bible.create": async ({ call }) => ({ ok: true, status: "preview_ready", visualBible: createVisualBible(String(call.arguments.productSummary ?? "")) }),
       "prompt_set.create": async ({ call }) => ({ ok: true, status: "preview_ready", items: createPromptItems(call.arguments.suitePlan as ReturnType<typeof createTaobaoSuitePlan>, call.arguments.visualBible as ReturnType<typeof createVisualBible>, []) }),
+      "image.generate_base": async ({ task, context, call, idempotencyKey }) => this.options.generationExecutor ? await this.options.generationExecutor({ task, context, tool: call.name, arguments: call.arguments, idempotencyKey }) : ({ ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED", summary: "Generation runtime is not configured." }),
+      "image.generate_batch": async ({ task, context, call, idempotencyKey }) => this.options.generationExecutor ? await this.options.generationExecutor({ task, context, tool: call.name, arguments: call.arguments, idempotencyKey }) : ({ ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED", summary: "Generation runtime is not configured." }),
+      "generation.continue": async ({ task, context, call, idempotencyKey }) => this.options.generationExecutor ? await this.options.generationExecutor({ task, context, tool: call.name, arguments: call.arguments, idempotencyKey }) : ({ ok: false, status: "needs_review", taskId: task.id, errorCode: "AGENT_V4_GENERATION_NOT_CONFIGURED", summary: "Generation runtime is not configured." }),
     } }) });
     return service.run({ task, context: input.context, prompt: body.prompt, safeContext: body.snapshot });
   }
