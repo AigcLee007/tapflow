@@ -24,6 +24,12 @@ export type ApiEnv = {
   agentV3MaxContextNodes?: number;
   agentV3MaxVisualCaptures?: number;
   agentV3RepairAttempts?: number;
+  agentV4Enabled: boolean;
+  agentV4RuntimeEnabled: boolean;
+  agentV4MaxRounds: number;
+  agentV4MaxItems: number;
+  agentV4MaxReferences: number;
+  agentV4RepairAttempts: number;
   agentSkillsEnabled: boolean;
   agentSkillAuthoringEnabled: boolean;
   agentSkillRuntimeEnabled: boolean;
@@ -205,6 +211,12 @@ export function getApiEnv(): ApiEnv {
   const agentV3MaxContextNodes = parsePositiveIntegerEnv("AGENT_V3_MAX_CONTEXT_NODES", process.env.AGENT_V3_MAX_CONTEXT_NODES, 60);
   const agentV3MaxVisualCaptures = parsePositiveIntegerEnv("AGENT_V3_MAX_VISUAL_CAPTURES", process.env.AGENT_V3_MAX_VISUAL_CAPTURES, 4);
   const agentV3RepairAttempts = parsePositiveIntegerEnv("AGENT_V3_REPAIR_ATTEMPTS", process.env.AGENT_V3_REPAIR_ATTEMPTS, 1);
+  const agentV4Enabled = parseBooleanEnv("AGENT_V4_ENABLED", process.env.AGENT_V4_ENABLED, false);
+  const agentV4RuntimeEnabled = parseBooleanEnv("AGENT_V4_RUNTIME_ENABLED", process.env.AGENT_V4_RUNTIME_ENABLED, false);
+  const agentV4MaxRounds = parseClampedIntegerEnv("AGENT_V4_MAX_ROUNDS", process.env.AGENT_V4_MAX_ROUNDS, 12, 1, 20);
+  const agentV4MaxItems = parseClampedIntegerEnv("AGENT_V4_MAX_ITEMS", process.env.AGENT_V4_MAX_ITEMS, 12, 1, 24);
+  const agentV4MaxReferences = parseClampedIntegerEnv("AGENT_V4_MAX_REFERENCES", process.env.AGENT_V4_MAX_REFERENCES, 16, 1, 16);
+  const agentV4RepairAttempts = parseClampedIntegerEnv("AGENT_V4_REPAIR_ATTEMPTS", process.env.AGENT_V4_REPAIR_ATTEMPTS, 1, 0, 3);
   const agentSkillsEnabled = parseBooleanEnv("AGENT_SKILLS_ENABLED", process.env.AGENT_SKILLS_ENABLED, false);
   const agentSkillAuthoringEnabled = parseBooleanEnv("AGENT_SKILL_AUTHORING_ENABLED", process.env.AGENT_SKILL_AUTHORING_ENABLED, false);
   const agentSkillRuntimeEnabled = parseBooleanEnv("AGENT_SKILL_RUNTIME_ENABLED", process.env.AGENT_SKILL_RUNTIME_ENABLED, false);
@@ -409,6 +421,12 @@ export function getApiEnv(): ApiEnv {
     agentV3MaxContextNodes,
     agentV3MaxVisualCaptures,
     agentV3RepairAttempts,
+    agentV4Enabled,
+    agentV4RuntimeEnabled,
+    agentV4MaxRounds,
+    agentV4MaxItems,
+    agentV4MaxReferences,
+    agentV4RepairAttempts,
     agentSkillsEnabled,
     agentSkillAuthoringEnabled,
     agentSkillRuntimeEnabled,
