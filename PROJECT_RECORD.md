@@ -6844,3 +6844,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Worker terminal projection now merges updates by stable `itemId`, preserving successful siblings and page metadata during independent batch completion/retry.
 - Validation passed: API delivery/runtime tests (6 tests), Worker terminal-sync tests (3 tests), API and Worker TypeScript builds, and `git diff --check`. V4 flags remain disabled pending frontend and staging acceptance.
 - V4 task routes now return consistent `INVALID_REQUEST`, task error, 409, 503, and 500 envelopes for replay, approval, cancellation, retry, and undo paths.
+## 2026-09-01 - Canvas Agent V4 Project Binding And Replay Reliability
+
+- Project canvas pages now query the authenticated agent capability identity, reuse or create a project/flow-scoped Agent V4 session, and pass the verified `v4_real` identity and session ID into `FlowCanvasPage`.
+- V4 task event handling now ignores duplicate and stale sequence numbers, preserves ordered replay state, closes on terminal status, and reconnects from the latest acknowledged sequence after stream errors.
+- Validation passed: frontend production build, API TypeScript build, FlowProjectPage tests, and V4 session hook tests (10 assertions). V4 flags remain disabled until real authenticated staging validation proves generation, billing, storage, worker projection, CAS, retry, undo, and rollback behavior.

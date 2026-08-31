@@ -11,14 +11,25 @@ const getPromptMock = vi.fn();
 const getImageNaturalSizeMock = vi.fn();
 const addNodeMock = vi.fn();
 const updateNodeDataMock = vi.fn();
+const getAgentCapabilitiesMock = vi.fn();
+const listAgentSessionsMock = vi.fn();
+const createAgentSessionMock = vi.fn();
 
 vi.mock("./FlowCanvasPage", () => ({
-  default: ({ saveStatus }: { saveStatus: { label: string } }) => (
+  default: ({ saveStatus, agentV4RuntimeIdentity, agentV4SessionId }: { saveStatus: { label: string }; agentV4RuntimeIdentity?: string; agentV4SessionId?: string }) => (
     <div>
       <div data-testid="flow-canvas-page" />
       <div>{saveStatus.label}</div>
+      <div data-testid="agent-v4-identity">{agentV4RuntimeIdentity ?? "missing"}</div>
+      <div data-testid="agent-v4-session">{agentV4SessionId ?? "missing"}</div>
     </div>
   ),
+}));
+
+vi.mock("./agent/canvasAgentApi", () => ({
+  getAgentCapabilities: (...args: unknown[]) => getAgentCapabilitiesMock(...args),
+  listAgentSessions: (...args: unknown[]) => listAgentSessionsMock(...args),
+  createAgentSession: (...args: unknown[]) => createAgentSessionMock(...args),
 }));
 
 vi.mock("./hooks/useRemoteFlowProject", () => ({
@@ -74,6 +85,9 @@ describe("FlowProjectPage", () => {
     getImageNaturalSizeMock.mockReset();
     addNodeMock.mockReset();
     updateNodeDataMock.mockReset();
+    getAgentCapabilitiesMock.mockReset().mockResolvedValue({ runtimeIdentity: "unavailable" });
+    listAgentSessionsMock.mockReset().mockResolvedValue([]);
+    createAgentSessionMock.mockReset();
     addNodeMock.mockReturnValue({ id: "inserted-node-1" });
     useRemoteFlowAutosaveMock.mockReturnValue({
       error: null,
@@ -125,6 +139,32 @@ describe("FlowProjectPage", () => {
 
     expect(screen.getByTestId("flow-canvas-page")).toBeTruthy();
     expect(screen.getByText("已保存到云端")).toBeTruthy();
+  });
+
+  test("binds a project-scoped V4 session when the real runtime is available", async () => {
+    useRemoteFlowProjectMock.mockReturnValue({
+      draft: null,
+      error: null,
+      flow: { id: "flow-1" },
+      loading: false,
+      project: { id: "project-1", name: "Demo" },
+      reload: vi.fn(),
+    });
+    getAgentCapabilitiesMock.mockResolvedValue({ runtimeIdentity: "v4_real" });
+    listAgentSessionsMock.mockResolvedValue([]);
+    createAgentSessionMock.mockResolvedValue({ id: "v4-session-1" });
+
+    render(<FlowProjectPage />);
+
+    await waitFor(() => expect(createAgentSessionMock).toHaveBeenCalledWith({
+      flowId: "flow-1",
+      projectId: "project-1",
+      title: "Canvas Agent V4",
+    }));
+    await waitFor(() => {
+      expect(screen.getByTestId("agent-v4-identity").textContent).toBe("v4_real");
+      expect(screen.getByTestId("agent-v4-session").textContent).toBe("v4-session-1");
+    });
   });
 
   test("repairs portrait asset sizing when inserted from insertAssetId route", async () => {

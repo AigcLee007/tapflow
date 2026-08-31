@@ -89,6 +89,11 @@ export type AgentSkillPreview = {
 };
 
 export type AgentCapabilities = {
+  runtimeIdentity?: "v4_real" | "v3_real" | "v2_real" | "unavailable" | "offline_demo";
+  agentV4Enabled?: boolean;
+  agentV4RuntimeEnabled?: boolean;
+  agentV3Enabled?: boolean;
+  agentV3RuntimeEnabled?: boolean;
   agentV2Enabled: boolean;
   agentV2RuntimeEnabled: boolean;
   skillAuthoringEnabled: boolean;

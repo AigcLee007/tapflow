@@ -3,9 +3,10 @@ import { apiPost } from "../../../services/v2HttpClient";
 export async function createV4Turn(sessionId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   return apiPost<Record<string, unknown>>(`/agent/v4/sessions/${encodeURIComponent(sessionId)}/turns`, body);
 }
-export function openV4EventStream(taskId: string, afterSeq = 0, onEvent?: (event: Record<string, unknown>) => void): EventSource {
+export function openV4EventStream(taskId: string, afterSeq = 0, onEvent?: (event: Record<string, unknown>) => void, onError?: () => void): EventSource {
   const source = new EventSource(`/api/v2/agent/v4/tasks/${encodeURIComponent(taskId)}/events?afterSeq=${afterSeq}`);
   source.addEventListener("event", (event) => { try { onEvent?.(JSON.parse((event as MessageEvent).data)); } catch { /* ignore malformed server event */ } });
+  source.addEventListener("error", () => onError?.());
   return source;
 }
 async function postV4(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {

@@ -5,6 +5,7 @@ import { getAsset } from "../assets/assetApi";
 import { BrandTransition } from "../app/brand/BrandTransition";
 import { V2HttpError } from "../services/v2HttpClient";
 import { getPrompt } from "../services/v2PromptsApi";
+import { createAgentSession, getAgentCapabilities, listAgentSessions } from "./agent/canvasAgentApi";
 import FlowCanvasPage from "./FlowCanvasPage";
 import { useRemoteFlowAutosave, type RemoteFlowSaveStatus } from "./hooks/useRemoteFlowAutosave";
 import { useRemoteFlowProject } from "./hooks/useRemoteFlowProject";
@@ -99,8 +100,11 @@ export function FlowProjectPage() {
   const viewport = useFlowCanvasStore((state) => state.viewport);
   const insertedAssetIdRef = useRef<string | null>(null);
   const insertedPromptRequestIdRef = useRef<string | null>(null);
+  const agentV4BindingRef = useRef<string | null>(null);
   const [insertError, setInsertError] = useState<string | null>(null);
   const [insertRetryTick, setInsertRetryTick] = useState(0);
+  const [agentV4RuntimeIdentity, setAgentV4RuntimeIdentity] = useState<"v4_real" | "unavailable">("unavailable");
+  const [agentV4SessionId, setAgentV4SessionId] = useState<string | undefined>();
   const [locationSearch, setLocationSearch] = useState(() =>
     typeof window === "undefined" ? "" : window.location.search,
   );
@@ -111,6 +115,39 @@ export function FlowProjectPage() {
   });
 
   useEffect(() => registerRemoteDraftSaveBarrier(autosave.saveNow), [autosave.saveNow]);
+
+  useEffect(() => {
+    const project = projectState.project;
+    const flow = projectState.flow;
+    if (projectState.loading || projectState.error || !project?.id || !flow?.id) return;
+    const bindingKey = `${project.id}:${flow.id}`;
+    if (agentV4BindingRef.current === bindingKey) return;
+    agentV4BindingRef.current = bindingKey;
+    let active = true;
+    void (async () => {
+      try {
+        const capabilities = await getAgentCapabilities();
+        if (!active) return;
+        if (capabilities.runtimeIdentity !== "v4_real") {
+          setAgentV4RuntimeIdentity("unavailable");
+          setAgentV4SessionId(undefined);
+          return;
+        }
+        const existing = await listAgentSessions({ flowId: flow.id, limit: 1, projectId: project.id });
+        const session = existing[0] ?? await createAgentSession({ flowId: flow.id, projectId: project.id, title: "Canvas Agent V4" });
+        if (!active) return;
+        setAgentV4RuntimeIdentity("v4_real");
+        setAgentV4SessionId(session.id);
+      } catch {
+        if (!active) return;
+        setAgentV4RuntimeIdentity("unavailable");
+        setAgentV4SessionId(undefined);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [projectState.error, projectState.flow, projectState.loading, projectState.project]);
 
   useEffect(() => {
     if (!projectId || isExplicitProjectModePath() || typeof window === "undefined") return;
@@ -261,6 +298,8 @@ export function FlowProjectPage() {
           onRetry: autosave.saveNow,
           status: autosave.status,
         }}
+        agentV4RuntimeIdentity={agentV4RuntimeIdentity}
+        agentV4SessionId={agentV4SessionId}
       />
       {insertError && (
         <div className="fixed right-4 top-32 z-[1200] max-w-sm rounded border border-amber-300/20 bg-amber-950/90 px-4 py-3 text-sm text-amber-100 shadow-xl">
