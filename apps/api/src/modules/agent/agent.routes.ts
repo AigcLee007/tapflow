@@ -514,30 +514,40 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     },
   );
 
-  // V3 endpoints deliberately have their own authenticated boundary. The Director
-  // adapter is attached in the V3 runtime slice; until then they fail closed.
-  const v3Unavailable = async (request: FastifyRequest, reply: FastifyReply) =>
-    sendError(request, reply, 503, "AGENT_V3_UNAVAILABLE", "Canvas Agent V3 is not available.");
   const v3Auth = [...authHandlers, requirePermission("flow:read")];
   app.post("/api/v2/agent/v3/sessions/:sessionId/turns/stream", { preHandler: v3Auth }, async (request, reply) => {
-    agentV3SessionTurnParamsSchema.parse(request.params);
-    return v3Unavailable(request, reply);
+    try {
+      const params = agentV3SessionTurnParamsSchema.parse(request.params);
+      const body = createAgentTurnSchema.parse(request.body);
+      const streamBody: string[] = [];
+      const result = await app.agentV3Runtime.startTurn({ sessionId: params.sessionId, input: body, writeChunk: (chunk) => { streamBody.push(chunk); } });
+      reply.raw.setHeader("cache-control", "no-cache");
+      reply.raw.setHeader("connection", "keep-alive");
+      reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+      reply.hijack();
+      if (streamBody.length) reply.raw.write(streamBody.join(""));
+      if (result !== undefined) reply.raw.write(formatStreamEvent("done", result));
+      reply.raw.end();
+      return reply;
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
   });
   app.get("/api/v2/agent/v3/tasks/:taskId/events", { preHandler: v3Auth }, async (request, reply) => {
     agentV3TaskIdParamsSchema.parse(request.params);
     agentV3EventsQuerySchema.parse(request.query);
-    return v3Unavailable(request, reply);
+    return sendError(request, reply, 503, "AGENT_V3_EVENT_REPLAY_UNAVAILABLE", "Canvas Agent V3 event replay is not available.");
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/approve", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); agentV3ApprovalSchema.parse(request.body); return v3Unavailable(request, reply);
+    agentV3TaskIdParamsSchema.parse(request.params); agentV3ApprovalSchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_APPROVAL_UNAVAILABLE", "Canvas Agent V3 approval is not available.");
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/cancel", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); return v3Unavailable(request, reply);
+    agentV3TaskIdParamsSchema.parse(request.params); return sendError(request, reply, 503, "AGENT_V3_CANCEL_UNAVAILABLE", "Canvas Agent V3 cancellation is not available.");
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/retry-step", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); agentV3RetrySchema.parse(request.body); return v3Unavailable(request, reply);
+    agentV3TaskIdParamsSchema.parse(request.params); agentV3RetrySchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_RETRY_UNAVAILABLE", "Canvas Agent V3 retry is not available.");
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/undo-canvas", { preHandler: [...authHandlers, requirePermission("flow:update")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); agentV3UndoSchema.parse(request.body); return v3Unavailable(request, reply);
+    agentV3TaskIdParamsSchema.parse(request.params); agentV3UndoSchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_UNDO_UNAVAILABLE", "Canvas Agent V3 undo is not available.");
   });
 }

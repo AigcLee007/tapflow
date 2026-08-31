@@ -31,6 +31,7 @@ import { registerSkillRunRoutes } from "./modules/agent/skill-run.routes.js";
 import { SkillService } from "./modules/agent/skill.service.js";
 import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.service.js";
 import { AgentService } from "./modules/agent/agent.service.js";
+import { AgentV3RuntimeService } from "./modules/agent/v3/agent-v3-runtime.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
 import { AgentReferenceAssetRepository } from "./modules/agent/agent-reference-context.js";
@@ -362,6 +363,9 @@ export function buildApp(options?: {
     skillRunService,
     workflowRunsService,
   });
+  const agentV3Runtime = new AgentV3RuntimeService({
+    enabled: env.agentV3Enabled === true && env.agentV3RuntimeEnabled === true,
+  });
   const flowCommentsService = new FlowCommentsService({ pool });
   const flowHistoryService = new FlowHistoryService({ pool });
   const flowTemplatesService = new FlowTemplatesService({ pool });
@@ -379,6 +383,7 @@ export function buildApp(options?: {
 
   app.decorate("adminService", adminService);
   app.decorate("agentService", agentService);
+  app.decorate("agentV3Runtime", agentV3Runtime);
   app.decorate("skillService", skillService);
   app.decorate("skillRunService", skillRunService);
   app.decorate("aiGatewayService", aiGatewayService);
