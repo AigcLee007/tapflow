@@ -33,6 +33,7 @@ import { AgentRunSettingsService } from "./modules/agent/agent-run-settings.serv
 import { AgentService } from "./modules/agent/agent.service.js";
 import { AgentV3RuntimeService, createAgentV3PlanningAdapter } from "./modules/agent/v3/agent-v3-runtime.js";
 import { DatabaseAgentV3TaskRepository } from "./modules/agent/v3/agent-v3-task-store.js";
+import { CanvasOperationService } from "./modules/agent/v3/canvas-operation-service.js";
 import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modules/agent/agent-cost-estimator.js";
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
 import { AgentReferenceAssetRepository } from "./modules/agent/agent-reference-context.js";
@@ -365,9 +366,10 @@ export function buildApp(options?: {
     workflowRunsService,
   });
   const agentV3TaskRepository = new DatabaseAgentV3TaskRepository(pool);
+  const agentV3OperationService = new CanvasOperationService(agentService.flowsService);
   const agentV3Runtime = new AgentV3RuntimeService({
     enabled: env.agentV3Enabled === true && env.agentV3RuntimeEnabled === true,
-    adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository),
+    adapter: createAgentV3PlanningAdapter(agentService, agentV3TaskRepository, agentV3OperationService),
     repository: agentV3TaskRepository,
   });
   const flowCommentsService = new FlowCommentsService({ pool });

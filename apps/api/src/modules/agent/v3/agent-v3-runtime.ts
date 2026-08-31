@@ -4,6 +4,8 @@ import { AgentV3TaskStore } from "./agent-v3-task-store.js";
 import type { AgentService } from "../agent.service.js";
 import type { CreateAgentTurnInput } from "../agent.schemas.js";
 import { verifyTaskDelivery } from "./agent-delivery-verifier.js";
+import { CanvasOperationService } from "./canvas-operation-service.js";
+import type { CanvasOperation } from "./canvas-operation-schema.js";
 
 export type AgentV3TurnInput = {
   prompt: string;
@@ -66,7 +68,7 @@ export class AgentV3RuntimeService {
   }
 }
 
-export function createAgentV3PlanningAdapter(agentService: AgentService, repository: AgentV3TaskRepository): AgentV3RuntimeAdapter {
+export function createAgentV3PlanningAdapter(agentService: AgentService, repository: AgentV3TaskRepository, operationService?: CanvasOperationService): AgentV3RuntimeAdapter {
   const store = new AgentV3TaskStore(repository);
   return {
     async startTurn(request) {
@@ -105,9 +107,20 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       const runNodeIds = Array.isArray(task.outputJson.proposedOps)
         ? task.outputJson.proposedOps.flatMap((operation) => operation && typeof operation === "object" && (operation as Record<string, unknown>).type === "run_node" && typeof (operation as Record<string, unknown>).nodeId === "string" ? [(operation as Record<string, unknown>).nodeId as string] : [])
         : [];
+      const canvasOperations = Array.isArray(task.outputJson.proposedOps) ? task.outputJson.proposedOps.flatMap((operation) => mapPlannerOperation(operation)) : [];
+      let appliedCanvas: unknown = null;
+      if (operationService && flowId && graphRevision !== null && canvasOperations.length) {
+        appliedCanvas = await operationService.applyApprovedOperationSet({
+          tenantId: request.context.tenantId,
+          projectId: typeof task.inputJson.projectId === "string" ? task.inputJson.projectId : "",
+          flowId,
+          taskId: task.id,
+          operationSet: { operationSetId: `v3:${task.id}`, taskId: task.id, turnId: task.id, baseRevision: graphRevision, summary: "Apply approved Canvas Agent operations", risk: "safe", requiresApproval: false, preconditions: [], expectedEffects: [], operations: canvasOperations },
+        });
+      }
       if (flowId && graphRevision !== null && runNodeIds.length && agentService.workflowRunAdapter) {
         const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:approve`, nodeIds: runNodeIds });
-        await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { workflowRuns: launched.runs.map((run) => ({ nodeId: run.nodeId, runId: run.runId })) } });
+        await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { appliedCanvas, workflowRuns: launched.runs.map((run) => ({ nodeId: run.nodeId, runId: run.runId })) } });
         await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "run_started", status: "running", workflowRuns: launched.runs })}\\n\\n`);
         const terminal = await agentService.workflowRunAdapter.awaitResults(request.context, launched.runs.map((run) => run.runId));
         if (!terminal.allTerminal) return { taskId: task.id, status: "running", workflowRuns: launched.runs };
@@ -122,7 +135,7 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
         await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "delivery_verified", status, delivery })}\\n\\n`);
         return { taskId: task.id, status, workflowRuns: launched.runs, delivery };
       }
-      await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running" });
+      await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { appliedCanvas } });
       await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "approval_granted", status: "running" })}\\n\\n`);
       return { taskId: task.id, status: "running" };
     },
@@ -148,4 +161,28 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       return { taskId: task.id, status: "running", retriedStepId: failedNode, workflowRuns: launched.runs };
     },
   };
+}
+
+function mapPlannerOperation(value: unknown): CanvasOperation[] {
+  if (!value || typeof value !== "object") return [];
+  const operation = value as Record<string, unknown>;
+  switch (operation.type) {
+    case "add_node": {
+      const data = operation.data && typeof operation.data === "object" ? operation.data as Record<string, unknown> : {};
+      const position = operation.position && typeof operation.position === "object" ? operation.position as { x?: unknown; y?: unknown } : {};
+      const id = typeof operation.clientId === "string" ? operation.clientId : `v3-node-${Math.random().toString(36).slice(2, 10)}`;
+      if (typeof operation.kind !== "string" || typeof position.x !== "number" || typeof position.y !== "number") return [];
+      return [{ type: "node.create", node: { id, type: operation.kind, position: { x: position.x, y: position.y }, data } }];
+    }
+    case "update_node_data": return typeof operation.nodeId === "string" && operation.patch && typeof operation.patch === "object" ? [{ type: "node.update_data", nodeId: operation.nodeId, data: operation.patch as Record<string, unknown> }] : [];
+    case "delete_nodes": return Array.isArray(operation.nodeIds) ? operation.nodeIds.filter((id): id is string => typeof id === "string").map((nodeId) => ({ type: "node.delete", nodeId })) : [];
+    case "connect_nodes": {
+      if (typeof operation.source !== "string" || typeof operation.target !== "string") return [];
+      const id = typeof operation.edgeId === "string" ? operation.edgeId : `v3-edge-${Math.random().toString(36).slice(2, 10)}`;
+      return [{ type: "edge.connect", edge: { id, source: operation.source, target: operation.target, ...(typeof operation.sourceHandle === "string" ? { sourceHandle: operation.sourceHandle } : {}), ...(typeof operation.targetHandle === "string" ? { targetHandle: operation.targetHandle } : {}) } }];
+    }
+    case "delete_edges": return Array.isArray(operation.edgeIds) ? operation.edgeIds.filter((id): id is string => typeof id === "string").map((edgeId) => ({ type: "edge.delete", edgeId })) : [];
+    case "select_nodes": return Array.isArray(operation.nodeIds) ? [{ type: "selection.set", nodeIds: operation.nodeIds.filter((id): id is string => typeof id === "string") }] : [];
+    default: return [];
+  }
 }
