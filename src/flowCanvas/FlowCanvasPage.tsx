@@ -257,7 +257,7 @@ const FlowCanvasPage: React.FC<{
             <CanvasAgentCommandBar runtimeIdentity={agentV3RuntimeIdentity} task={v3.task ?? undefined} onSubmit={(prompt) => void v3.sendPrompt(prompt)} onCancel={() => void v3.cancel()} />
             <CanvasAgentTaskSheet task={v3.task ?? undefined} onApprove={() => void v3.approve(true)} />
           </>}
-          {agentV4RuntimeIdentity === 'v4_real' && <CanvasAgentV4TaskPanel task={v4Controls.task} onApprove={onAgentV4Approve ?? (() => void v4Controls.approve())} onCancel={onAgentV4Cancel ?? (() => void v4Controls.cancel())} onRetry={onAgentV4Retry ?? ((itemId) => void v4Controls.retry(itemId))} />}
+          {agentV4RuntimeIdentity === 'v4_real' && <CanvasAgentV4TaskPanel task={v4Controls.task} onSubmit={(prompt) => void v4Session.sendPrompt(prompt)} onApprove={onAgentV4Approve ?? (() => void v4Controls.approve())} onCancel={onAgentV4Cancel ?? (() => void v4Controls.cancel())} onRetry={onAgentV4Retry ?? ((itemId) => void v4Controls.retry(itemId))} onUndo={(revision) => void v4Controls.undo(revision)} />}
         </ReactFlowProvider>
       </div>
     </div>
