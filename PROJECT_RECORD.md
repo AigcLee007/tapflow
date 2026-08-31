@@ -15,6 +15,7 @@ Last updated: 2026-08-31
 - Added optional terminal projector hooks to the Worker node-execute and provider-poll processors, preserving existing default behavior while allowing V4 delivery sync to be installed at runtime. Worker build and focused sync tests pass.
 - Wired the optional V4 terminal projector through Worker queue registration and runtime options so deployments can install task/event synchronization without changing existing processors by default. Worker build and focused sync tests pass.
 - Added task-scoped V4 frontend control API methods for approve, cancel, retry-item, and undo, with focused client coverage and a successful production build. Real authenticated browser acceptance and staging rollback evidence remain pending.
+- Implemented V4 task control state transitions for approval, cancellation, failed-item retry requests, and explicit undo fail-closed behavior, with tenant-scoped task lookup and durable idempotent events. API build and focused session/gateway tests pass.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
