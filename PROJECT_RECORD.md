@@ -6858,3 +6858,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - V4 authenticated SSE now permits at most one token-refresh retry per connection. If the refreshed access token is rejected, the connection reports an error and lets the session hook apply its bounded reconnect policy instead of recursively refreshing forever.
 - Added regression coverage for the rejected-refreshed-token path; V4 API tests remain green.
+## 2026-09-01 - Canvas Agent V4 panel progress projection
+
+- The V4 panel now derives dependency edges from the suite plan when a separate dependency event is unavailable, renders palette constraints, and shows per-item progress for queued/running/succeeded/failed outputs.
+- Focused V4 UI tests (7) and the production frontend build pass. Authenticated staging remains the only unexecuted release gate.
