@@ -12,6 +12,7 @@ Last updated: 2026-08-31
 - Added V4 API/SSE routes, feature-flag-aware runtime assembly, safe planning handlers, a frontend V4 event client/task panel, and initial Golden Task acceptance fixtures. API and frontend production builds pass. Paid generation handlers, full canvas interaction, and authenticated staging acceptance remain release gates.
 - V4 generation results now carry sanitized Workflow Run IDs through the task/event contract, enabling asynchronous Worker terminal synchronization without exposing provider internals or re-running idempotent jobs. API build and V4 focused tests remain green.
 - Added Worker-side V4 terminal result projection with stable delivery idempotency keys and safe generation item/task status updates. Worker focused test and build pass; wiring the projector into the live terminal processor and authenticated staging verification remain pending.
+- Added optional terminal projector hooks to the Worker node-execute and provider-poll processors, preserving existing default behavior while allowing V4 delivery sync to be installed at runtime. Worker build and focused sync tests pass.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
