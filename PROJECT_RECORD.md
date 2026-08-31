@@ -6866,3 +6866,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Added `npm run smoke:agent-v4`, a guarded authenticated staging smoke that checks the V4 runtime identity, creates or reuses a project session, submits a planning turn with bounded reference asset IDs, consumes the event stream until a timeout, and emits redacted sequence/type/status evidence.
 - The smoke command never approves paid generation and never prints access tokens, signed URLs, provider details, credentials, or raw responses. Its TypeScript check passes; execution without staging variables fails closed with an explicit missing-variable message.
+## 2026-09-01 - Canvas Agent V4 Golden Task executable coverage
+
+- Expanded the Golden Task suite beyond fixture-count assertions: every scenario now verifies that its expected tools are registered with a parseable V4 schema, and a multi-round Responses test executes the reference-photo, product-analysis, suite-plan, visual-bible, and prompt-set chain with shared context.
+- The new API Golden Task tests pass; this strengthens local orchestration evidence but does not replace authenticated staging with real provider, billing, queue, S3, and browser replay behavior.

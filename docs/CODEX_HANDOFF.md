@@ -796,3 +796,7 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 
 - Added `scripts/smoke-agent-v4-staging.ts` and the `smoke:agent-v4` package script. It is an authenticated, planning-only staging probe with bounded SSE collection and redacted evidence output; it does not approve or launch paid generation.
 - Run it only with a test tenant and the documented `TAPFLOW_*` variables in `docs/agent-v4-staging-runbook.md`. Real eight-scenario staging acceptance remains pending and V4 flags stay disabled by default.
+## Canvas Agent V4 continuation (2026-09-01, Golden Task coverage)
+
+- Golden Task tests now validate registered tool/schema bindings for all eight scenarios and execute a multi-round photo-to-suite planning chain with reference context propagation.
+- Local tests are green, but real authenticated staging execution remains the release gate; keep V4 flags disabled until those eight scenarios produce evidence against real infrastructure.
