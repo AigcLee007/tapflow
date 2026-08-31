@@ -6870,3 +6870,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Expanded the Golden Task suite beyond fixture-count assertions: every scenario now verifies that its expected tools are registered with a parseable V4 schema, and a multi-round Responses test executes the reference-photo, product-analysis, suite-plan, visual-bible, and prompt-set chain with shared context.
 - The new API Golden Task tests pass; this strengthens local orchestration evidence but does not replace authenticated staging with real provider, billing, queue, S3, and browser replay behavior.
+## 2026-09-01 - Canvas Agent V4 route error mapping
+
+- Fixed the V4 start-turn route so Zod validation failures return `400 INVALID_REQUEST` instead of being misreported as HTTP 500. All V4 route handlers now share the typed error mapper, preserving runtime `503`, `404`, and `409` codes.
+- Added focused route error-contract tests; API build passes.

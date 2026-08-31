@@ -3,7 +3,7 @@ import { requireAuth, requirePermission, requireTenant } from "../../../http/aut
 import { agentV4RetryItemInputSchema, agentV4TurnInputSchema, agentV4UndoInputSchema } from "./agent-v4-schemas.js";
 import { ZodError } from "zod";
 
-function sendV4Error(error: unknown, reply: any) {
+export function sendV4Error(error: unknown, reply: any) {
   const statusCode = error && typeof error === "object" && "statusCode" in error ? Number((error as any).statusCode) : error instanceof ZodError ? 400 : 500;
   return reply.code(statusCode).send({ error: { code: error instanceof ZodError ? "INVALID_REQUEST" : error instanceof Error ? error.message : "INTERNAL_ERROR" } });
 }
@@ -17,7 +17,7 @@ export function registerAgentV4Routes(app: FastifyInstance): void {
       reply.raw.write(`event: event\ndata: ${JSON.stringify({ taskId: result.taskId, type: "task_started", status: result.status })}\n\n`);
       reply.raw.write(`event: done\ndata: ${JSON.stringify(result)}\n\n`); reply.raw.end(); return reply;
     }
-    catch (error) { return reply.code(error && typeof error === "object" && "statusCode" in error ? Number((error as any).statusCode) : 500).send({ error: { code: error instanceof Error ? error.message : "INTERNAL_ERROR" } }); }
+    catch (error) { return sendV4Error(error, reply); }
   };
   app.post("/api/v2/agent/v4/sessions/:sessionId/turns", { preHandler: read }, startTurn);
   app.post("/api/v2/agent/v4/sessions/:sessionId/turns/stream", { preHandler: read }, startTurn);

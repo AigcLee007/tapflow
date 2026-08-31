@@ -800,3 +800,7 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 
 - Golden Task tests now validate registered tool/schema bindings for all eight scenarios and execute a multi-round photo-to-suite planning chain with reference context propagation.
 - Local tests are green, but real authenticated staging execution remains the release gate; keep V4 flags disabled until those eight scenarios produce evidence against real infrastructure.
+## Canvas Agent V4 continuation (2026-09-01, route errors)
+
+- V4 route start-turn validation now maps malformed input to `400 INVALID_REQUEST`; typed runtime errors retain their status codes. Focused route tests and API build pass.
+- This closes a local API contract gap but does not substitute for authenticated staging verification.
