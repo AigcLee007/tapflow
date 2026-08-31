@@ -6796,3 +6796,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
 - the modal now traps keyboard focus, supports Shift+Tab/Tab cycling, and restores focus to the opening control when closed.
 - focused validation passed: 8 test files / 84 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.
+
+## 2026-08-31 - Canvas Agent V3 Runtime Wiring Follow-Up
+
+- V3 approval now applies the approved canvas operation set before launching workflow runs and forwards the resulting draft revision to the workflow adapter, preventing stale-revision launches after node/edge changes.
+- Planner-generated node and edge IDs are deterministic per task and operation index, preserving idempotent retries and replay behavior.
+- Added the official provider-agnostic `taobao-product-image-suite` Skill for real-product-photo analysis, main/detail page planning, visual bible generation, per-page prompts, batch node creation, consistency checks, and targeted retries.
+- Focused validation passed: official Skill, V3 runtime, and delivery suites (12 tests); API, DB, and AI Gateway builds passed. V3 remains fail-closed until authenticated staging acceptance with real provider routes, billing, object storage, and worker execution is completed.

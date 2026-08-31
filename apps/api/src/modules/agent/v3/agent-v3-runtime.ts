@@ -113,7 +113,7 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       const runNodeIds = Array.isArray(task.outputJson.proposedOps)
         ? task.outputJson.proposedOps.flatMap((operation) => operation && typeof operation === "object" && (operation as Record<string, unknown>).type === "run_node" && typeof (operation as Record<string, unknown>).nodeId === "string" ? [(operation as Record<string, unknown>).nodeId as string] : [])
         : [];
-      const canvasOperations = Array.isArray(task.outputJson.proposedOps) ? task.outputJson.proposedOps.flatMap((operation) => mapPlannerOperation(operation)) : [];
+      const canvasOperations = Array.isArray(task.outputJson.proposedOps) ? task.outputJson.proposedOps.flatMap((operation, index) => mapPlannerOperation(operation, task.id, index)) : [];
       let appliedCanvas: unknown = null;
       if (operationService && flowId && graphRevision !== null && canvasOperations.length) {
         appliedCanvas = await operationService.applyApprovedOperationSet({
@@ -124,8 +124,11 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
           operationSet: { operationSetId: `v3:${task.id}`, taskId: task.id, turnId: task.id, baseRevision: graphRevision, summary: "Apply approved Canvas Agent operations", risk: "safe", requiresApproval: false, preconditions: [], expectedEffects: [], operations: canvasOperations },
         });
       }
-      if (flowId && graphRevision !== null && runNodeIds.length && agentService.workflowRunAdapter) {
-        const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:approve`, nodeIds: runNodeIds });
+      const effectiveGraphRevision = appliedCanvas && typeof appliedCanvas === "object" && typeof (appliedCanvas as Record<string, unknown>).revision === "number"
+        ? (appliedCanvas as Record<string, unknown>).revision as number
+        : graphRevision;
+      if (flowId && effectiveGraphRevision !== null && runNodeIds.length && agentService.workflowRunAdapter) {
+        const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision: effectiveGraphRevision, idempotencyKey: `v3:${task.id}:approve`, nodeIds: runNodeIds });
         await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { appliedCanvas, workflowRuns: launched.runs.map((run) => ({ nodeId: run.nodeId, runId: run.runId })) } });
         await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "run_started", status: "running", workflowRuns: launched.runs })}\\n\\n`);
         const terminal = await agentService.workflowRunAdapter.awaitResults(request.context, launched.runs.map((run) => run.runId));
@@ -182,14 +185,14 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
   };
 }
 
-function mapPlannerOperation(value: unknown): CanvasOperation[] {
+function mapPlannerOperation(value: unknown, taskId = "task", operationIndex = 0): CanvasOperation[] {
   if (!value || typeof value !== "object") return [];
   const operation = value as Record<string, unknown>;
   switch (operation.type) {
     case "add_node": {
       const data = operation.data && typeof operation.data === "object" ? operation.data as Record<string, unknown> : {};
       const position = operation.position && typeof operation.position === "object" ? operation.position as { x?: unknown; y?: unknown } : {};
-      const id = typeof operation.clientId === "string" ? operation.clientId : `v3-node-${Math.random().toString(36).slice(2, 10)}`;
+      const id = typeof operation.clientId === "string" ? operation.clientId : `v3-node-${taskId}-${operationIndex}`;
       if (typeof operation.kind !== "string" || typeof position.x !== "number" || typeof position.y !== "number") return [];
       return [{ type: "node.create", node: { id, type: operation.kind, position: { x: position.x, y: position.y }, data } }];
     }
@@ -197,7 +200,7 @@ function mapPlannerOperation(value: unknown): CanvasOperation[] {
     case "delete_nodes": return Array.isArray(operation.nodeIds) ? operation.nodeIds.filter((id): id is string => typeof id === "string").map((nodeId) => ({ type: "node.delete", nodeId })) : [];
     case "connect_nodes": {
       if (typeof operation.source !== "string" || typeof operation.target !== "string") return [];
-      const id = typeof operation.edgeId === "string" ? operation.edgeId : `v3-edge-${Math.random().toString(36).slice(2, 10)}`;
+      const id = typeof operation.edgeId === "string" ? operation.edgeId : `v3-edge-${taskId}-${operationIndex}`;
       return [{ type: "edge.connect", edge: { id, source: operation.source, target: operation.target, ...(typeof operation.sourceHandle === "string" ? { sourceHandle: operation.sourceHandle } : {}), ...(typeof operation.targetHandle === "string" ? { targetHandle: operation.targetHandle } : {}) } }];
     }
     case "delete_edges": return Array.isArray(operation.edgeIds) ? operation.edgeIds.filter((id): id is string => typeof id === "string").map((edgeId) => ({ type: "edge.delete", edgeId })) : [];
