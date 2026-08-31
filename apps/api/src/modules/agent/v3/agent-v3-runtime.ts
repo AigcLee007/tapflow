@@ -20,6 +20,7 @@ export type AgentV3RuntimeAdapter = {
     writeChunk: (chunk: string) => void | Promise<void>;
   }): Promise<unknown>;
   approve?(input: { taskId: string; context: AgentV3RequestContext; approved: boolean; writeChunk: (chunk: string) => void | Promise<void> }): Promise<unknown>;
+  cancel?(input: { taskId: string; context: AgentV3RequestContext }): Promise<unknown>;
 };
 
 export class AgentV3RuntimeService {
@@ -51,6 +52,11 @@ export class AgentV3RuntimeService {
   async approve(input: { taskId: string; context: AgentV3RequestContext; approved: boolean; writeChunk?: (chunk: string) => void | Promise<void> }) {
     if (!this.enabled || !this.adapter?.approve) throw Object.assign(new AgentApiError(503, "AGENT_V3_APPROVAL_UNAVAILABLE", "Canvas Agent V3 approval is not available."), { statusCode: 503 });
     return this.adapter.approve({ ...input, writeChunk: input.writeChunk ?? (() => undefined) });
+  }
+
+  async cancel(input: { taskId: string; context: AgentV3RequestContext }) {
+    if (!this.enabled || !this.adapter?.cancel) throw Object.assign(new AgentApiError(503, "AGENT_V3_CANCEL_UNAVAILABLE", "Canvas Agent V3 cancellation is not available."), { statusCode: 503 });
+    return this.adapter.cancel(input);
   }
 }
 
@@ -113,6 +119,14 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running" });
       await request.writeChunk(`event: event\\ndata: ${JSON.stringify({ taskId: task.id, type: "approval_granted", status: "running" })}\\n\\n`);
       return { taskId: task.id, status: "running" };
+    },
+    async cancel(request) {
+      if (!repository.getTask || !repository.updateTask) throw new AgentApiError(503, "AGENT_V3_CANCEL_UNAVAILABLE", "Canvas Agent V3 cancellation is not available.");
+      const task = await repository.getTask({ tenantId: request.context.tenantId, taskId: request.taskId });
+      if (!task) throw new AgentApiError(404, "AGENT_TASK_NOT_FOUND", "Agent task was not found.");
+      if (["succeeded", "failed", "cancelled"].includes(task.status)) return { taskId: task.id, status: task.status };
+      await repository.updateTask(task.id, { tenantId: request.context.tenantId, status: "cancelled", errorJson: { code: "AGENT_TASK_CANCELLED" } });
+      return { taskId: task.id, status: "cancelled" };
     },
   };
 }

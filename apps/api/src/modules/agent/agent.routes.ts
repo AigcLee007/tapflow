@@ -558,7 +558,10 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     } catch (error) { return handleRouteError(error, request, reply); }
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/cancel", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); return sendError(request, reply, 503, "AGENT_V3_CANCEL_UNAVAILABLE", "Canvas Agent V3 cancellation is not available.");
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      return reply.send(await app.agentV3Runtime.cancel({ taskId: params.taskId, context: getAgentContext(request) }));
+    } catch (error) { return handleRouteError(error, request, reply); }
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/retry-step", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
     agentV3TaskIdParamsSchema.parse(request.params); agentV3RetrySchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_RETRY_UNAVAILABLE", "Canvas Agent V3 retry is not available.");
