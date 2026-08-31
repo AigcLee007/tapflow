@@ -24,6 +24,7 @@ export type AgentV3RuntimeAdapter = {
   approve?(input: { taskId: string; context: AgentV3RequestContext; approved: boolean; writeChunk: (chunk: string) => void | Promise<void> }): Promise<unknown>;
   cancel?(input: { taskId: string; context: AgentV3RequestContext }): Promise<unknown>;
   retryStep?(input: { taskId: string; context: AgentV3RequestContext; stepId: string }): Promise<unknown>;
+  undoCanvas?(input: { taskId: string; context: AgentV3RequestContext; expectedRevision: number }): Promise<unknown>;
 };
 
 export class AgentV3RuntimeService {
@@ -65,6 +66,11 @@ export class AgentV3RuntimeService {
   async retryStep(input: { taskId: string; context: AgentV3RequestContext; stepId: string }) {
     if (!this.enabled || !this.adapter?.retryStep) throw Object.assign(new AgentApiError(503, "AGENT_V3_RETRY_UNAVAILABLE", "Canvas Agent V3 retry is not available."), { statusCode: 503 });
     return this.adapter.retryStep(input);
+  }
+
+  async undoCanvas(input: { taskId: string; context: AgentV3RequestContext; expectedRevision: number }) {
+    if (!this.enabled || !this.adapter?.undoCanvas) throw Object.assign(new AgentApiError(503, "AGENT_V3_UNDO_UNAVAILABLE", "Canvas Agent V3 undo is not available."), { statusCode: 503 });
+    return this.adapter.undoCanvas(input);
   }
 }
 
@@ -159,6 +165,19 @@ export function createAgentV3PlanningAdapter(agentService: AgentService, reposit
       const launched = await agentService.workflowRunAdapter.runNodes(request.context, { flowId, graphRevision, idempotencyKey: `v3:${task.id}:retry:${failedNode}`, nodeIds: [failedNode] });
       await repository.updateTask?.(task.id, { tenantId: request.context.tenantId, status: "running", outputJson: { retryStepId: failedNode, workflowRuns: launched.runs } });
       return { taskId: task.id, status: "running", retriedStepId: failedNode, workflowRuns: launched.runs };
+    },
+    async undoCanvas(request) {
+      if (!repository.getTask || !operationService) throw new AgentApiError(503, "AGENT_V3_UNDO_UNAVAILABLE", "Canvas Agent V3 undo is not available.");
+      const task = await repository.getTask({ tenantId: request.context.tenantId, taskId: request.taskId });
+      if (!task) throw new AgentApiError(404, "AGENT_TASK_NOT_FOUND", "Agent task was not found.");
+      const input = task.inputJson;
+      const flowId = typeof input.flowId === "string" ? input.flowId : null;
+      const projectId = typeof input.projectId === "string" ? input.projectId : null;
+      const applied = task.outputJson.appliedCanvas && typeof task.outputJson.appliedCanvas === "object" ? task.outputJson.appliedCanvas as Record<string, unknown> : null;
+      const inverseOperations = applied?.inverseOperations;
+      if (!flowId || !projectId || !Array.isArray(inverseOperations) || inverseOperations.length === 0) throw new AgentApiError(409, "AGENT_UNDO_NOT_AVAILABLE", "No reversible canvas operation is available for this task.");
+      const result = await operationService.applyApprovedOperationSet({ tenantId: request.context.tenantId, projectId, flowId, taskId: task.id, operationSet: { operationSetId: `v3:${task.id}:undo:${request.expectedRevision}`, taskId: task.id, turnId: task.id, baseRevision: request.expectedRevision, summary: "Undo approved Canvas Agent operations", risk: "safe", requiresApproval: false, preconditions: [], expectedEffects: [], operations: inverseOperations as never } });
+      return { taskId: task.id, status: "succeeded", revision: result.revision, undone: true };
     },
   };
 }

@@ -571,6 +571,10 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     } catch (error) { return handleRouteError(error, request, reply); }
   });
   app.post("/api/v2/agent/v3/tasks/:taskId/undo-canvas", { preHandler: [...authHandlers, requirePermission("flow:update")] }, async (request, reply) => {
-    agentV3TaskIdParamsSchema.parse(request.params); agentV3UndoSchema.parse(request.body); return sendError(request, reply, 503, "AGENT_V3_UNDO_UNAVAILABLE", "Canvas Agent V3 undo is not available.");
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const body = agentV3UndoSchema.parse(request.body);
+      return reply.send(await app.agentV3Runtime.undoCanvas({ taskId: params.taskId, context: getAgentContext(request), expectedRevision: body.expectedRevision }));
+    } catch (error) { return handleRouteError(error, request, reply); }
   });
 }
