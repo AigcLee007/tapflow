@@ -11,6 +11,7 @@ Last updated: 2026-08-31
 - Added bounded V4 generation orchestration with stable per-item keys, cancellation handling, concurrency limits, and failed-item-only retries. Added delivery verification and a commit boundary that refuses partial/unverified results before delegating to revision-CAS canvas operations. Focused API validation now covers these paths; staging integration with real Workflow, Worker, billing, assets, and authenticated UI remains pending.
 - Added V4 API/SSE routes, feature-flag-aware runtime assembly, safe planning handlers, a frontend V4 event client/task panel, and initial Golden Task acceptance fixtures. API and frontend production builds pass. Paid generation handlers, full canvas interaction, and authenticated staging acceptance remain release gates.
 - V4 generation results now carry sanitized Workflow Run IDs through the task/event contract, enabling asynchronous Worker terminal synchronization without exposing provider internals or re-running idempotent jobs. API build and V4 focused tests remain green.
+- Added Worker-side V4 terminal result projection with stable delivery idempotency keys and safe generation item/task status updates. Worker focused test and build pass; wiring the projector into the live terminal processor and authenticated staging verification remain pending.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
