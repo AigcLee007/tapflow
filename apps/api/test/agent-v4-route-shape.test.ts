@@ -7,6 +7,23 @@ describe("Agent V4 turn route response contract", () => {
     expect(readAgentV4RouteResponse(true, { taskId: "task-1", status: "waiting_for_approval" })).toContain("event: done");
   });
 
+  it("redacts unsafe fields from the browser-facing stream projection", () => {
+    const response = readAgentV4RouteResponse(true, {
+      taskId: "task-2",
+      status: "preview_ready",
+      summary: "safe",
+      provider: "secret-provider",
+      signedUrl: "https://example.invalid/private",
+      credential: "do-not-send",
+      unknownInternalField: "do-not-send",
+    });
+
+    expect(response).toContain('"summary":"safe"');
+    expect(response).not.toContain("secret-provider");
+    expect(response).not.toContain("example.invalid");
+    expect(response).not.toContain("do-not-send");
+  });
+
   it("fails closed for invalid replay cursors", () => {
     expect(parseV4AfterSequence(undefined)).toBe(0);
     expect(parseV4AfterSequence("12")).toBe(12);

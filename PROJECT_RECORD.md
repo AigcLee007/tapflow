@@ -6909,3 +6909,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - V4 task controls now merge item-level retry responses into the existing generation-item state, preserving successful items while immediately showing the retried item as running with its retry count.
 - Corrected the session stream handle type to match the authenticated fetch-SSE client rather than the browser-only `EventSource` type.
 - V4 frontend tests (5 files / 15 tests) and the production frontend build pass; authenticated staging and full eight-scenario acceptance remain pending.
+
+## 2026-09-01 - Canvas Agent V4 route response redaction
+
+- Added a final route-boundary sanitizer for V4 JSON and SSE turn responses. Browser-facing payloads now retain only the approved safe event fields and remove provider, credential, URL, and unknown internal fields even if a lower layer accidentally returns them.
+- Added regression coverage for the SSE `done` projection; API route test and API build pass.
