@@ -6925,3 +6925,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Re-ran the focused frontend V4 suite: 5 files / 16 tests passed.
 - Re-ran the API V4 suite: 8 files / 27 tests passed, including route redaction and Golden Task contracts.
 - Re-ran Worker terminal projection coverage: 3 tests passed. These remain local evidence only; authenticated staging with real PostgreSQL, Redis/BullMQ, S3, priced provider, billing and rollback evidence is still required.
+
+## 2026-09-01 - Package-level verification
+
+- Worker package suite: 117 passed / 18 skipped; AI Gateway Core: 176 passed; DB: 55 passed / 38 skipped.
+- API package suite reached 517 passed / 122 skipped, but the run still exits non-zero because of two pre-existing non-V4 transform failures in `test/admin.test.ts` (unterminated string) and `test/queues.test.ts` (corrupted import token). V4-focused API tests remain green; these unrelated syntax failures are not modified in this task.
