@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createV4Turn, getLatestV4Task, openV4EventStream } from "./canvasAgentV4Api";
+import { createV4Turn, getLatestV4Task, openV4EventStream, type V4EventStream } from "./canvasAgentV4Api";
 import type { CanvasAgentV4Task } from "./canvasAgentV4Types";
 
 export function useCanvasAgentV4Session(input: { sessionId?: string; enabled?: boolean }) {
   const [task, setTask] = useState<CanvasAgentV4Task>();
-  const sourceRef = useRef<EventSource>();
+  const sourceRef = useRef<V4EventStream>();
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const taskRef = useRef<CanvasAgentV4Task>();
   const terminalStatuses = new Set(["succeeded", "partial_success", "needs_review", "failed", "cancelled"]);

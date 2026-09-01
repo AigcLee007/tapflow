@@ -6903,3 +6903,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Added runtime-level coverage for refresh recovery: latest-task lookup is tenant-scoped and returns only task ID, status, and safe generation item metadata; private prompt and provider-response fields are not projected.
 - API runtime tests remain green.
+
+## 2026-09-01 - Canvas Agent V4 control-state projection
+
+- V4 task controls now merge item-level retry responses into the existing generation-item state, preserving successful items while immediately showing the retried item as running with its retry count.
+- Corrected the session stream handle type to match the authenticated fetch-SSE client rather than the browser-only `EventSource` type.
+- V4 frontend tests (5 files / 15 tests) and the production frontend build pass; authenticated staging and full eight-scenario acceptance remain pending.
