@@ -14,7 +14,7 @@ export function registerAgentV4Routes(app: FastifyInstance): void {
   const run = [requireAuth, requireTenant, requirePermission("flow:run")];
   const startTurn = (stream: boolean) => async (request: any, reply: any) => {
     try { const result = await app.agentV4Runtime.startTurn({ sessionId: String(request.params.sessionId), context: { tenantId: request.ctx.tenantId!, userId: request.ctx.userId }, body: agentV4TurnInputSchema.parse(request.body) });
-      if (!stream) return reply.send(result);
+      if (!stream) return reply.send(readAgentV4RouteResponse(false, result));
       reply.raw.setHeader("cache-control", "no-cache"); reply.raw.setHeader("connection", "keep-alive"); reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8"); reply.hijack();
       reply.raw.write(readAgentV4RouteResponse(true, result)); reply.raw.end(); return reply;
     }
