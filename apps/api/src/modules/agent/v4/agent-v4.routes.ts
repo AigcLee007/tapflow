@@ -22,6 +22,10 @@ export function registerAgentV4Routes(app: FastifyInstance): void {
   };
   app.post("/api/v2/agent/v4/sessions/:sessionId/turns", { preHandler: read }, startTurn(false));
   app.post("/api/v2/agent/v4/sessions/:sessionId/turns/stream", { preHandler: read }, startTurn(true));
+  app.get("/api/v2/agent/v4/sessions/:sessionId/latest-task", { preHandler: read }, async (request, reply) => {
+    try { return reply.send(await app.agentV4Runtime.latestTask({ sessionId: String((request.params as any).sessionId), context: { tenantId: request.ctx.tenantId!, userId: request.ctx.userId } })); }
+    catch (error) { return sendV4Error(error, reply); }
+  });
   app.get("/api/v2/agent/v4/tasks/:taskId/events", { preHandler: read }, async (request, reply) => {
     try {
       const params = request.params as { taskId: string }; const query = request.query as { afterSeq?: string | number };

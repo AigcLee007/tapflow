@@ -6890,3 +6890,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Added a bounded, URL-free canvas reference collector and wired it into V4 prompt submission. Asset IDs from node `assetId`/reference lists now reach the server as `referenceContext`, preserving the uploaded product photo across analysis and prompt-set planning.
 - Added tests for deduplication, invalid transport values, and the 16-reference cap; V4 session/reference tests and frontend build pass.
+## 2026-09-01 - Canvas Agent V4 latest-task replay on refresh
+
+- Added a tenant-scoped latest-task repository query and `/api/v2/agent/v4/sessions/:sessionId/latest-task` endpoint.
+- The V4 session hook now restores the latest task on mount and reconnects its event stream from the persisted sequence, preserving generation items after a page refresh.
+- Focused V4/API tests pass and the frontend/API/Worker build checks remain green; real staging replay evidence is still required.

@@ -3,15 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentV4TaskStore, type AgentV4TaskRepository } from "../src/modules/agent/v4/agent-v4-task-store.js";
 
 function repositoryMock() {
-  const tasks = new Map<string, { id: string; tenantId: string; sessionId: string; projectId: string; flowId: string; graphRevision: number; prompt: string; status: string }>();
+  const tasks = new Map<string, { id: string; idempotencyKey: string; tenantId: string; sessionId: string; projectId: string; flowId: string; graphRevision: number; prompt: string; status: string }>();
   const events: Array<{ seq: number; tenantId: string; taskId: string; idempotencyKey: string; eventType: string; eventJson: Record<string, unknown> }> = [];
   let seq = 0;
   const repository: AgentV4TaskRepository = {
     createTask: vi.fn(async (input) => {
-      const existing = [...tasks.values()].find((task) => task.tenantId === input.tenantId && input.idempotencyKey === input.idempotencyKey);
+      const existing = [...tasks.values()].find((task) => task.tenantId === input.tenantId && task.idempotencyKey === input.idempotencyKey);
       if (existing) return { id: existing.id };
       const id = `task-${tasks.size + 1}`;
-      tasks.set(id, { id, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision, prompt: input.prompt, status: input.status });
+      tasks.set(id, { id, idempotencyKey: input.idempotencyKey, tenantId: input.tenantId, sessionId: input.sessionId, projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision, prompt: input.prompt, status: input.status });
       return { id };
     }),
     appendEvent: vi.fn(async (input) => {
@@ -26,6 +26,7 @@ function repositoryMock() {
       const task = tasks.get(taskId);
       return task?.tenantId === tenantId ? task : null;
     }),
+    getLatestTask: vi.fn(async ({ tenantId, sessionId }) => [...tasks.values()].reverse().find((task) => task.tenantId === tenantId && task.sessionId === sessionId) ?? null),
     updateTask: vi.fn(async () => undefined),
     findGenerationItem: vi.fn(async () => null),
     updateGenerationItem: vi.fn(async () => undefined),
@@ -42,6 +43,15 @@ describe("AgentV4TaskStore", () => {
     const second = await store.create(input);
     expect(second.id).toBe(first.id);
     expect(repository.createTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads the latest V4 task for a tenant-scoped session", async () => {
+    const { repository } = repositoryMock();
+    const store = new AgentV4TaskStore(repository);
+    await store.create({ tenantId: "tenant-1", sessionId: "session-1", projectId: "project-1", flowId: "flow-1", prompt: "first" });
+    const latest = await store.create({ tenantId: "tenant-1", sessionId: "session-1", projectId: "project-1", flowId: "flow-1", prompt: "second" });
+    await expect(store.getLatest({ tenantId: "tenant-1", sessionId: "session-1" })).resolves.toMatchObject({ id: latest.id, prompt: "second" });
+    await expect(store.getLatest({ tenantId: "tenant-other", sessionId: "session-1" })).resolves.toBeNull();
   });
 
   it("persists only bounded reference asset IDs for continuation planning", async () => {

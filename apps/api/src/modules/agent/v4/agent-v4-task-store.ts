@@ -39,6 +39,7 @@ export type AgentV4TaskRepository = {
     inputJson: Record<string, unknown>;
   }): Promise<{ id: string }>;
   getTask?(input: { tenantId: string; taskId: string }): Promise<AgentV4TaskRecord | null>;
+  getLatestTask?(input: { tenantId: string; sessionId: string }): Promise<AgentV4TaskRecord | null>;
   updateTask?(id: string, input: { tenantId: string; status: AgentV4Status; outputJson?: Record<string, unknown>; errorJson?: Record<string, unknown> | null }): Promise<void>;
   appendEvent(input: { tenantId: string; sessionId: string; taskId: string; agentNamespace: string; agentVersion: "v4"; eventType: string; eventJson: Record<string, unknown>; idempotencyKey: string }): Promise<{ id?: string; seq?: number } | null>;
   getEvents?(input: { tenantId: string; taskId: string; afterSeq: number }): Promise<Array<{ seq: number; eventType: string; eventJson: Record<string, unknown> }>>;
@@ -152,6 +153,14 @@ export class DatabaseAgentV4TaskRepository implements AgentV4TaskRepository {
     }, this.pool);
   }
 
+  async getLatestTask(input: { tenantId: string; sessionId: string }): Promise<AgentV4TaskRecord | null> {
+    const result = await withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => client.query<{ id: string }>(
+      `SELECT id::text AS id FROM agent_tasks WHERE tenant_id = $1::uuid AND session_id = $2::uuid AND agent_version = 'v4' ORDER BY updated_at DESC, id DESC LIMIT 1`,
+      [input.tenantId, input.sessionId],
+    ), this.pool);
+    return result.rows[0] ? this.getTask({ tenantId: input.tenantId, taskId: result.rows[0].id }) : null;
+  }
+
   async getEvents(input: { tenantId: string; taskId: string; afterSeq: number }) {
     return withTenantTransaction({ tenantId: input.tenantId, userId: null }, async (client) => {
       const result = await client.query<{ seq: string; event_type: string; event_json: Record<string, unknown> }>(
@@ -214,6 +223,10 @@ export class AgentV4TaskStore {
   async listEvents(input: { tenantId: string; taskId: string; afterSeq?: number }) {
     if (!this.repository.getEvents) return [];
     return this.repository.getEvents({ ...input, afterSeq: input.afterSeq ?? 0 });
+  }
+
+  async getLatest(input: { tenantId: string; sessionId: string }) {
+    return this.repository.getLatestTask ? this.repository.getLatestTask(input) : null;
   }
 
   async update(task: AgentV4TaskRecord, input: { status: AgentV4Status; outputJson?: Record<string, unknown>; errorJson?: Record<string, unknown> | null }) {

@@ -1,8 +1,11 @@
-import { apiPost, getStoredAccessToken, refreshAccessToken } from "../../../services/v2HttpClient";
+import { apiGet, apiPost, getStoredAccessToken, refreshAccessToken } from "../../../services/v2HttpClient";
 import { readAgentSseStream } from "../canvasAgentApi";
 
 export async function createV4Turn(sessionId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   return apiPost<Record<string, unknown>>(`/agent/v4/sessions/${encodeURIComponent(sessionId)}/turns`, body);
+}
+export function getLatestV4Task(sessionId: string): Promise<Record<string, unknown> | null> {
+  return apiGet<Record<string, unknown> | null>(`/agent/v4/sessions/${encodeURIComponent(sessionId)}/latest-task`);
 }
 export type V4EventStream = { close: () => void };
 

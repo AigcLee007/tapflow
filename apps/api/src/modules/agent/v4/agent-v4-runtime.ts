@@ -47,6 +47,13 @@ export class AgentV4RuntimeService {
     return service.run({ task, context: input.context, prompt: body.prompt, safeContext: body.snapshot });
   }
   async replayEvents(input: { tenantId: string; taskId: string; afterSeq: number }) { if (!this.options.enabled) return this.unavailable(); return new AgentV4TaskStore(this.options.repository).listEvents(input); }
+  async latestTask(input: { sessionId: string; context: AgentV4RequestContext }) {
+    if (!this.options.enabled) return this.unavailable();
+    const task = await new AgentV4TaskStore(this.options.repository).getLatest({ tenantId: input.context.tenantId, sessionId: input.sessionId });
+    if (!task) return null;
+    const items = Array.isArray(task.outputJson?.generationItems) ? task.outputJson?.generationItems : [];
+    return { taskId: task.id, status: task.status, lastSequence: 0, generationItems: items };
+  }
   private async getTask(input: { taskId: string; context: AgentV4RequestContext }) {
     if (!this.options.repository.getTask) throw new AgentApiError(503, "AGENT_V4_TASK_STORE_UNAVAILABLE", "V4 task store is not available.");
     const task = await this.options.repository.getTask({ tenantId: input.context.tenantId, taskId: input.taskId });

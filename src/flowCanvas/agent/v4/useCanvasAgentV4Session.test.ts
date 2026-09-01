@@ -4,16 +4,20 @@ import { useCanvasAgentV4Session } from "./useCanvasAgentV4Session";
 
 const createV4TurnMock = vi.fn();
 const openV4EventStreamMock = vi.fn();
+const getLatestV4TaskMock = vi.fn();
 
 vi.mock("./canvasAgentV4Api", () => ({
   createV4Turn: (...args: unknown[]) => createV4TurnMock(...args),
   openV4EventStream: (...args: unknown[]) => openV4EventStreamMock(...args),
+  getLatestV4Task: (...args: unknown[]) => getLatestV4TaskMock(...args),
 }));
 
 describe("useCanvasAgentV4Session", () => {
   beforeEach(() => {
     createV4TurnMock.mockReset();
     openV4EventStreamMock.mockReset();
+    getLatestV4TaskMock.mockReset();
+    getLatestV4TaskMock.mockResolvedValue(null);
   });
 
   it("fails closed when the v4 session is disabled", async () => {
@@ -27,6 +31,15 @@ describe("useCanvasAgentV4Session", () => {
     const hook = renderHook(() => useCanvasAgentV4Session({ sessionId: "s1", enabled: true }));
     await act(async () => { await hook.result.current.sendPrompt("make a suite", { referenceContext: [{ assetId: "asset-photo" }] }); });
     expect(createV4TurnMock).toHaveBeenCalledWith("s1", { prompt: "make a suite", referenceContext: [{ assetId: "asset-photo" }] });
+  });
+
+  it("restores the latest task and replays its events after mounting", async () => {
+    getLatestV4TaskMock.mockResolvedValue({ taskId: "task-old", status: "partial_success", lastSequence: 0, generationItems: [{ itemId: "main-1", status: "succeeded", assetId: "asset-1" }] });
+    openV4EventStreamMock.mockImplementation(() => ({ close: vi.fn() }));
+    const hook = renderHook(() => useCanvasAgentV4Session({ sessionId: "s1", enabled: true }));
+    await waitFor(() => expect(hook.result.current.task?.id).toBe("task-old"));
+    expect(openV4EventStreamMock).toHaveBeenCalledWith("task-old", 0, expect.any(Function), expect.any(Function));
+    expect(hook.result.current.task?.generationItems).toEqual([{ itemId: "main-1", status: "succeeded", assetId: "asset-1" }]);
   });
 
   it("deduplicates and ignores out-of-order events by sequence", async () => {

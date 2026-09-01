@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createV4Turn, openV4EventStream } from "./canvasAgentV4Api";
+import { createV4Turn, getLatestV4Task, openV4EventStream } from "./canvasAgentV4Api";
 import type { CanvasAgentV4Task } from "./canvasAgentV4Types";
 
 export function useCanvasAgentV4Session(input: { sessionId?: string; enabled?: boolean }) {
@@ -64,6 +64,24 @@ export function useCanvasAgentV4Session(input: { sessionId?: string; enabled?: b
       subscribe(taskId, 0);
     }
     return result;
+  }, [input.enabled, input.sessionId, subscribe]);
+  useEffect(() => {
+    if (!input.enabled || !input.sessionId || taskRef.current) return;
+    let active = true;
+    void Promise.resolve(getLatestV4Task(input.sessionId)).then((result) => {
+      if (!active || !result || typeof result.taskId !== "string") return;
+      const restored = {
+        id: result.taskId,
+        status: typeof result.status === "string" ? result.status : "draft",
+        lastSequence: typeof result.lastSequence === "number" && Number.isInteger(result.lastSequence) ? result.lastSequence : 0,
+        events: [],
+        ...(Array.isArray(result.generationItems) ? { generationItems: result.generationItems } : {}),
+      } as CanvasAgentV4Task;
+      taskRef.current = restored;
+      setTask(restored);
+      subscribe(restored.id, restored.lastSequence);
+    }).catch(() => undefined);
+    return () => { active = false; };
   }, [input.enabled, input.sessionId, subscribe]);
   useEffect(() => () => closeSource(), [closeSource]);
   return { task, sendPrompt };
