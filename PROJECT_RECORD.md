@@ -6930,3 +6930,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Worker package suite: 117 passed / 18 skipped; AI Gateway Core: 176 passed; DB: 55 passed / 38 skipped.
 - API package suite reached 517 passed / 122 skipped, but the run still exits non-zero because of two pre-existing non-V4 transform failures in `test/admin.test.ts` (unterminated string) and `test/queues.test.ts` (corrupted import token). V4-focused API tests remain green; these unrelated syntax failures are not modified in this task.
+
+## 2026-09-01 - V4 staging migration preflight
+
+- Staging image build succeeded, but migration stopped safely on a historical checksum mismatch for `000076_agent_skills.sql`: the applied record is `11a5564a...c8db`, while the canonical repository file is `013df16e...cb19`.
+- Read-only inspection confirmed that all five Agent Skill tables, current constraints, indexes, RLS policies, and the published-version immutability trigger represented by the canonical migration exist in staging. The duplicate trigger rows shown by `information_schema.triggers` represent its two events (`UPDATE` and `DELETE`).
+- Staging currently records migrations through version 76; versions 77 (V3 idempotency indexes) and 78 (V4 task/event indexes) remain unapplied. Worker was restored after the failed migration. A guarded, exact-old-checksum reconciliation is required before rerunning the migrator; no unchecked migration metadata mutation is permitted.
