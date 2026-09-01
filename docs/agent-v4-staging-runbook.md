@@ -40,6 +40,28 @@ npm run smoke:agent-v4
 
 ## 失败与回滚
 
+### Migration checksum mismatch
+
+If the migrator reports `Applied migration checksum mismatch`, stop the deployment. Do not delete or update `schema_migrations` and do not edit an already-applied migration in place. First restore the previously running worker and record both values:
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml start tapflow-worker
+sha256sum packages/db/migrations/000076_agent_skills.sql
+```
+
+The applied checksum must be queried through the migration container (the host does not need `psql`):
+
+```bash
+docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml run --rm tapflow-migrator node -e '
+const { Client } = require("pg");
+(async () => { const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
+const r = await c.query("SELECT filename, checksum FROM schema_migrations WHERE filename = $1", ["000076_agent_skills.sql"]);
+for (const row of r.rows) console.log(`${row.filename}|${row.checksum}`); await c.end();
+})().catch((e) => { console.error(e.code || e.message); process.exit(1); });'
+```
+
+Only after the old migration bytes or a schema-level reconciliation plan has been reviewed should migration resume. If the old bytes cannot be recovered, compare the existing tables, constraints, indexes, triggers, and RLS policies with the migration before creating a new repair migration or performing a separately approved checksum reconciliation.
+
 - 缺少价格、余额不足、route 不可用、S3 写入失败时确认 fail-closed，不产生免费执行。
 - 取消任务后确认队列前阻止执行，队列后由 Workflow 取消并按实际状态 settle/refund。
 - 关闭两个 V4 flag 并重启 API/Worker/frontend；确认历史 task、events、assets、drafts 和 ledger 不被删除。
