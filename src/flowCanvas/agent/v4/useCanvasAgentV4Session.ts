@@ -53,9 +53,9 @@ export function useCanvasAgentV4Session(input: { sessionId?: string; enabled?: b
       reconnectTimerRef.current = setTimeout(() => subscribe(taskId, taskRef.current?.lastSequence ?? afterSeq), 250);
     });
   }, [closeSource]);
-  const sendPrompt = useCallback(async (prompt: string, snapshot?: Record<string, unknown>) => {
+  const sendPrompt = useCallback(async (prompt: string, options?: { snapshot?: Record<string, unknown>; referenceContext?: Array<{ assetId: string; refId?: string; label?: string }> }) => {
     if (!input.enabled || !input.sessionId) throw new Error("AGENT_V4_UNAVAILABLE");
-    const result = await createV4Turn(input.sessionId, { prompt, snapshot });
+    const result = await createV4Turn(input.sessionId, { prompt, ...(options?.snapshot ? { snapshot: options.snapshot } : {}), ...(options?.referenceContext ? { referenceContext: options.referenceContext } : {}) });
     const taskId = typeof result.taskId === "string" ? result.taskId : undefined;
     if (taskId) {
       const nextTask = { id: taskId, status: typeof result.status === "string" ? result.status : "draft", lastSequence: 0, events: [] } as CanvasAgentV4Task;

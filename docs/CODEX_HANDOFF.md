@@ -816,3 +816,7 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 
 - V4 task controls now synchronize with the session-created task and newer event sequences, fixing the live UI path for approval, cancellation, retry, and undo actions.
 - Focused V4 tests and builds pass; authenticated staging acceptance remains pending.
+## Canvas Agent V4 continuation (2026-09-01, reference propagation)
+
+- Project canvas V4 prompts now include bounded `referenceContext` derived from persisted asset IDs, so the photo-to-Taobao-suite path retains the user’s uploaded product references without sending preview URLs.
+- Reference collector and session forwarding tests pass; staging with real assets remains pending.

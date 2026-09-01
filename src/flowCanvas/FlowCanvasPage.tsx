@@ -16,6 +16,7 @@ import { CanvasAgentV4TaskPanel } from './agent/v4/CanvasAgentV4TaskPanel';
 import type { CanvasAgentV4Task } from './agent/v4/canvasAgentV4Types';
 import { useCanvasAgentV4Session } from './agent/v4/useCanvasAgentV4Session';
 import { useCanvasAgentV4TaskControls } from './agent/v4/useCanvasAgentV4TaskControls';
+import { collectCanvasV4ReferenceContext } from './agent/v4/canvasAgentV4References';
 import type { CanvasAgentV3RuntimeIdentity } from './agent/v3/canvasAgentV3Types';
 import { useCanvasAgentTask } from './agent/v3/useCanvasAgentTask';
 
@@ -227,6 +228,7 @@ const FlowCanvasPage: React.FC<{
   const [agentOpen, setAgentOpen] = useState(false);
   const v3 = useCanvasAgentTask({ sessionId: agentV3SessionId, runtimeIdentity: agentV3RuntimeIdentity });
   const v4Session = useCanvasAgentV4Session({ sessionId: agentV4SessionId, enabled: agentV4RuntimeIdentity === 'v4_real' });
+  const canvasNodes = useFlowCanvasStore((s) => s.nodes);
   const v4Controls = useCanvasAgentV4TaskControls(agentV4Task ?? v4Session.task);
   const toggleCulling = useCallback(() => setCullingEnabled((v) => !v), []);
 
@@ -257,7 +259,7 @@ const FlowCanvasPage: React.FC<{
             <CanvasAgentCommandBar runtimeIdentity={agentV3RuntimeIdentity} task={v3.task ?? undefined} onSubmit={(prompt) => void v3.sendPrompt(prompt)} onCancel={() => void v3.cancel()} />
             <CanvasAgentTaskSheet task={v3.task ?? undefined} onApprove={() => void v3.approve(true)} />
           </>}
-          {agentV4RuntimeIdentity === 'v4_real' && <CanvasAgentV4TaskPanel task={v4Controls.task} onSubmit={(prompt) => void v4Session.sendPrompt(prompt)} onApprove={onAgentV4Approve ?? (() => void v4Controls.approve())} onCancel={onAgentV4Cancel ?? (() => void v4Controls.cancel())} onRetry={onAgentV4Retry ?? ((itemId) => void v4Controls.retry(itemId))} onUndo={(revision) => void v4Controls.undo(revision)} />}
+          {agentV4RuntimeIdentity === 'v4_real' && <CanvasAgentV4TaskPanel task={v4Controls.task} onSubmit={(prompt) => void v4Session.sendPrompt(prompt, { referenceContext: collectCanvasV4ReferenceContext(canvasNodes) })} onApprove={onAgentV4Approve ?? (() => void v4Controls.approve())} onCancel={onAgentV4Cancel ?? (() => void v4Controls.cancel())} onRetry={onAgentV4Retry ?? ((itemId) => void v4Controls.retry(itemId))} onUndo={(revision) => void v4Controls.undo(revision)} />}
         </ReactFlowProvider>
       </div>
     </div>

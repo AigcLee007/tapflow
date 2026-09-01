@@ -21,6 +21,14 @@ describe("useCanvasAgentV4Session", () => {
     await expect(hook.result.current.sendPrompt("hello")).rejects.toThrow("AGENT_V4_UNAVAILABLE");
   });
 
+  it("forwards reference context in the turn request", async () => {
+    createV4TurnMock.mockResolvedValue({ taskId: "task-ref", status: "observing" });
+    openV4EventStreamMock.mockImplementation(() => ({ close: vi.fn() }));
+    const hook = renderHook(() => useCanvasAgentV4Session({ sessionId: "s1", enabled: true }));
+    await act(async () => { await hook.result.current.sendPrompt("make a suite", { referenceContext: [{ assetId: "asset-photo" }] }); });
+    expect(createV4TurnMock).toHaveBeenCalledWith("s1", { prompt: "make a suite", referenceContext: [{ assetId: "asset-photo" }] });
+  });
+
   it("deduplicates and ignores out-of-order events by sequence", async () => {
     let emit: ((event: Record<string, unknown>) => void) | undefined;
     createV4TurnMock.mockResolvedValue({ taskId: "task-1", status: "observing" });

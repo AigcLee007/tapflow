@@ -6886,3 +6886,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Fixed the V4 control hook to adopt a task created after the session mounts and to follow newer event sequence snapshots. Approve, cancel, retry, and undo callbacks now receive the live task instead of remaining bound to the initial `undefined` value.
 - Added a regression test for post-mount task creation; V4 focused tests (33) and frontend/API/Worker builds pass.
+## 2026-09-01 - Canvas Agent V4 project reference propagation
+
+- Added a bounded, URL-free canvas reference collector and wired it into V4 prompt submission. Asset IDs from node `assetId`/reference lists now reach the server as `referenceContext`, preserving the uploaded product photo across analysis and prompt-set planning.
+- Added tests for deduplication, invalid transport values, and the 16-reference cap; V4 session/reference tests and frontend build pass.
