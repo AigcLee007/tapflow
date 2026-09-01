@@ -6936,3 +6936,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Staging image build succeeded, but migration stopped safely on a historical checksum mismatch for `000076_agent_skills.sql`: the applied record is `11a5564a...c8db`, while the canonical repository file is `013df16e...cb19`.
 - Read-only inspection confirmed that all five Agent Skill tables, current constraints, indexes, RLS policies, and the published-version immutability trigger represented by the canonical migration exist in staging. The duplicate trigger rows shown by `information_schema.triggers` represent its two events (`UPDATE` and `DELETE`).
 - Staging currently records migrations through version 76; versions 77 (V3 idempotency indexes) and 78 (V4 task/event indexes) remain unapplied. Worker was restored after the failed migration. A guarded, exact-old-checksum reconciliation is required before rerunning the migrator; no unchecked migration metadata mutation is permitted.
+
+## 2026-09-01 - V4 staging deployment and migration
+
+- The historical version-76 checksum was reconciled only after schema-level verification and an on-server audit record was created. A rebuilt `tools` profile migrator then applied versions 77 and 78.
+- Staging verification confirms migration records 76–78 and all five expected V3/V4 idempotency/status indexes. API, frontend, worker, and Redis were recreated from the V4 branch images; Redis is healthy and `GET /health` returns `{"status":"ok"}`.
+- Infrastructure deployment is complete. Authenticated V4 capability, planning, approval, priced generation, billing, asset delivery, replay, retry, CAS conflict, undo, and rollback acceptance remain pending before the V4 release gate can close.
