@@ -1,9 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { approveV4Task, cancelV4Task, retryV4Item, undoV4Task } from "./canvasAgentV4Api";
 import type { CanvasAgentV4Task } from "./canvasAgentV4Types";
 
 export function useCanvasAgentV4TaskControls(initial?: CanvasAgentV4Task) {
   const [task, setTask] = useState<CanvasAgentV4Task | undefined>(initial);
+  useEffect(() => {
+    if (!initial) return;
+    setTask((current) => !current || current.id !== initial.id || initial.lastSequence > current.lastSequence ? initial : current);
+  }, [initial]);
   const apply = useCallback((result: Record<string, unknown>) => setTask((current) => current ? { ...current, status: typeof result.status === "string" ? result.status : current.status } : current), []);
   const approve = useCallback(async () => { if (!task) return; apply(await approveV4Task(task.id)); }, [apply, task]);
   const cancel = useCallback(async () => { if (!task) return; apply(await cancelV4Task(task.id)); }, [apply, task]);

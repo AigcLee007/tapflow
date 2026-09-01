@@ -6882,3 +6882,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Fixed the frontend V4 session reducer to merge sanitized `items`/`generationItems` from Worker delivery events into task progress, preserving prior item fields by stable item ID.
 - Added `needs_review` to the terminal status set so a delivery requiring review closes the stream instead of reconnecting indefinitely. Focused V4 UI/API tests (32) and API/Worker builds pass.
+## 2026-09-01 - Canvas Agent V4 control-state synchronization
+
+- Fixed the V4 control hook to adopt a task created after the session mounts and to follow newer event sequence snapshots. Approve, cancel, retry, and undo callbacks now receive the live task instead of remaining bound to the initial `undefined` value.
+- Added a regression test for post-mount task creation; V4 focused tests (33) and frontend/API/Worker builds pass.

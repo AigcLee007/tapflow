@@ -812,3 +812,7 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 
 - Worker terminal item payloads now appear in the V4 frontend task state, enabling accurate success/failure progress and retry buttons after delivery events. `needs_review` is treated as terminal for stream lifecycle.
 - Focused V4 tests and API/Worker builds pass; authenticated staging remains pending.
+## Canvas Agent V4 continuation (2026-09-01, control state)
+
+- V4 task controls now synchronize with the session-created task and newer event sequences, fixing the live UI path for approval, cancellation, retry, and undo actions.
+- Focused V4 tests and builds pass; authenticated staging acceptance remains pending.
