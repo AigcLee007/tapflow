@@ -6899,3 +6899,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Added strict replay cursor parsing for the V4 SSE endpoint. Missing cursors default to zero, negative values clamp to zero, and non-finite/non-integer values return `400 INVALID_REQUEST` instead of reaching the database as `NaN`.
 - Focused route-shape and error-contract tests pass.
+## 2026-09-01 - Canvas Agent V4 latest-task runtime contract
+
+- Added runtime-level coverage for refresh recovery: latest-task lookup is tenant-scoped and returns only task ID, status, and safe generation item metadata; private prompt and provider-response fields are not projected.
+- API runtime tests remain green.

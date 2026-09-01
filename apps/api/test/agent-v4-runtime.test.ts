@@ -94,4 +94,20 @@ describe("AgentV4RuntimeService", () => {
       operationSet: expect.objectContaining({ baseRevision: 5, operations: [{ type: "node.delete", nodeId: "result-asset-1" }] }),
     }));
   });
+
+  it("returns safe latest-task metadata for refresh recovery", async () => {
+    const latestTask = {
+      id: "task-latest", tenantId: "tenant-1", sessionId: "session-1", projectId: "project-1", flowId: "flow-1", graphRevision: 8,
+      prompt: "private prompt", status: "partial_success" as const,
+      outputJson: { generationItems: [{ itemId: "main-1", status: "succeeded", assetId: "asset-1" }], providerResponse: { secret: "never" } },
+    };
+    const getLatestTask = vi.fn(async ({ tenantId, sessionId }: { tenantId: string; sessionId: string }) => tenantId === "tenant-1" && sessionId === "session-1" ? latestTask : null);
+    const repository: AgentV4TaskRepository = { createTask: vi.fn(), getLatestTask, appendEvent: vi.fn(async () => ({ seq: 1 })), updateTask: vi.fn() };
+    const runtime = new AgentV4RuntimeService({ enabled: true, repository, session: { getSession: vi.fn() }, textRuntime: { async *streamText() {} } });
+    await expect(runtime.latestTask({ sessionId: "session-1", context: { tenantId: "tenant-1", userId: "user-1" } })).resolves.toEqual({
+      taskId: "task-latest", status: "partial_success", lastSequence: 0,
+      generationItems: [{ itemId: "main-1", status: "succeeded", assetId: "asset-1" }],
+    });
+    expect(getLatestTask).toHaveBeenCalledWith({ tenantId: "tenant-1", sessionId: "session-1" });
+  });
 });

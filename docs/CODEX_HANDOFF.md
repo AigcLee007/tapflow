@@ -827,3 +827,6 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 ## Canvas Agent V4 continuation (2026-09-01, replay cursor)
 
 - V4 replay now validates `afterSeq` before database access and fails closed on malformed cursors. Focused API tests pass; real staging replay remains pending.
+## Canvas Agent V4 continuation (2026-09-01, latest-task contract)
+
+- Runtime-level tests now verify tenant-scoped latest-task recovery and safe metadata projection for the refresh/replay path.
