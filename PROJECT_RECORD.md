@@ -6919,3 +6919,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - V4 session state now clears and closes the prior event stream when a project page switches to a different session, preventing task/progress from one project from appearing in another.
 - Added session-switch regression coverage; V4 session tests (7) pass.
+
+## 2026-09-01 - Canvas Agent V4 focused regression matrix
+
+- Re-ran the focused frontend V4 suite: 5 files / 16 tests passed.
+- Re-ran the API V4 suite: 8 files / 27 tests passed, including route redaction and Golden Task contracts.
+- Re-ran Worker terminal projection coverage: 3 tests passed. These remain local evidence only; authenticated staging with real PostgreSQL, Redis/BullMQ, S3, priced provider, billing and rollback evidence is still required.
