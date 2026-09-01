@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAuth, requirePermission, requireTenant } from "../../../http/auth-middleware.js";
 import { agentV4RetryItemInputSchema, agentV4TurnInputSchema, agentV4UndoInputSchema } from "./agent-v4-schemas.js";
 import { ZodError } from "zod";
-import { readAgentV4RouteResponse } from "./agent-v4-route-contract.js";
+import { parseV4AfterSequence, readAgentV4RouteResponse } from "./agent-v4-route-contract.js";
 
 export function sendV4Error(error: unknown, reply: any) {
   const statusCode = error && typeof error === "object" && "statusCode" in error ? Number((error as any).statusCode) : error instanceof ZodError ? 400 : 500;
@@ -29,7 +29,7 @@ export function registerAgentV4Routes(app: FastifyInstance): void {
   app.get("/api/v2/agent/v4/tasks/:taskId/events", { preHandler: read }, async (request, reply) => {
     try {
       const params = request.params as { taskId: string }; const query = request.query as { afterSeq?: string | number };
-      const events = await app.agentV4Runtime.replayEvents({ tenantId: request.ctx.tenantId!, taskId: params.taskId, afterSeq: Math.max(0, Number(query.afterSeq ?? 0)) });
+      const events = await app.agentV4Runtime.replayEvents({ tenantId: request.ctx.tenantId!, taskId: params.taskId, afterSeq: parseV4AfterSequence(query.afterSeq) });
       reply.raw.setHeader("cache-control", "no-cache"); reply.raw.setHeader("connection", "keep-alive"); reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8"); reply.hijack();
       for (const event of events) reply.raw.write(`event: event\ndata: ${JSON.stringify({ sequence: event.seq, type: event.eventType, ...event.eventJson })}\n\n`);
       reply.raw.write(`event: done\ndata: ${JSON.stringify({ taskId: params.taskId })}\n\n`); reply.raw.end(); return reply;

@@ -824,3 +824,6 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 
 - Added tenant-scoped latest-task lookup and frontend restoration so refreshing a project page resumes the latest V4 task and replays events from `afterSeq`.
 - The implementation returns only safe task metadata and generation item IDs/statuses. Local focused tests and builds pass; staging replay acceptance remains pending.
+## Canvas Agent V4 continuation (2026-09-01, replay cursor)
+
+- V4 replay now validates `afterSeq` before database access and fails closed on malformed cursors. Focused API tests pass; real staging replay remains pending.

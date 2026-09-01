@@ -6895,3 +6895,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added a tenant-scoped latest-task repository query and `/api/v2/agent/v4/sessions/:sessionId/latest-task` endpoint.
 - The V4 session hook now restores the latest task on mount and reconnects its event stream from the persisted sequence, preserving generation items after a page refresh.
 - Focused V4/API tests pass and the frontend/API/Worker build checks remain green; real staging replay evidence is still required.
+## 2026-09-01 - Canvas Agent V4 replay cursor validation
+
+- Added strict replay cursor parsing for the V4 SSE endpoint. Missing cursors default to zero, negative values clamp to zero, and non-finite/non-integer values return `400 INVALID_REQUEST` instead of reaching the database as `NaN`.
+- Focused route-shape and error-contract tests pass.
