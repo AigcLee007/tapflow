@@ -6878,3 +6878,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Fixed the V4 route contract mismatch: `/api/v2/agent/v4/sessions/:sessionId/turns` now returns JSON for the `createV4Turn` client, while only `/turns/stream` emits SSE. Previously the normal client path received SSE and failed JSON parsing during real prompt submission.
 - Added response-shape coverage and revalidated the V4 route, Golden Task tests, and API build.
+## 2026-09-01 - Canvas Agent V4 terminal progress projection
+
+- Fixed the frontend V4 session reducer to merge sanitized `items`/`generationItems` from Worker delivery events into task progress, preserving prior item fields by stable item ID.
+- Added `needs_review` to the terminal status set so a delivery requiring review closes the stream instead of reconnecting indefinitely. Focused V4 UI/API tests (32) and API/Worker builds pass.

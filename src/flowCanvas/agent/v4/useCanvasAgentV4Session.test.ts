@@ -52,4 +52,25 @@ describe("useCanvasAgentV4Session", () => {
     act(() => onError?.());
     await waitFor(() => expect(openV4EventStreamMock).toHaveBeenLastCalledWith("task-1", 3, expect.any(Function), expect.any(Function)));
   });
+
+  it("projects worker delivery items into task progress and closes on needs_review", async () => {
+    let emit: ((event: Record<string, unknown>) => void) | undefined;
+    const close = vi.fn();
+    createV4TurnMock.mockResolvedValue({ taskId: "task-1", status: "generating_batch" });
+    openV4EventStreamMock.mockImplementation((_taskId: string, _after: number, onEvent: (event: Record<string, unknown>) => void) => {
+      emit = onEvent;
+      return { close };
+    });
+    const hook = renderHook(() => useCanvasAgentV4Session({ sessionId: "s1", enabled: true }));
+    await act(async () => { await hook.result.current.sendPrompt("hello"); });
+    act(() => emit?.({ sequence: 1, type: "delivery_verified", status: "needs_review", items: [
+      { itemId: "main-1", status: "succeeded", assetId: "asset-1" },
+      { itemId: "main-2", status: "failed", errorCode: "ASSET_WRITE_FAILED" },
+    ] }));
+    expect(hook.result.current.task?.generationItems).toEqual([
+      { itemId: "main-1", status: "succeeded", assetId: "asset-1" },
+      { itemId: "main-2", status: "failed", errorCode: "ASSET_WRITE_FAILED" },
+    ]);
+    expect(close).toHaveBeenCalled();
+  });
 });
