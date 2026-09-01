@@ -94,4 +94,15 @@ describe("useCanvasAgentV4Session", () => {
     ]);
     expect(close).toHaveBeenCalled();
   });
+
+  it("clears the prior task when switching to another session", async () => {
+    createV4TurnMock.mockResolvedValue({ taskId: "task-old", status: "observing" });
+    openV4EventStreamMock.mockImplementation(() => ({ close: vi.fn() }));
+    const hook = renderHook(({ sessionId }) => useCanvasAgentV4Session({ sessionId, enabled: true }), { initialProps: { sessionId: "s1" } });
+    await act(async () => { await hook.result.current.sendPrompt("hello"); });
+    expect(hook.result.current.task?.id).toBe("task-old");
+
+    hook.rerender({ sessionId: "s2" });
+    await waitFor(() => expect(hook.result.current.task).toBeUndefined());
+  });
 });

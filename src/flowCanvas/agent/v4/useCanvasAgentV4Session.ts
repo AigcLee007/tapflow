@@ -65,6 +65,14 @@ export function useCanvasAgentV4Session(input: { sessionId?: string; enabled?: b
     }
     return result;
   }, [input.enabled, input.sessionId, subscribe]);
+  const sessionIdRef = useRef<string | undefined>(input.sessionId);
+  useEffect(() => {
+    if (sessionIdRef.current === input.sessionId) return;
+    sessionIdRef.current = input.sessionId;
+    closeSource();
+    taskRef.current = undefined;
+    setTask(undefined);
+  }, [closeSource, input.sessionId]);
   useEffect(() => {
     if (!input.enabled || !input.sessionId || taskRef.current) return;
     let active = true;

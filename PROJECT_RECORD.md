@@ -6914,3 +6914,8 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Added a final route-boundary sanitizer for V4 JSON and SSE turn responses. Browser-facing payloads now retain only the approved safe event fields and remove provider, credential, URL, and unknown internal fields even if a lower layer accidentally returns them.
 - Added regression coverage for the SSE `done` projection; API route test and API build pass.
+
+## 2026-09-01 - Canvas Agent V4 session isolation
+
+- V4 session state now clears and closes the prior event stream when a project page switches to a different session, preventing task/progress from one project from appearing in another.
+- Added session-switch regression coverage; V4 session tests (7) pass.
