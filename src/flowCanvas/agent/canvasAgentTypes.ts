@@ -132,6 +132,22 @@ export type CanvasAgentOpSummary = {
   updateNodeCount: number;
 };
 
+export type AgentExecutionRequirement = "paid" | "batch" | "delete" | "broad_update";
+export type AgentExecutionState = "idle" | "awaiting_confirmation" | "running" | "completed" | "failed";
+export type AgentConversationState = {
+  execution: AgentExecutionState;
+  requirement?: AgentExecutionRequirement;
+};
+
+export type ConversationEvent =
+  | { type: "plan_ready"; execution?: { costCredits?: number; operationCount?: number; kind?: AgentExecutionRequirement } }
+  | { type: "confirmation_granted" }
+  | { type: "confirmation_rejected" }
+  | { type: "execution_started" }
+  | { type: "execution_completed" }
+  | { type: "execution_failed" }
+  | { type: "reset" };
+
 export function getCanvasAgentOpPermission(op: CanvasAgentOp): CanvasAgentPermissionLevel {
   if (op.type === "run_node") return "credit_required";
   if (op.type === "delete_nodes" || op.type === "delete_edges" || op.type === "update_node_data") {
