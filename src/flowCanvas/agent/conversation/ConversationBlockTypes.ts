@@ -12,7 +12,7 @@ export type ResultRef = { id: string; label: string; assetId?: string; nodeId?: 
 export type ConversationBlock =
   | { type: "paragraph"; text: string }
   | { type: "question"; id?: string; text: string; multiple?: boolean; options?: AgentOption[] }
-  | { type: "choices"; id?: string; title?: string; options: AgentOption[]; multiple?: boolean }
+  | { type: "choices" | "choice_grid"; id?: string; title?: string; options: AgentOption[]; multiple?: boolean }
   | { type: "comparison"; title?: string; columns: string[]; rows: Array<{ label: string; values: string[] }> }
   | { type: "brief"; title?: string; fields: BriefField[] }
   | { type: "capability"; title?: string; capabilities: CapabilitySummary[] }
@@ -49,12 +49,12 @@ export function normalizeConversationBlocks(input: unknown): ConversationBlock[]
       const text = stringValue(raw.text);
       return text ? [{ type, text }] : [];
     }
-    if (type === "question" || type === "choices") {
+    if (type === "question" || type === "choices" || type === "choice_grid") {
       const options = bounded(records(raw.options).flatMap((item) => { const parsed = option(item); return parsed ? [parsed] : []; }));
       const text = stringValue(raw.text);
       const title = stringValue(raw.title, 400);
       if (type === "question" && !text) return [];
-      if (type === "choices" && !options.length) return [];
+      if ((type === "choices" || type === "choice_grid") && !options.length) return [];
       const block = type === "question"
         ? { type, ...(stringValue(raw.id, 200) ? { id: stringValue(raw.id, 200) } : {}), text, ...(raw.multiple === true ? { multiple: true } : {}), ...(options.length ? { options } : {}) }
         : { type, ...(stringValue(raw.id, 200) ? { id: stringValue(raw.id, 200) } : {}), ...(title ? { title } : {}), options, ...(raw.multiple === true ? { multiple: true } : {}) };
