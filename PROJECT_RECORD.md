@@ -6788,3 +6788,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
 - the modal now traps keyboard focus, supports Shift+Tab/Tab cycling, and restores focus to the opening control when closed.
 - focused validation passed: 8 test files / 84 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.
+# 2026-09-06 - Conversational Canvas Agent Design
+
+- Confirmed product direction for a TapNow-style conversational co-creation Agent: clarify ambiguous goals first, present structured questions/options/briefs, recommend Skills and Apps, require confirmation before paid or broad canvas execution, then support result selection and iterative refinement.
+- Design spec: `docs/superpowers/specs/2026-09-06-conversational-canvas-agent-design.md`.
