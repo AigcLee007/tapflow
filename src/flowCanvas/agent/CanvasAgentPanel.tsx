@@ -406,6 +406,12 @@ export function CanvasAgentPanel(props: {
       blocks={v5Blocks}
       mode={v5Mode}
       models={v5Models}
+      onAttachmentAction={(kind) => {
+        if (kind === "skill") setSkillPickerOpen(true);
+        if (kind === "canvas") setComposerDraft("已添加当前选中的画布节点作为参考。");
+        if (kind === "upload") setUploadError("请使用当前会话的附件上传入口添加本地文件。");
+        if (kind === "app") setUploadError("App 管理将在能力中心中开放。");
+      }}
       onAction={(action: AgentBlockAction) => {
         if (action.type === "select_choice") void sessionActions.answerQuestion?.(action.optionId);
         if (action.type === "confirm") void sessionActions.answerQuestion?.("确认执行");
@@ -432,6 +438,7 @@ export function CanvasAgentPanel(props: {
         setUploadedReferences([]);
         void modelKey;
       }}
+      onSelectModel={(modelKey) => setComposerDraft((draft) => draft || `使用文本模型：${modelKey}`)}
       sessionTitle={sessionActions.sessionId ? "当前 Agent 对话" : "新对话"}
       sessions={sessionList}
     />

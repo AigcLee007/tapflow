@@ -15,7 +15,8 @@ describe("AgentWindow", () => {
   });
 
   it("opens history and attachment menus", () => {
-    render(<AgentWindow sessions={[{ id: "s1", title: "儿童陪伴玩具" }]} />);
+    const onAttachmentAction = vi.fn();
+    render(<AgentWindow onAttachmentAction={onAttachmentAction} sessions={[{ id: "s1", title: "儿童陪伴玩具" }]} />);
     fireEvent.click(screen.getByRole("button", { name: "聊天记录" }));
     expect(screen.getByText("儿童陪伴玩具")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
@@ -23,6 +24,8 @@ describe("AgentWindow", () => {
     expect(screen.getByRole("button", { name: "上传附件" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Skill" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "App" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
+    expect(onAttachmentAction).toHaveBeenCalledWith("skill");
   });
 
   it("sends text with the selected model and toggles execution mode", () => {
