@@ -28,11 +28,25 @@ describe("AgentWindow", () => {
   it("sends text with the selected model and toggles execution mode", () => {
     const onSend = vi.fn();
     const onChangeMode = vi.fn();
-    render(<AgentWindow models={[{ key: "fast", label: "快速模型" }]} onChangeMode={onChangeMode} onSend={onSend} />);
+    render(<AgentWindow blocks={[{ type: "paragraph", text: "已有上下文" }]} models={[{ key: "fast", label: "快速模型" }]} onChangeMode={onChangeMode} onSend={onSend} />);
     fireEvent.change(screen.getByRole("textbox", { name: "Agent 输入" }), { target: { value: "设计儿童玩具" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     expect(onSend).toHaveBeenCalledWith("设计儿童玩具", "fast");
     fireEvent.click(screen.getByRole("button", { name: "用户确认模式" }));
     expect(onChangeMode).toHaveBeenCalledWith("auto");
+  });
+
+  it("asks before forwarding an ambiguous first request, then sends only after Brief confirmation", () => {
+    const onSend = vi.fn();
+    render(<AgentWindow onSend={onSend} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Agent 输入" }), { target: { value: "根据小黄人设计儿童陪伴玩具" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByText("你更想优先解决哪件事？")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "陪伴与情绪安抚" }));
+    fireEvent.click(screen.getByRole("button", { name: "3-6 岁" }));
+    expect(screen.getByText("共创 Brief")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认并开始设计" }));
+    expect(onSend).toHaveBeenCalledWith(expect.stringContaining("陪伴与情绪安抚"), null);
   });
 });
