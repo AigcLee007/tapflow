@@ -54,6 +54,19 @@ function getStringList(value: unknown, maxItems = 12): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
+function sanitizeQuestionOptions(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const options = value.map((item) => {
+    const record = asRecord(item);
+    const id = getBoundedString(record?.id, 120);
+    const label = getBoundedString(record?.label, 240);
+    if (!id || !label) return null;
+    const description = getBoundedString(record?.description, 500);
+    return { id, label, ...(description ? { description } : {}) };
+  }).filter((item): item is { id: string; label: string; description?: string } => item !== null).slice(0, 8);
+  return options.length ? options : undefined;
+}
+
 function sanitizeV2AssetRefs(value: unknown): CanvasAgentToolAssetRef[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const refs = value
@@ -108,6 +121,7 @@ function sanitizeV2ToolResult(value: Record<string, unknown>): Record<string, un
     ...(getStringList(value.nodeIds) ? { nodeIds: getStringList(value.nodeIds) } : {}),
     ...(getStringList(value.placedNodeIds) ? { placedNodeIds: getStringList(value.placedNodeIds) } : {}),
     ...(getBoundedString(value.message, 1000) ? { message: getBoundedString(value.message, 1000) } : {}),
+    ...(sanitizeQuestionOptions(value.options) ? { options: sanitizeQuestionOptions(value.options) } : {}),
     ...(getBoundedString(value.question, 1000) ? { question: getBoundedString(value.question, 1000) } : {}),
     ...(typeof value.revision === "number" && Number.isSafeInteger(value.revision) && value.revision >= 0 ? { revision: value.revision } : {}),
     ...(sanitizeV2Runs(value.runs) ? { runs: sanitizeV2Runs(value.runs) } : {}),
@@ -186,7 +200,10 @@ export function applyV2AgentEventToSessionState(
     } else if (waitingForInput) {
       const question = getString(result.question);
       if (question) state.pendingQuestion = question;
-      if (question) state.conversationBlocks = [{ type: "question", text: question }];
+      if (question) {
+        const options = sanitizeQuestionOptions(result.options);
+        state.conversationBlocks = [{ type: "question", text: question, ...(options ? { options } : {}) }];
+      }
       state.status = "waiting_for_input";
       appendV2Activity(state, `v2-question-${callId}`, "等待补充信息", question ?? undefined, "active");
     } else {
@@ -201,7 +218,10 @@ export function applyV2AgentEventToSessionState(
     if (reason === "user_input") {
       const question = getString(details?.question) ?? getString(data.question);
       if (question) state.pendingQuestion = question;
-      if (question) state.conversationBlocks = [{ type: "question", text: question }];
+      if (question) {
+        const options = sanitizeQuestionOptions(details?.options);
+        state.conversationBlocks = [{ type: "question", text: question, ...(options ? { options } : {}) }];
+      }
       state.status = "waiting_for_input";
       appendV2Activity(state, `v2-turn-waiting-${question ?? "input"}`, "等待补充信息", question ?? undefined, "active");
     } else {
