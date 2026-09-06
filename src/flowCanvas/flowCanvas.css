@@ -24,6 +24,14 @@ body.flow-viewport-lock {
   color: inherit !important;
 }
 
+@media (max-width: 720px) {
+  .canvas-agent-workspace-shell {
+    left: 0 !important;
+    top: 0 !important;
+    width: 100vw !important;
+  }
+}
+
 .react-flow__node.selected {
   box-shadow: none !important;
   border: none !important;
