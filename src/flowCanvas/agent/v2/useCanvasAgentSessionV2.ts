@@ -33,6 +33,11 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
       ...(selectedSkill ? { selectedSkillId: selectedSkill.id, selectedSkillVersion: selectedSkill.version } : {}),
     });
   }, [selectedSkill, session.sendPrompt]);
+  const answerQuestion = useCallback(async (answer: string) => {
+    if (!answer.trim()) return;
+    setPendingQuestion(null);
+    return sendPrompt(answer.trim());
+  }, [sendPrompt]);
   const approve = useCallback(async (approvalId: string, selection?: Parameters<typeof session.approveToolCall>[1]) => {
     setPendingApproval(null);
     return session.approveToolCall(approvalId, selection);
@@ -69,6 +74,7 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
   return useMemo(() => ({
     ...session,
     approve,
+    answerQuestion,
     cancelTurn,
     activityTimeline: [...session.activityTimeline, ...v2State.activityTimeline],
     error: v2State.error ?? session.error,
@@ -90,7 +96,7 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
           : session.status,
     toolTimeline: [...session.toolTimeline, ...v2State.toolTimeline],
     workspaceState: effectiveWorkspaceState,
-  }), [approve, cancelTurn, effectiveWorkspaceState, hydrateReplayEvents, pendingApproval, pendingQuestion, resetSession, selectSkill, selectedSkill, sendPrompt, session, v2State]);
+  }), [answerQuestion, approve, cancelTurn, effectiveWorkspaceState, hydrateReplayEvents, pendingApproval, pendingQuestion, resetSession, selectSkill, selectedSkill, sendPrompt, session, v2State]);
 }
 
 export type CanvasAgentSessionV2 = ReturnType<typeof useCanvasAgentSessionV2>;
