@@ -2,6 +2,16 @@ import type { Edge, Viewport } from "@xyflow/react";
 
 import type { FlowEdgeData, FlowNodeData, FlowNodeKind, FlowRuntimeNodeOutput } from "../types";
 
+export type {
+  AgentOption,
+  BriefField,
+  CapabilitySummary,
+  ConversationBlock,
+  ProgressStep,
+  ResultRef,
+} from "./conversation/ConversationBlockTypes";
+export { normalizeConversationBlocks } from "./conversation/ConversationBlockTypes";
+
 export type CanvasAgentPermissionLevel =
   | "read_only"
   | "safe_write"
