@@ -79,8 +79,8 @@ describe("V2AgentTurnLoop", () => {
   it("ends the stream as waiting for user input after ask_user", async () => {
     const events: unknown[] = [];
     const loop = new V2AgentTurnLoop({
-      textRuntime: { async *streamText() { yield { type: "tool_call", callId: "call-question", name: "ask_user", arguments: JSON.stringify({ question: "目标受众是谁？", reason: "需要确定文案长度" }) }; } },
-      executeTool: async () => ({ status: "waiting_for_input", question: "目标受众是谁？" }),
+      textRuntime: { async *streamText() { yield { type: "tool_call", callId: "call-question", name: "ask_user", arguments: JSON.stringify({ question: "目标受众是谁？", reason: "需要确定文案长度", options: [{ id: "kids", label: "儿童", description: "适合低龄用户" }] }) }; } },
+      executeTool: async () => ({ status: "waiting_for_input", question: "目标受众是谁？", options: [{ id: "kids", label: "儿童", description: "适合低龄用户" }] }),
     });
 
     for await (const event of loop.run({ prompt: "写一段介绍", canvas: { revision: 1, nodes: [] } })) events.push(event);
@@ -88,7 +88,7 @@ describe("V2AgentTurnLoop", () => {
     expect(events.at(-1)).toMatchObject({
       type: "turn_waiting",
       reason: "user_input",
-      details: { question: "目标受众是谁？", reason: "需要确定文案长度" },
+      details: { question: "目标受众是谁？", reason: "需要确定文案长度", options: [{ id: "kids", label: "儿童", description: "适合低龄用户" }] },
     });
   });
 
