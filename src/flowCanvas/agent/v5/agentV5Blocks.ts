@@ -189,6 +189,13 @@ function normalizeOne(raw: unknown): ConversationBlock | undefined {
         selectionMode,
       };
     }
+    case "question": {
+      const parsedOptions = options(raw.options);
+      const title = text(raw.text ?? raw.title, AGENT_V5_LABEL_MAX_LENGTH);
+      if (!parsedOptions.length) return title ? { type: "paragraph", text: title } : undefined;
+      const choiceId = id(raw.id);
+      return { type: "choice_grid", ...(choiceId ? { id: choiceId } : {}), ...(title ? { title } : {}), options: parsedOptions, selectionMode: "single" };
+    }
     case "comparison_table": {
       const columns = stringList(raw.columns);
       const rows = Array.isArray(raw.rows)

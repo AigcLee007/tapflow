@@ -23,6 +23,9 @@ import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import { getCanvasAgentBusyHint, isCanvasAgentBusyState } from "./canvasAgentStateMachine";
 import { CanvasAgentWorkspaceShell } from "./CanvasAgentWorkspaceShell";
 import { CanvasAgentV4Workspace } from "./CanvasAgentV4Workspace";
+import { AgentWindow } from "./v5/AgentWindow";
+import { normalizeAgentV5Blocks } from "./v5/agentV5Blocks";
+import type { AgentBlockAction } from "./v5/AgentBlockRenderer";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useAgentWorkspacePanel } from "./useAgentWorkspacePanel";
@@ -138,6 +141,7 @@ export function CanvasAgentPanel(props: {
   const workspace = useAgentWorkspacePanel();
   const [composerDraft, setComposerDraft] = React.useState("");
   const [v4ResetKey, setV4ResetKey] = React.useState(0);
+  const [v5Mode, setV5Mode] = React.useState<"auto" | "manual_confirmation">("manual_confirmation");
   const [uploadedReferences, setUploadedReferences] = React.useState<AgentReferenceChip[]>([]);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
@@ -389,6 +393,49 @@ export function CanvasAgentPanel(props: {
   }, [availableModels, sessionActions.toolTimeline]);
 
   if (!props.open) return null;
+
+  const v5Blocks = normalizeAgentV5Blocks(
+    sessionActions.conversationBlocks?.length
+      ? sessionActions.conversationBlocks
+      : sessionActions.messages.map((message) => message.content),
+  );
+  const v5Models = modelOptions.map((model) => ({ key: model.modelKey, label: model.displayName }));
+
+  return (
+    <AgentWindow
+      blocks={v5Blocks}
+      mode={v5Mode}
+      models={v5Models}
+      onAction={(action: AgentBlockAction) => {
+        if (action.type === "select_choice") void sessionActions.answerQuestion?.(action.optionId);
+        if (action.type === "confirm") void sessionActions.answerQuestion?.("确认执行");
+        if (action.type === "result" && action.action === "refine") setComposerDraft(`继续编辑结果 ${action.resultId}：保留主体和核心方向，进一步优化细节。`);
+        if (action.type === "result" && action.action === "place") {
+          const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === action.resultId);
+          if (node) useFlowCanvasStore.getState().selectNodesByIds([node.id]);
+        }
+      }}
+      onChangeMode={setV5Mode}
+      onCollapse={props.onClose}
+      onNewConversation={() => {
+        autoOpenLatestSessionRef.current = false;
+        replayHydratedSessionIdRef.current = null;
+        sessionActions.resetSession?.();
+        setV4ResetKey((value) => value + 1);
+        setUploadedReferences([]);
+        setUploadError(null);
+        setComposerDraft("");
+      }}
+      onSend={async (prompt, modelKey) => {
+        const referenceContext = buildAgentReferenceContext({ chips: composerReferenceChips, continuationContext: activeContinuation });
+        await sessionActions.sendPrompt(prompt, { referenceContext });
+        setUploadedReferences([]);
+        void modelKey;
+      }}
+      sessionTitle={sessionActions.sessionId ? "当前 Agent 对话" : "新对话"}
+      sessions={sessionList}
+    />
+  );
 
   return (
     <CanvasAgentWorkspaceShell
