@@ -444,6 +444,10 @@ export function CanvasAgentPanel(props: {
               if (action.type === "select" && action.id) void sessionActions.answerQuestion?.(action.id);
               if (action.type === "confirm") void sessionActions.answerQuestion?.("确认执行");
               if (action.type === "result" && action.id) {
+                if (action.value === "refine") {
+                  setComposerDraft(`继续编辑结果 ${action.id}：保留主体和核心方向，进一步优化细节。`);
+                  return;
+                }
                 const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === action.id);
                 if (node) useFlowCanvasStore.getState().selectNodesByIds([node.id]);
               }
