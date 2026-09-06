@@ -62,4 +62,22 @@ describe("agent V5 state", () => {
     expect(failed.error).toBe("暂时无法执行");
     expect(reduceAgentV5State(failed, { type: "reset" }).phase).toBe("idle");
   });
+
+  it("does not reuse confirmation after execution and honors explicit confirmation", () => {
+    let state = initialAgentV5State({ mode: "auto", policy: { allowSafeAutoExecute: true } });
+    state = reduceAgentV5State(state, { type: "user_submitted", prompt: "做一个方案" });
+    state = reduceAgentV5State(state, { type: "brief_ready", plan: { costCredits: 3 } });
+    state = reduceAgentV5State(state, { type: "confirmation_granted" });
+    state = reduceAgentV5State(state, { type: "execution_completed", results: [] });
+    expect(state.confirmed).toBe(false);
+    expect(canExecuteAgentDecision({ type: "execute", costCredits: 3 }, { ...state, phase: "waiting_for_confirmation" })).toBe(false);
+    expect(canExecuteAgentDecision({ type: "execute", requiresConfirmation: true }, { ...state, phase: "waiting_for_confirmation" })).toBe(false);
+  });
+
+  it("ignores mismatched or empty choice events", () => {
+    let state = reduceAgentV5State(initialAgentV5State(), { type: "user_submitted", prompt: "做一个方案" });
+    state = reduceAgentV5State(state, { type: "agent_asked_question", questionId: "direction" });
+    expect(reduceAgentV5State(state, { type: "choice_submitted", questionId: "other", optionIds: ["x"] }).phase).toBe("waiting_for_choice");
+    expect(reduceAgentV5State(state, { type: "choice_submitted", questionId: "direction", optionIds: [] }).phase).toBe("waiting_for_choice");
+  });
 });

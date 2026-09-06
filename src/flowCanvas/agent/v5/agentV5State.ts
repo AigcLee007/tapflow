@@ -9,6 +9,7 @@ import type {
   ProgressStep,
   ResultRef,
 } from "./agentV5Types";
+import { normalizeAgentV5Blocks } from "./agentV5Blocks";
 
 export type {
   AgentDecision,
@@ -41,22 +42,40 @@ const EMPTY_CONTEXT = {
 };
 
 export function initialAgentV5State(overrides: Partial<AgentV5State> = {}): AgentV5State {
-  return {
+  const context = overrides.contextSnapshot ?? EMPTY_CONTEXT;
+  const normalizedContext = {
+    ...EMPTY_CONTEXT,
+    ...context,
+    selectedNodeIds: context.selectedNodeIds?.slice() ?? [],
+    assetRefs: context.assetRefs?.map((ref) => ({ ...ref })) ?? [],
+    uploadedAssetIds: context.uploadedAssetIds?.slice() ?? [],
+    skillRefs: context.skillRefs?.map((ref) => ({ ...ref })) ?? [],
+    appRefs: context.appRefs?.slice() ?? [],
+  };
+  const base: AgentV5State = {
     blocks: [],
     confirmed: false,
-    contextSnapshot: { ...EMPTY_CONTEXT, ...(overrides.contextSnapshot ?? {}) },
+    contextSnapshot: normalizedContext,
     error: null,
     mode: "manual_confirmation",
     pendingDecision: null,
     pendingQuestionId: null,
     phase: "idle",
     plan: null,
-    policy: { ...DEFAULT_POLICY, ...(overrides.policy ?? {}) },
+    policy: { ...DEFAULT_POLICY },
     progress: [],
     prompt: null,
     refiningResultId: null,
     results: [],
+  };
+  return {
+    ...base,
     ...overrides,
+    blocks: overrides.blocks?.slice() ?? [],
+    contextSnapshot: normalizedContext,
+    policy: { ...DEFAULT_POLICY, ...(overrides.policy ?? {}) },
+    progress: overrides.progress?.map((step) => ({ ...step })) ?? [],
+    results: overrides.results?.map((result) => ({ ...result })) ?? [],
   };
 }
 
@@ -120,6 +139,8 @@ export function reduceAgentV5State(state: AgentV5State, event: AgentV5Event): Ag
 
     case "waiting_for_choice":
       if (event.type === "choice_submitted" || event.type === "choice_selected") {
+        if (event.questionId && event.questionId !== state.pendingQuestionId) return state;
+        if (!event.optionIds?.length) return state;
         return { ...state, pendingQuestionId: null, phase: "drafting_brief" };
       }
       if (event.type === "brief_ready" || event.type === "plan_ready") return { ...state, confirmed: false, pendingDecision: { type: "execute" }, phase: "waiting_for_confirmation", plan: event.plan ?? {} };
@@ -140,9 +161,12 @@ export function reduceAgentV5State(state: AgentV5State, event: AgentV5Event): Ag
 
     case "executing":
       if (event.type === "execution_completed") {
+        if (event.sessionId && state.sessionId && event.sessionId !== state.sessionId) return state;
+        if (event.turnId && state.turnId && event.turnId !== state.turnId) return state;
         return {
           ...state,
-          blocks: cloneBlocks(event.blocks ?? state.blocks),
+          blocks: normalizeAgentV5Blocks(event.blocks ?? state.blocks),
+          confirmed: false,
           pendingDecision: null,
           phase: "presenting_results",
           progress: state.progress.map((step) => ({ ...step, status: step.status === "failed" ? "failed" : "completed" })),
@@ -153,13 +177,13 @@ export function reduceAgentV5State(state: AgentV5State, event: AgentV5Event): Ag
 
     case "presenting_results":
       if (event.type === "refine_requested") {
-        return { ...state, phase: "refining", refiningResultId: event.resultId ?? null };
+        return { ...state, confirmed: false, pendingDecision: null, plan: null, phase: "refining", refiningResultId: event.resultId ?? null };
       }
       return state;
 
     case "refining":
       if (event.type === "user_submitted") {
-        return { ...state, error: null, phase: "understanding", prompt: event.prompt };
+        return { ...state, blocks: [], confirmed: false, error: null, pendingDecision: null, plan: null, phase: "understanding", prompt: event.prompt, progress: [], results: [] };
       }
       if (event.type === "brief_ready" || event.type === "plan_ready") return { ...state, confirmed: false, pendingDecision: { type: "execute" }, phase: "waiting_for_confirmation", plan: event.plan ?? {} };
       return state;
@@ -195,6 +219,7 @@ export function canExecuteAgentDecision(decision: AgentDecision, state: AgentV5S
   if (decision.type !== "execute" && decision.type !== "run_skill" && decision.type !== "execute_skill" && decision.type !== "invoke_app" && decision.type !== "execute_app") return true;
 
   const risk = decisionRisk(decision, state);
+  if (decision.type === "execute" && decision.requiresConfirmation === true) return state.confirmed;
   const policy = state.policy;
   const modeAllows = state.mode === "auto" &&
     (!risk.paid || policy.allowPaidAutoExecute) &&

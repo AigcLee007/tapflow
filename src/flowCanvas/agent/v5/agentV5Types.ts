@@ -181,7 +181,7 @@ export type AgentV5Event =
   | { type: "brief_ready" | "plan_ready"; plan?: AgentV5Plan }
   | { type: "confirmation_granted"; decisionId?: string }
   | { type: "execution_started" }
-  | { type: "execution_completed"; results?: ResultRef[]; blocks?: ConversationBlock[] }
+  | { type: "execution_completed"; results?: ResultRef[]; blocks?: ConversationBlock[]; sessionId?: string; turnId?: string }
   | { type: "refine_requested"; resultId?: string }
   | { type: "turn_failed"; error?: string }
   | { type: "reset" };

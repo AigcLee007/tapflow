@@ -29,13 +29,14 @@ function text(value: unknown, max = AGENT_V5_TEXT_MAX_LENGTH): string | undefine
 
 function id(value: unknown): string | undefined {
   const valueText = text(value, 200);
-  if (!valueText || /^(?:https?:|data:|blob:)/i.test(valueText) || /(?:signature|x-amz-|token=)/i.test(valueText)) return undefined;
+  if (!valueText || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(valueText)) return undefined;
   return valueText;
 }
 
 function stringList(value: unknown, max = AGENT_V5_LABEL_MAX_LENGTH): string[] {
   if (!Array.isArray(value)) return [];
   return value
+    .slice(0, AGENT_V5_MAX_ITEMS)
     .map((item) => text(item, max))
     .filter((item): item is string => Boolean(item))
     .slice(0, AGENT_V5_MAX_ITEMS);
@@ -53,6 +54,7 @@ function option(value: unknown): AgentOption | undefined {
 function options(value: unknown): AgentOption[] {
   if (!Array.isArray(value)) return [];
   return value
+    .slice(0, AGENT_V5_MAX_ITEMS)
     .map(option)
     .filter((item): item is AgentOption => Boolean(item))
     .slice(0, AGENT_V5_MAX_ITEMS);
@@ -61,6 +63,7 @@ function options(value: unknown): AgentOption[] {
 function fields(value: unknown): BriefField[] {
   if (!Array.isArray(value)) return [];
   return value
+    .slice(0, AGENT_V5_MAX_ITEMS)
     .filter(isRecord)
     .map((field) => {
       const label = text(field.label, AGENT_V5_LABEL_MAX_LENGTH);
@@ -86,6 +89,7 @@ function capability(value: unknown): CapabilitySummary | undefined {
 function progressSteps(value: unknown): ProgressStep[] {
   if (!Array.isArray(value)) return [];
   return value
+    .slice(0, AGENT_V5_MAX_ITEMS)
     .filter(isRecord)
     .map((step) => {
       const stepId = id(step.id);
@@ -103,6 +107,7 @@ function progressSteps(value: unknown): ProgressStep[] {
 function results(value: unknown): ResultRef[] {
   if (!Array.isArray(value)) return [];
   return value
+    .slice(0, AGENT_V5_MAX_ITEMS)
     .filter(isRecord)
     .map((result) => {
       const resultId = id(result.id);
@@ -188,11 +193,11 @@ function normalizeOne(raw: unknown): ConversationBlock | undefined {
       const columns = stringList(raw.columns);
       const rows = Array.isArray(raw.rows)
         ? raw.rows.slice(0, AGENT_V5_MAX_ITEMS).flatMap((row) => {
-            if (Array.isArray(row)) return [stringList(row, 1_000)];
+            if (Array.isArray(row)) return [stringList(row, 1_000).slice(0, columns.length)];
             if (isRecord(row)) {
               const label = text(row.label, 1_000);
               const values = stringList(row.values, 1_000);
-              return label && values.length ? [[label, ...values]] : [];
+              return label && values.length ? [[label, ...values].slice(0, columns.length)] : [];
             }
             return [];
           }).filter((row) => row.length > 0)
