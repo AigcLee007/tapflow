@@ -18,7 +18,7 @@ const canvasApplyOpsArgs = z.object({
 }).strict();
 const canvasRunNodesArgs = z.object({ expectedRevision: z.number().int().nonnegative(), nodeIds: z.array(z.string().trim().min(1).max(200)).min(1).max(12) }).strict();
 const canvasAwaitResultsArgs = z.object({ runId: z.string().uuid().optional(), runIds: z.array(z.string().uuid()).max(12).optional(), nodeIds: z.array(z.string().trim().min(1).max(200)).max(12).default([]) }).strict();
-const askUserArgs = z.object({ question: z.string().trim().min(1).max(1000), reason: z.string().trim().max(1000).optional() }).strict();
+const askUserArgs = z.object({ question: z.string().trim().min(1).max(1000), reason: z.string().trim().max(1000).optional(), options: z.array(z.object({ id: z.string().trim().min(1).max(120), label: z.string().trim().min(1).max(240), description: z.string().trim().max(500).optional() }).strict()).max(8).optional() }).strict();
 const finishArgs = z.object({ summary: z.string().trim().min(1).max(2000), status: z.enum(["succeeded", "reviewing", "waiting_for_input"]) }).strict();
 
 const toolSchemas = {
@@ -85,7 +85,7 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   };
   if (schema === canvasRunNodesArgs) return { type: "object", required: ["expectedRevision", "nodeIds"], properties: { expectedRevision: { type: "integer", minimum: 0 }, nodeIds: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", maxLength: 200 } } }, additionalProperties: false };
   if (schema === canvasAwaitResultsArgs) return { type: "object", properties: { runId: { type: "string", format: "uuid" }, runIds: { type: "array", maxItems: 12, items: { type: "string", format: "uuid" } }, nodeIds: { type: "array", maxItems: 12, items: { type: "string", maxLength: 200 } } }, additionalProperties: false };
-  if (schema === askUserArgs) return { type: "object", required: ["question"], properties: { question: { type: "string", minLength: 1, maxLength: 1000 }, reason: { type: "string", maxLength: 1000 } }, additionalProperties: false };
+  if (schema === askUserArgs) return { type: "object", required: ["question"], properties: { question: { type: "string", minLength: 1, maxLength: 1000 }, reason: { type: "string", maxLength: 1000 }, options: { type: "array", maxItems: 8, items: { type: "object", required: ["id", "label"], properties: { id: { type: "string", minLength: 1, maxLength: 120 }, label: { type: "string", minLength: 1, maxLength: 240 }, description: { type: "string", maxLength: 500 } }, additionalProperties: false } } }, additionalProperties: false };
   return { type: "object", required: ["summary", "status"], properties: { summary: { type: "string", minLength: 1, maxLength: 2000 }, status: { type: "string", enum: ["succeeded", "reviewing", "waiting_for_input"] } }, additionalProperties: false };
 }
 
@@ -151,6 +151,7 @@ export class V2AgentTurnLoop {
             reason: "user_input",
             details: {
               question: tool.arguments.question,
+              ...(Array.isArray(tool.arguments.options) ? { options: tool.arguments.options } : {}),
               ...(typeof tool.arguments.reason === "string" ? { reason: tool.arguments.reason } : {}),
             },
           };

@@ -30,11 +30,11 @@ export function CanvasAgentWorkspaceShell(props: {
   workspaceState?: CanvasAgentWorkspaceState;
   width?: number;
 }) {
-  const width = props.width ?? 420;
+  const width = props.width ?? 520;
 
   return (
     <aside
-      className="nodrag nopan nowheel"
+      className="nodrag nopan nowheel canvas-agent-workspace-shell"
       style={{
         backdropFilter: "blur(18px)",
         background: "rgba(10,10,15,0.97)",

@@ -371,10 +371,11 @@ describe("V2 Agent session state", () => {
   it("maps ask_user and terminal events for live and replay consumers", () => {
     let state = createInitialV2AgentSessionState();
     state = applyV2AgentEventToSessionState(state, "agent_v2_turn_waiting", {
-      details: { question: "需要补充目标受众" },
+      details: { question: "需要补充目标受众", options: [{ id: "kids", label: "儿童", description: "低龄用户" }] },
       reason: "user_input",
     });
     expect(state.pendingQuestion).toBe("需要补充目标受众");
+    expect(state.conversationBlocks).toEqual([{ type: "question", text: "需要补充目标受众", options: [{ id: "kids", label: "儿童", description: "低龄用户" }] }]);
 
     state = applyV2AgentEventToSessionState(state, "agent_v2_turn_completed", { text: "已完成" });
     expect(state.pendingQuestion).toBeNull();
