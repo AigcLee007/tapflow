@@ -438,7 +438,6 @@ export function CanvasAgentPanel(props: {
         setUploadedReferences([]);
         void modelKey;
       }}
-      onSelectModel={(modelKey) => setComposerDraft((draft) => draft || `使用文本模型：${modelKey}`)}
       sessionTitle={sessionActions.sessionId ? "当前 Agent 对话" : "新对话"}
       sessions={sessionList}
     />
