@@ -415,6 +415,7 @@ export function CanvasAgentPanel(props: {
             busy={busy}
             busyLabel={getCanvasAgentBusyHint(sessionActions.workspaceState)}
             items={timelineItems}
+            blocks={sessionActions.conversationBlocks}
             onApprove={sessionActions.approveToolCall}
             onCancel={sessionActions.cancelToolCall}
             onContinueFromAsset={(asset, action, assets) => {

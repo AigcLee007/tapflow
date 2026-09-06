@@ -6,6 +6,7 @@ import type {
 } from "./canvasAgentToolTypes";
 import type { CanvasAgentMessage } from "./useCanvasAgentSession";
 import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
+import type { ConversationBlock } from "./conversation/ConversationBlockTypes";
 
 export type V2AgentSessionState = {
   activityTimeline: CanvasAgentActivityItem[];
@@ -13,6 +14,7 @@ export type V2AgentSessionState = {
   finalText: string | null;
   pendingApproval: Record<string, unknown> | null;
   pendingQuestion: string | null;
+  conversationBlocks: ConversationBlock[];
   status: "awaiting_approval" | "error" | "executing_tool" | "idle" | "waiting_for_input";
   toolTimeline: CanvasAgentToolTimelineItem[];
 };
@@ -24,6 +26,7 @@ export function createInitialV2AgentSessionState(): V2AgentSessionState {
     finalText: null,
     pendingApproval: null,
     pendingQuestion: null,
+    conversationBlocks: [],
     status: "idle",
     toolTimeline: [],
   };
@@ -183,6 +186,7 @@ export function applyV2AgentEventToSessionState(
     } else if (waitingForInput) {
       const question = getString(result.question);
       if (question) state.pendingQuestion = question;
+      if (question) state.conversationBlocks = [{ type: "question", text: question }];
       state.status = "waiting_for_input";
       appendV2Activity(state, `v2-question-${callId}`, "等待补充信息", question ?? undefined, "active");
     } else {
@@ -197,6 +201,7 @@ export function applyV2AgentEventToSessionState(
     if (reason === "user_input") {
       const question = getString(details?.question) ?? getString(data.question);
       if (question) state.pendingQuestion = question;
+      if (question) state.conversationBlocks = [{ type: "question", text: question }];
       state.status = "waiting_for_input";
       appendV2Activity(state, `v2-turn-waiting-${question ?? "input"}`, "等待补充信息", question ?? undefined, "active");
     } else {
@@ -209,6 +214,7 @@ export function applyV2AgentEventToSessionState(
   if (eventType === "turn_completed") {
     state.finalText = getString(data.text) ?? getString(data.summary) ?? state.finalText;
     state.pendingQuestion = null;
+    state.conversationBlocks = [];
     state.pendingApproval = null;
     state.status = "idle";
     appendV2Activity(state, "v2-turn-completed", "已完成", undefined, "completed");
@@ -218,6 +224,7 @@ export function applyV2AgentEventToSessionState(
   if (eventType === "turn_failed") {
     state.error = getString(data.message) ?? "Agent 执行失败。";
     state.pendingQuestion = null;
+    state.conversationBlocks = [];
     state.pendingApproval = null;
     state.status = "error";
     appendV2Activity(state, "v2-turn-failed", "任务失败", state.error, "failed");

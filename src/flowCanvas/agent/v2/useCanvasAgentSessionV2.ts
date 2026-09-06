@@ -76,6 +76,7 @@ export function useCanvasAgentSessionV2(options: Parameters<typeof useCanvasAgen
     approve,
     answerQuestion,
     cancelTurn,
+    conversationBlocks: v2State.conversationBlocks,
     activityTimeline: [...session.activityTimeline, ...v2State.activityTimeline],
     error: v2State.error ?? session.error,
     hydrateReplayEvents,
