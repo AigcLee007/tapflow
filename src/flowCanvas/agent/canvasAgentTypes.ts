@@ -135,6 +135,7 @@ export type CanvasAgentOpSummary = {
 export type AgentExecutionRequirement = "paid" | "batch" | "delete" | "broad_update";
 export type AgentExecutionState = "idle" | "awaiting_confirmation" | "running" | "completed" | "failed";
 export type AgentConversationState = {
+  conversation?: "idle" | "understanding" | "asking" | "waiting_for_choice" | "summarizing" | "waiting_for_confirmation" | "executing" | "presenting_results" | "refining" | "completed" | "failed";
   execution: AgentExecutionState;
   requirement?: AgentExecutionRequirement;
 };

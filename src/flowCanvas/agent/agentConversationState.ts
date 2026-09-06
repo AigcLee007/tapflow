@@ -49,18 +49,18 @@ export function reduceAgentConversationState(
       return initialAgentConversationState;
     case "plan_ready": {
       const requirement = requirementFor(event.execution);
-      return { execution: requirement ? "awaiting_confirmation" : "idle", requirement };
+      return { conversation: requirement ? "waiting_for_confirmation" : "summarizing", execution: requirement ? "awaiting_confirmation" : "idle", requirement };
     }
     case "confirmation_granted":
-      return state.execution === "awaiting_confirmation" ? { ...state, execution: "idle" } : state;
+      return state.execution === "awaiting_confirmation" ? { ...state, conversation: "executing", execution: "idle" } : state;
     case "confirmation_rejected":
-      return state.execution === "awaiting_confirmation" ? { execution: "idle" } : state;
+      return state.execution === "awaiting_confirmation" ? { conversation: "refining", execution: "idle" } : state;
     case "execution_started":
-      return state.execution === "idle" ? { ...state, execution: "running" } : state;
+      return state.execution === "idle" ? { ...state, conversation: "executing", execution: "running" } : state;
     case "execution_completed":
-      return state.execution === "running" ? { ...state, execution: "completed" } : state;
+      return state.execution === "running" ? { ...state, conversation: "presenting_results", execution: "completed" } : state;
     case "execution_failed":
-      return state.execution === "running" ? { ...state, execution: "failed" } : state;
+      return state.execution === "running" ? { ...state, conversation: "failed", execution: "failed" } : state;
     default:
       return state;
   }
