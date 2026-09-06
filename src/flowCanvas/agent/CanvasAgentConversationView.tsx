@@ -4,6 +4,8 @@ import type { AgentWorkspaceTimelineItem } from "./CanvasAgentWorkspaceTypes";
 import type { AgentImageRunSettingsSelection } from "./agentRunSettings";
 import type { CanvasAgentContinuationAction, CanvasAgentToolAssetRef } from "./canvasAgentToolTypes";
 import { CanvasAgentTimeline } from "./CanvasAgentTimeline";
+import type { ConversationBlock } from "./conversation/ConversationBlockTypes";
+import { ConversationBlockRenderer, type ConversationBlockAction } from "./conversation/ConversationBlockRenderer";
 
 export function CanvasAgentConversationView(props: {
   busy: boolean;
@@ -19,8 +21,10 @@ export function CanvasAgentConversationView(props: {
   onPlaceAssets?: (toolCallKey: string) => void;
   onRetryTool?: (toolCallKey: string) => void;
   onViewRun?: (workflowRunId: string) => void;
+  blocks?: ConversationBlock[];
+  onBlockAction?: (action: ConversationBlockAction) => void;
 }) {
-  if (props.items.length === 0) {
+  if (props.items.length === 0 && (!props.blocks || props.blocks.length === 0)) {
     return (
       <div style={{ display: "grid", height: "100%", overflowY: "auto", padding: "18px 16px" }}>
         <section
@@ -60,6 +64,9 @@ export function CanvasAgentConversationView(props: {
         onRetryTool={props.onRetryTool}
         onViewRun={props.onViewRun}
       />
+      {props.blocks && props.blocks.length > 0 ? (
+        <ConversationBlockRenderer blocks={props.blocks} onAction={props.onBlockAction} />
+      ) : null}
       {props.busy ? (
         <div style={{ color: "rgba(148,163,184,0.9)", fontSize: 12, paddingBottom: 4 }}>
           {props.busyLabel ?? "Agent 正在处理这一轮..."}
