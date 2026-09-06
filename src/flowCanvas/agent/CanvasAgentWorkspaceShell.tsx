@@ -34,7 +34,7 @@ export function CanvasAgentWorkspaceShell(props: {
 
   return (
     <aside
-      className="nodrag nopan nowheel"
+      className="nodrag nopan nowheel canvas-agent-workspace-shell"
       style={{
         backdropFilter: "blur(18px)",
         background: "rgba(10,10,15,0.97)",

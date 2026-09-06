@@ -6798,3 +6798,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Replaced the default canvas Agent chat entry with a visible co-creation workbench: the first ambiguous request stays local in discovery, asks for product direction and age range, summarizes the choices as a Brief, exposes the selected Skill capability and estimated credits, and only calls the existing Agent execution stream after explicit confirmation.
 - Added `src/flowCanvas/agent/CanvasAgentV4Workspace.tsx` plus focused interaction tests and shared workbench styling in `src/flowCanvas/flowCanvas.css`. Existing timeline, Skill run, result, and canvas placement surfaces remain available after confirmation as the execution layer.
 - `npm run build` passed. The new V4 interaction suite passed 2/2 tests. Existing legacy Panel tests that assert the old first-screen Composer/Timeline contract need to be rewritten around the V4 discovery gate; they are not used as the product acceptance criterion for this replacement.
+
+## 2026-08-31 - Canvas Agent V3 Runtime Wiring Follow-Up
+
+- V3 approval now applies the approved canvas operation set before launching workflow runs and forwards the resulting draft revision to the workflow adapter, preventing stale-revision launches after node/edge changes.
+- Planner-generated node and edge IDs are deterministic per task and operation index, preserving idempotent retries and replay behavior.
+- Added the official provider-agnostic `taobao-product-image-suite` Skill for real-product-photo analysis, main/detail page planning, visual bible generation, per-page prompts, batch node creation, consistency checks, and targeted retries.
+- Focused validation passed: official Skill, V3 runtime, and delivery suites (12 tests); API, DB, and AI Gateway builds passed. V3 remains fail-closed until authenticated staging acceptance with real provider routes, billing, object storage, and worker execution is completed.
+- Approval now resolves planner `client:*` references consistently across created nodes, edges, and `run_node` operations before applying or launching work, preventing invalid edge endpoints and stale client IDs during real execution.

@@ -23,9 +23,16 @@ import {
   getAgentEventsQuerySchema,
   getAgentImageRunSettingsEstimateQuerySchema,
   listAgentSessionsQuerySchema,
+  agentV3ApprovalSchema,
+  agentV3EventsQuerySchema,
+  agentV3SessionTurnParamsSchema,
+  agentV3TaskIdParamsSchema,
+  agentV3UndoSchema,
+  agentV3RetrySchema,
 } from "./agent.schemas.js";
 import { AgentApiError } from "./agent.service.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
+import { projectAgentRuntimeCapabilities } from "./agent-runtime-identity.js";
 
 function sendError(
   request: FastifyRequest,
@@ -148,9 +155,9 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     { preHandler: [...authHandlers, requirePermission("flow:read")] },
     async (_request, reply) => {
       const env = app.agentService.env;
+      const runtimeCapabilities = projectAgentRuntimeCapabilities(env);
       return reply.send({
-        agentV2Enabled: env.agentV2Enabled === true,
-        agentV2RuntimeEnabled: env.agentV2RuntimeEnabled === true,
+        ...runtimeCapabilities,
         skillAuthoringEnabled: env.agentSkillsEnabled === true && env.agentSkillAuthoringEnabled === true,
         skillRuntimeEnabled: env.agentSkillsEnabled === true && env.agentSkillRuntimeEnabled === true,
         skillsEnabled: env.agentSkillsEnabled === true,
@@ -506,4 +513,68 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       }
     },
   );
+
+  const v3Auth = [...authHandlers, requirePermission("flow:read")];
+  app.post("/api/v2/agent/v3/sessions/:sessionId/turns/stream", { preHandler: v3Auth }, async (request, reply) => {
+    try {
+      const params = agentV3SessionTurnParamsSchema.parse(request.params);
+      const body = createAgentTurnSchema.parse(request.body);
+      const streamBody: string[] = [];
+      const result = await app.agentV3Runtime.startTurn({ sessionId: params.sessionId, input: body, context: getAgentContext(request), writeChunk: (chunk) => { streamBody.push(chunk); } });
+      reply.raw.setHeader("cache-control", "no-cache");
+      reply.raw.setHeader("connection", "keep-alive");
+      reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+      reply.hijack();
+      if (streamBody.length) reply.raw.write(streamBody.join(""));
+      if (result !== undefined) reply.raw.write(formatStreamEvent("done", result));
+      reply.raw.end();
+      return reply;
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+  app.get("/api/v2/agent/v3/tasks/:taskId/events", { preHandler: v3Auth }, async (request, reply) => {
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const query = agentV3EventsQuerySchema.parse(request.query);
+      const events = await app.agentV3Runtime.replayEvents({ tenantId: getAgentContext(request).tenantId, taskId: params.taskId, afterSeq: query.after ?? 0 });
+      reply.raw.setHeader("cache-control", "no-cache");
+      reply.raw.setHeader("connection", "keep-alive");
+      reply.raw.setHeader("content-type", "text/event-stream; charset=utf-8");
+      reply.hijack();
+      for (const event of events) reply.raw.write(`event: event\\ndata: ${JSON.stringify({ sequence: event.seq, type: event.eventType, ...event.eventJson })}\\n\\n`);
+      reply.raw.write(formatStreamEvent("done", { taskId: params.taskId, after: query.after ?? 0 }));
+      reply.raw.end();
+      return reply;
+    } catch (error) {
+      return handleRouteError(error, request, reply);
+    }
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/approve", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const body = agentV3ApprovalSchema.parse(request.body);
+      return reply.send(await app.agentV3Runtime.approve({ taskId: params.taskId, context: getAgentContext(request), approved: body.approved !== false }));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/cancel", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      return reply.send(await app.agentV3Runtime.cancel({ taskId: params.taskId, context: getAgentContext(request) }));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/retry-step", { preHandler: [...authHandlers, requirePermission("flow:run")] }, async (request, reply) => {
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const body = agentV3RetrySchema.parse(request.body);
+      return reply.send(await app.agentV3Runtime.retryStep({ taskId: params.taskId, context: getAgentContext(request), stepId: body.stepId }));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+  app.post("/api/v2/agent/v3/tasks/:taskId/undo-canvas", { preHandler: [...authHandlers, requirePermission("flow:update")] }, async (request, reply) => {
+    try {
+      const params = agentV3TaskIdParamsSchema.parse(request.params);
+      const body = agentV3UndoSchema.parse(request.body);
+      return reply.send(await app.agentV3Runtime.undoCanvas({ taskId: params.taskId, context: getAgentContext(request), expectedRevision: body.expectedRevision }));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
 }

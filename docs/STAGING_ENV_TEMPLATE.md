@@ -297,6 +297,12 @@ Relay D:
 
 - `AGENT_V2_ENABLED = false`
 - `AGENT_V2_RUNTIME_ENABLED = false`
+- `AGENT_V3_ENABLED = false`
+- `AGENT_V3_RUNTIME_ENABLED = false`
+- `AGENT_V3_MAX_TOOL_ROUNDS = 8`
+- `AGENT_V3_MAX_CONTEXT_NODES = 60`
+- `AGENT_V3_MAX_VISUAL_CAPTURES = 4`
+- `AGENT_V3_REPAIR_ATTEMPTS = 1`
 - `AGENT_SKILLS_ENABLED = false`
 - `AGENT_SKILL_AUTHORING_ENABLED = false`
 - `AGENT_SKILL_RUNTIME_ENABLED = false`
@@ -304,10 +310,12 @@ Relay D:
 - `AGENT_SKILL_MAX_STEPS = 12`
 - `AGENT_SKILL_REPAIR_ATTEMPTS = 1`
 - `VITE_AGENT_V2_ENABLED = false`
+- `VITE_AGENT_V3_ENABLED = false`
 - `VITE_AGENT_SKILLS_ENABLED = false`
 - `VITE_AGENT_SKILL_AUTHORING_ENABLED = false`
 - `VITE_AGENT_SKILL_RUNTIME_ENABLED = false`
 - `Agent v2 rollout note = enable API/runtime flags only after migration and focused smoke tests; enable the matching Vite flags in the same frontend build. Keep all flags false for rollback.`
+- `Agent V3 rollout note = the two server flags are conjunctive; enable V3 only when both AGENT_V3_ENABLED and AGENT_V3_RUNTIME_ENABLED are true. Keep V3 and Vite flags false by default. Production/staging must not silently fall back to another runtime.`
 - `AGENT_PLANNER_ENABLED = false`
 - `AGENT_DIRECTOR_ENABLED = false`
 - `VITE_AGENT_DIRECTOR_ENABLED = false`

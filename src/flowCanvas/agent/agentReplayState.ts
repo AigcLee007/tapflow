@@ -6,6 +6,7 @@ import type {
 } from "./canvasAgentToolTypes";
 import type { CanvasAgentMessage } from "./useCanvasAgentSession";
 import type { CanvasAgentActivityItem } from "./CanvasAgentActivityTimeline";
+import type { ConversationBlock } from "./conversation/ConversationBlockTypes";
 
 export type V2AgentSessionState = {
   activityTimeline: CanvasAgentActivityItem[];
@@ -13,6 +14,7 @@ export type V2AgentSessionState = {
   finalText: string | null;
   pendingApproval: Record<string, unknown> | null;
   pendingQuestion: string | null;
+  conversationBlocks: ConversationBlock[];
   status: "awaiting_approval" | "error" | "executing_tool" | "idle" | "waiting_for_input";
   toolTimeline: CanvasAgentToolTimelineItem[];
 };
@@ -24,6 +26,7 @@ export function createInitialV2AgentSessionState(): V2AgentSessionState {
     finalText: null,
     pendingApproval: null,
     pendingQuestion: null,
+    conversationBlocks: [],
     status: "idle",
     toolTimeline: [],
   };
@@ -49,6 +52,19 @@ function getStringList(value: unknown, maxItems = 12): string[] | undefined {
     .filter((item): item is string => Boolean(item))
     .slice(0, maxItems);
   return values.length > 0 ? values : undefined;
+}
+
+function sanitizeQuestionOptions(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const options = value.map((item) => {
+    const record = asRecord(item);
+    const id = getBoundedString(record?.id, 120);
+    const label = getBoundedString(record?.label, 240);
+    if (!id || !label) return null;
+    const description = getBoundedString(record?.description, 500);
+    return { id, label, ...(description ? { description } : {}) };
+  }).filter((item): item is { id: string; label: string; description?: string } => item !== null).slice(0, 8);
+  return options.length ? options : undefined;
 }
 
 function sanitizeV2AssetRefs(value: unknown): CanvasAgentToolAssetRef[] | undefined {
@@ -105,6 +121,7 @@ function sanitizeV2ToolResult(value: Record<string, unknown>): Record<string, un
     ...(getStringList(value.nodeIds) ? { nodeIds: getStringList(value.nodeIds) } : {}),
     ...(getStringList(value.placedNodeIds) ? { placedNodeIds: getStringList(value.placedNodeIds) } : {}),
     ...(getBoundedString(value.message, 1000) ? { message: getBoundedString(value.message, 1000) } : {}),
+    ...(sanitizeQuestionOptions(value.options) ? { options: sanitizeQuestionOptions(value.options) } : {}),
     ...(getBoundedString(value.question, 1000) ? { question: getBoundedString(value.question, 1000) } : {}),
     ...(typeof value.revision === "number" && Number.isSafeInteger(value.revision) && value.revision >= 0 ? { revision: value.revision } : {}),
     ...(sanitizeV2Runs(value.runs) ? { runs: sanitizeV2Runs(value.runs) } : {}),
@@ -183,6 +200,10 @@ export function applyV2AgentEventToSessionState(
     } else if (waitingForInput) {
       const question = getString(result.question);
       if (question) state.pendingQuestion = question;
+      if (question) {
+        const options = sanitizeQuestionOptions(result.options);
+        state.conversationBlocks = [{ type: "question", text: question, ...(options ? { options } : {}) }];
+      }
       state.status = "waiting_for_input";
       appendV2Activity(state, `v2-question-${callId}`, "等待补充信息", question ?? undefined, "active");
     } else {
@@ -197,6 +218,10 @@ export function applyV2AgentEventToSessionState(
     if (reason === "user_input") {
       const question = getString(details?.question) ?? getString(data.question);
       if (question) state.pendingQuestion = question;
+      if (question) {
+        const options = sanitizeQuestionOptions(details?.options);
+        state.conversationBlocks = [{ type: "question", text: question, ...(options ? { options } : {}) }];
+      }
       state.status = "waiting_for_input";
       appendV2Activity(state, `v2-turn-waiting-${question ?? "input"}`, "等待补充信息", question ?? undefined, "active");
     } else {
@@ -209,6 +234,7 @@ export function applyV2AgentEventToSessionState(
   if (eventType === "turn_completed") {
     state.finalText = getString(data.text) ?? getString(data.summary) ?? state.finalText;
     state.pendingQuestion = null;
+    state.conversationBlocks = [];
     state.pendingApproval = null;
     state.status = "idle";
     appendV2Activity(state, "v2-turn-completed", "已完成", undefined, "completed");
@@ -218,6 +244,7 @@ export function applyV2AgentEventToSessionState(
   if (eventType === "turn_failed") {
     state.error = getString(data.message) ?? "Agent 执行失败。";
     state.pendingQuestion = null;
+    state.conversationBlocks = [];
     state.pendingApproval = null;
     state.status = "error";
     appendV2Activity(state, "v2-turn-failed", "任务失败", state.error, "failed");

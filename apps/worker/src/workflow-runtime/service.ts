@@ -4434,10 +4434,21 @@ export class WorkflowNodeExecutionService {
     const status = Number(row.failed) > 0 || Number(row.invalid) > 0 ? (Number(row.succeeded) > 0 ? "reviewing" : "failed") : "succeeded";
     const updated = await client.query<{ id: string; previous_status: string; skill_version_id: string; turn_id: string | null; idempotency_key: string; graph_revision: string | null }>(
       `WITH current AS (SELECT status AS previous_status, skill_version_id, turn_id, idempotency_key, graph_revision FROM agent_skill_runs WHERE id = $1::uuid)
-       UPDATE agent_skill_runs SET status = $2, output_json = jsonb_build_object('completedSteps', $3::int, 'failedSteps', $4::int), updated_at = now()
+       UPDATE agent_skill_runs SET status = $2,
+         output_json = jsonb_build_object(
+           'completedSteps', $3::int,
+           'failedSteps', $4::int,
+           'delivery', jsonb_build_object(
+             'status', CASE WHEN $4::int = 0 AND $5::int = 0 THEN 'verified' WHEN $3::int > 0 THEN 'partial' ELSE 'failed' END,
+             'verified', ($4::int = 0 AND $5::int = 0),
+             'completedSteps', $3::int,
+             'failedSteps', $4::int,
+             'invalidSteps', $5::int
+           )
+         ), updated_at = now()
        FROM current WHERE agent_skill_runs.id = $1::uuid AND agent_skill_runs.status NOT IN ('succeeded','partial_success','failed','cancelled')
        RETURNING agent_skill_runs.id::text AS id, current.previous_status, current.skill_version_id::text AS skill_version_id, current.turn_id::text AS turn_id, current.idempotency_key, current.graph_revision::text AS graph_revision`,
-      [skillRunId, status, Number(row.succeeded), Number(row.failed)],
+      [skillRunId, status, Number(row.succeeded), Number(row.failed), Number(row.invalid)],
     );
     for (const changed of updated.rows) {
       await client.query(

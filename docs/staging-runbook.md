@@ -288,3 +288,6 @@ docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.
 ```
 
 The command is idempotent: it retains existing derived keys/files and reports processed, generated, skipped, and failed counts. A missing derived file does not block users because the authenticated media endpoint falls back to the original. Rollback the application by redeploying the earlier commit; keep generated WebP files because old releases ignore them.
+# Canvas Agent V3 acceptance note
+
+V3 rollout remains fail-closed by default. Enable `AGENT_V3_ENABLED`, `AGENT_V3_RUNTIME_ENABLED`, and `VITE_AGENT_V3_ENABLED` only together after authenticated staging validation of draft CAS, approval, billing reserve/settle/refund, delivery verification, replay, retry, and undo. Roll back by stopping the worker, setting all three flags to `false`, and redeploying; retain tasks, events, assets, drafts, Skills, and billing records.
