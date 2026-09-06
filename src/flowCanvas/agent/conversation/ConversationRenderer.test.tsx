@@ -21,4 +21,11 @@ describe("ConversationBlockRenderer", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "confirm" });
     expect(onAction).toHaveBeenCalledWith({ type: "result", id: "r1" });
   });
+
+  it("offers a refine action for each result", () => {
+    const onAction = vi.fn();
+    render(<ConversationBlockRenderer onAction={onAction} blocks={[{ type: "results", results: [{ id: "r2", label: "方向二" }] }]} />);
+    screen.getByRole("button", { name: "继续编辑" }).click();
+    expect(onAction).toHaveBeenCalledWith({ type: "result", id: "r2", value: "refine" });
+  });
 });
