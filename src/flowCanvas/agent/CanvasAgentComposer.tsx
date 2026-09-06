@@ -7,6 +7,7 @@ import { CanvasAgentReferenceUploadButton } from "./CanvasAgentReferenceUploadBu
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import type { AgentImageRunSettingsModel } from "./agentRunSettings";
 import { getRouteTierCredits } from "./agentRunSettings";
+import type { AgentOption } from "./conversation/ConversationBlockTypes";
 import {
   getCanvasAgentBusyHint,
   shouldDisableCanvasAgentComposer,
@@ -44,6 +45,8 @@ export function CanvasAgentComposer(props: {
   onChangeDraft?: (value: string) => void;
   onRemoveReference?: (chip: AgentReferenceChip) => void;
   onSend: (prompt: string) => Promise<void> | void;
+  pendingOptions?: AgentOption[];
+  onSubmitAnswer?: (option: AgentOption) => Promise<void> | void;
   onUploadError?: (message: string) => void;
   onUploadReferences?: (chips: AgentReferenceChip[]) => void;
   projectId?: string | null;
@@ -121,6 +124,23 @@ export function CanvasAgentComposer(props: {
             onRemoveRef={props.onRemoveReference}
             removableKinds={["upload"]}
           />
+        </div>
+      ) : null}
+
+      {props.pendingOptions && props.pendingOptions.length > 0 ? (
+        <div data-testid="agent-composer-pending-options" style={{ display: "grid", gap: 7, gridTemplateColumns: props.pendingOptions.length > 2 ? "1fr 1fr" : "1fr" }}>
+          {props.pendingOptions.map((option) => (
+            <button
+              key={option.id}
+              disabled={disabled}
+              onClick={() => { void props.onSubmitAnswer?.(option); }}
+              style={{ background: "rgba(96,165,250,.12)", border: "1px solid rgba(147,197,253,.28)", borderRadius: 10, color: "#e0f2fe", cursor: disabled ? "not-allowed" : "pointer", minHeight: 38, padding: "7px 9px", textAlign: "left" }}
+              type="button"
+            >
+              <span style={{ display: "block", fontSize: 12, fontWeight: 750 }}>{option.label}</span>
+              {option.description ? <span style={{ color: "rgba(224,242,254,.62)", display: "block", fontSize: 10, marginTop: 3 }}>{option.description}</span> : null}
+            </button>
+          ))}
         </div>
       ) : null}
 
