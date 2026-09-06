@@ -6813,3 +6813,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added the official provider-agnostic `taobao-product-image-suite` Skill for real-product-photo analysis, main/detail page planning, visual bible generation, per-page prompts, batch node creation, consistency checks, and targeted retries.
 - Focused validation passed: official Skill, V3 runtime, and delivery suites (12 tests); API, DB, and AI Gateway builds passed. V3 remains fail-closed until authenticated staging acceptance with real provider routes, billing, object storage, and worker execution is completed.
 - Approval now resolves planner `client:*` references consistently across created nodes, edges, and `run_node` operations before applying or launching work, preventing invalid edge endpoints and stale client IDs during real execution.
+
+## 2026-09-07 - Agent V5 Window Foundation
+
+- Implemented the first V5 vertical slice in isolated branch `codex/agent-v5`: provider-safe V5 contracts, phase reducer and confirmation policy, structured block normalization/rendering, fixed right-side window, history/attachment/model/mode controls, fixed Composer, and first-turn discovery → choice → Brief → confirmation gate.
+- The default `CanvasAgentPanel` chat path now renders `AgentWindow` instead of the old shell/timeline/Composer combination. Legacy Panel tests that assert the removed first-screen contract are expected to fail and must be rewritten around V5 behavior.
+- Focused V5 validation passed: 5 test files / 17 tests. `npm run build` passed with existing Browserslist, mixed-import and chunk-size warnings. Task 1 quality review findings were fixed for confirmation reuse, forced confirmation, stale choices, completion normalization, ID allowlisting, nested array bounds, and refinement reset.
