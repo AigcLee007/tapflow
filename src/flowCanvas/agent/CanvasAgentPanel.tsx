@@ -443,6 +443,10 @@ export function CanvasAgentPanel(props: {
             onBlockAction={(action) => {
               if (action.type === "select" && action.id) void sessionActions.answerQuestion?.(action.id);
               if (action.type === "confirm") void sessionActions.answerQuestion?.("确认执行");
+              if (action.type === "result" && action.id) {
+                const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === action.id);
+                if (node) useFlowCanvasStore.getState().selectNodesByIds([node.id]);
+              }
             }}
           />
 
