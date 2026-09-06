@@ -6792,3 +6792,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 
 - Confirmed product direction for a TapNow-style conversational co-creation Agent: clarify ambiguous goals first, present structured questions/options/briefs, recommend Skills and Apps, require confirmation before paid or broad canvas execution, then support result selection and iterative refinement.
 - Design spec: `docs/superpowers/specs/2026-09-06-conversational-canvas-agent-design.md`.
+
+# 2026-09-06 - Agent V4 Discovery-First Workbench
+
+- Replaced the default canvas Agent chat entry with a visible co-creation workbench: the first ambiguous request stays local in discovery, asks for product direction and age range, summarizes the choices as a Brief, exposes the selected Skill capability and estimated credits, and only calls the existing Agent execution stream after explicit confirmation.
+- Added `src/flowCanvas/agent/CanvasAgentV4Workspace.tsx` plus focused interaction tests and shared workbench styling in `src/flowCanvas/flowCanvas.css`. Existing timeline, Skill run, result, and canvas placement surfaces remain available after confirmation as the execution layer.
+- `npm run build` passed. The new V4 interaction suite passed 2/2 tests. Existing legacy Panel tests that assert the old first-screen Composer/Timeline contract need to be rewritten around the V4 discovery gate; they are not used as the product acceptance criterion for this replacement.

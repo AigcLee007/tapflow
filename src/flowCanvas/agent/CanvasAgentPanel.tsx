@@ -22,6 +22,7 @@ import type { AgentSkillPlan } from "./canvasAgentSkillTypes";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
 import { getCanvasAgentBusyHint, isCanvasAgentBusyState } from "./canvasAgentStateMachine";
 import { CanvasAgentWorkspaceShell } from "./CanvasAgentWorkspaceShell";
+import { CanvasAgentV4Workspace } from "./CanvasAgentV4Workspace";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useAgentWorkspacePanel } from "./useAgentWorkspacePanel";
@@ -136,6 +137,7 @@ export function CanvasAgentPanel(props: {
   });
   const workspace = useAgentWorkspacePanel();
   const [composerDraft, setComposerDraft] = React.useState("");
+  const [v4ResetKey, setV4ResetKey] = React.useState(0);
   const [uploadedReferences, setUploadedReferences] = React.useState<AgentReferenceChip[]>([]);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
@@ -398,6 +400,7 @@ export function CanvasAgentPanel(props: {
         autoOpenLatestSessionRef.current = false;
         replayHydratedSessionIdRef.current = null;
         sessionActions.resetSession?.();
+        setV4ResetKey((value) => value + 1);
         setUploadedReferences([]);
         setUploadError(null);
         setComposerDraft("");
@@ -411,6 +414,16 @@ export function CanvasAgentPanel(props: {
           data-testid="agent-panel-conversation"
           style={{ display: "grid", gridTemplateRows: "1fr auto auto", height: "100%", minHeight: 0 }}
         >
+          <CanvasAgentV4Workspace
+            key={v4ResetKey}
+            onExecute={async (brief) => {
+              const referenceContext = buildAgentReferenceContext({
+                chips: composerReferenceChips,
+                continuationContext: activeContinuation,
+              });
+              await sessionActions.sendPrompt(brief, { referenceContext });
+            }}
+          >
           <CanvasAgentConversationView
             busy={busy}
             busyLabel={getCanvasAgentBusyHint(sessionActions.workspaceState)}
@@ -569,6 +582,7 @@ export function CanvasAgentPanel(props: {
             referenceChips={composerReferenceChips}
             workspaceState={sessionActions.workspaceState}
           />
+          </CanvasAgentV4Workspace>
         </div>
       ) : null}
 

@@ -30,7 +30,7 @@ export function CanvasAgentWorkspaceShell(props: {
   workspaceState?: CanvasAgentWorkspaceState;
   width?: number;
 }) {
-  const width = props.width ?? 420;
+  const width = props.width ?? 520;
 
   return (
     <aside
@@ -78,7 +78,7 @@ export function CanvasAgentWorkspaceShell(props: {
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
             <div style={{ color: "#f8fafc", fontSize: 15, fontWeight: 800, lineHeight: 1.1 }}>TapFlow Agent</div>
             <div style={{ color: "rgba(226,232,240,0.68)", fontSize: 12, fontWeight: 700, lineHeight: 1.15 }}>
-              Canvas Copilot
+              共创工作台 · <span>Canvas Copilot</span>
             </div>
             <div
               style={{
