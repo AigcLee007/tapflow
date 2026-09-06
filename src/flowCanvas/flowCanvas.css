@@ -214,3 +214,24 @@ input.video-duration-range::-moz-range-track {
 .canvas-agent-v3-ghost-node { position: absolute; min-width: 120px; padding: 12px; border: 1px dashed #a3e635; border-radius: 8px; color: #d9f99d; background: rgba(101,163,13,.15); }
 .canvas-agent-v3-task-sheet header { display: flex; justify-content: space-between; }
 @media (max-width: 640px) { .canvas-agent-v3-command-bar { bottom: 10px; } .canvas-agent-v3-task-sheet { inset: 8px 8px 72px; width: auto; max-height: none; } }
+
+.agent-v5-conversation-stream { display: grid; gap: 12px; padding: 16px; }
+.agent-v5-card { background: rgba(15,23,42,.72); border: 1px solid rgba(148,163,184,.18); border-radius: 16px; display: grid; gap: 10px; padding: 14px; }
+.agent-v5-paragraph { color: #e2e8f0; font-size: 13px; line-height: 1.65; margin: 0; }
+.agent-v5-heading { color: #f8fafc; letter-spacing: -.02em; margin: 2px 0 0; }
+.agent-v5-heading-1 { font-size: 22px; }.agent-v5-heading-2 { font-size: 18px; }.agent-v5-heading-3 { font-size: 14px; }
+.agent-v5-quote { border-left: 3px solid #818cf8; color: #c7d2fe; font-size: 12px; line-height: 1.6; margin: 0; padding: 4px 10px; }
+.agent-v5-list { color: #cbd5e1; display: grid; font-size: 12px; gap: 5px; line-height: 1.5; margin: 0; padding-left: 20px; }
+.agent-v5-divider { border: 0; border-top: 1px solid rgba(148,163,184,.14); margin: 2px 0; width: 100%; }
+.agent-v5-card h3 { color: #f8fafc; font-size: 15px; margin: 0; }
+.agent-v5-card-kicker { color: #a5b4fc; font-size: 10px; font-weight: 800; letter-spacing: .03em; }
+.agent-v5-choice-grid { display: grid; gap: 8px; }
+.agent-v5-choice { background: rgba(30,41,59,.72); border: 1px solid rgba(148,163,184,.2); border-radius: 12px; color: #e2e8f0; cursor: pointer; display: grid; gap: 4px; padding: 11px; text-align: left; }
+.agent-v5-choice:hover, .agent-v5-choice:focus-visible { border-color: #818cf8; outline: none; }
+.agent-v5-choice strong { font-size: 12px; }.agent-v5-choice small { color: #94a3b8; font-size: 10px; }
+.agent-v5-table-scroll { overflow-x: auto; }.agent-v5-table-card table { border-collapse: collapse; min-width: 100%; width: max-content; }.agent-v5-table-card th, .agent-v5-table-card td { border-bottom: 1px solid rgba(148,163,184,.12); font-size: 11px; padding: 8px; text-align: left; white-space: nowrap; }.agent-v5-table-card th { color: #c7d2fe; font-weight: 800; }
+.agent-v5-brief-row { align-items: baseline; border-bottom: 1px solid rgba(148,163,184,.12); display: flex; font-size: 12px; gap: 14px; justify-content: space-between; padding: 8px 0; }.agent-v5-brief-row span { color: #94a3b8; }.agent-v5-brief-row strong { color: #f8fafc; text-align: right; }
+.agent-v5-capability-card { align-items: center; display: flex; grid-template-columns: 32px 1fr; }.agent-v5-capability-icon { align-items: center; background: rgba(99,102,241,.18); border-radius: 9px; color: #c7d2fe; display: grid; height: 32px; justify-content: center; width: 32px; }.agent-v5-capability-card strong, .agent-v5-capability-card small { display: block; }.agent-v5-capability-card small { color: #94a3b8; font-size: 10px; margin-top: 3px; }
+.agent-v5-confirmation-card p { color: #cbd5e1; font-size: 12px; line-height: 1.5; margin: 0; }.agent-v5-cost { color: #fbbf24; font-size: 12px; font-weight: 800; }.agent-v5-primary { background: #f8fafc; border: 0; border-radius: 10px; color: #0f172a; cursor: pointer; font-size: 12px; font-weight: 800; min-height: 36px; padding: 0 13px; }
+.agent-v5-progress-list { display: grid; gap: 8px; }.agent-v5-progress-step { align-items: center; color: #94a3b8; display: flex; font-size: 11px; gap: 8px; }.agent-v5-progress-step span { background: #475569; border-radius: 999px; height: 8px; width: 8px; }.agent-v5-progress-step.is-completed { color: #86efac; }.agent-v5-progress-step.is-completed span { background: #22c55e; }.agent-v5-progress-step.is-running { color: #c7d2fe; }.agent-v5-progress-step.is-running span { background: #818cf8; }
+.agent-v5-result-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }.agent-v5-result-grid article { background: rgba(2,6,23,.34); border: 1px solid rgba(148,163,184,.14); border-radius: 12px; overflow: hidden; }.agent-v5-result-placeholder { align-items: center; background: linear-gradient(135deg, rgba(99,102,241,.22), rgba(15,23,42,.7)); color: #e0e7ff; display: flex; font-size: 12px; height: 100px; justify-content: center; }.agent-v5-result-actions { display: flex; gap: 6px; padding: 8px; }.agent-v5-result-actions button { background: rgba(255,255,255,.08); border: 0; border-radius: 7px; color: #e2e8f0; cursor: pointer; font-size: 10px; padding: 6px 7px; }
