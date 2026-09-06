@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 
 import { assertSkillRunTransition, assertSkillStepTransition, canSkillApprovalTransition, type SkillRunStatus, type SkillStepStatus } from "./agent-skill-policy.js";
+import { readTerminalDeliveryMetadata, type TerminalDeliveryMetadata } from "./v3/agent-runtime-observability.js";
 
 export type SkillRunContext = { tenantId: string; userId: string | null };
 export type SkillRunView = {
@@ -19,6 +20,7 @@ export type SkillRunView = {
   skillVersionId: string;
   status: SkillRunStatus;
   steps: SkillStepView[];
+  terminalDelivery?: TerminalDeliveryMetadata | null;
   turnId: string | null;
 };
 export type SkillStepView = {
@@ -238,4 +240,4 @@ export class SkillRunService {
 type RunRow = { id: string; skill_version_id: string; session_id: string | null; turn_id: string | null; project_id: string | null; flow_id: string | null; status: SkillRunStatus; approval_state: SkillRunView["approvalState"]; idempotency_key: string; graph_revision: string | null; budget_snapshot: Record<string, unknown>; output_json: Record<string, unknown>; error_json: Record<string, unknown> | null };
 type StepRow = { id: string; step_index: number; action: SkillStepView["action"]; status: SkillStepStatus; approval_state: SkillStepView["approvalState"]; node_id: string | null; workflow_run_id: string | null; asset_id: string | null; retry_count: number; output_json: Record<string, unknown>; error_json: Record<string, unknown> | null };
 function mapStep(row: StepRow): SkillStepView { return { action: row.action, approvalState: row.approval_state, assetId: row.asset_id, error: row.error_json, id: row.id, nodeId: row.node_id, output: row.output_json ?? {}, retryCount: row.retry_count, status: row.status, stepIndex: Number(row.step_index), workflowRunId: row.workflow_run_id }; }
-function mapRun(row: RunRow, steps: SkillStepView[]): SkillRunView { return { approvalState: row.approval_state, budgetSnapshot: row.budget_snapshot ?? {}, error: row.error_json, flowId: row.flow_id, graphRevision: row.graph_revision === null ? null : Number(row.graph_revision), id: row.id, idempotencyKey: row.idempotency_key, output: row.output_json ?? {}, projectId: row.project_id, sessionId: row.session_id, skillVersionId: row.skill_version_id, status: row.status, steps, turnId: row.turn_id }; }
+function mapRun(row: RunRow, steps: SkillStepView[]): SkillRunView { const output = row.output_json ?? {}; return { approvalState: row.approval_state, budgetSnapshot: row.budget_snapshot ?? {}, error: row.error_json, flowId: row.flow_id, graphRevision: row.graph_revision === null ? null : Number(row.graph_revision), id: row.id, idempotencyKey: row.idempotency_key, output, projectId: row.project_id, sessionId: row.session_id, skillVersionId: row.skill_version_id, status: row.status, steps, terminalDelivery: readTerminalDeliveryMetadata(output), turnId: row.turn_id }; }

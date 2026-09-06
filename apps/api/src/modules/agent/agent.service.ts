@@ -16,6 +16,7 @@ import { buildSkillLaunchApprovalPlan, type SkillLaunchApprovalPlan } from "./ag
 import type { AgentRunSettingsService } from "./agent-run-settings.service.js";
 import { AgentSessionRepository } from "./agent-session.repository.js";
 import { buildScopedV2AgentContext } from "./agent-v2-context.js";
+import { resolveAgentRuntimeIdentity } from "./agent-runtime-identity.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
 import type { AiModelCatalogService } from "../ai-model-catalog/ai-model-catalog.service.js";
 import type { FlowsService } from "../flows/flows.service.js";
@@ -72,9 +73,11 @@ function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
   if (!value || typeof value !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
   const input = value as Record<string, unknown>;
   const targets = Array.isArray(input.targets) ? input.targets : [];
-  if (typeof input.flowId !== "string" || !Number.isSafeInteger(input.graphRevision) || input.graphRevision < 0 || targets.length === 0) {
+  const graphRevisionValue = input.graphRevision;
+  if (typeof input.flowId !== "string" || typeof graphRevisionValue !== "number" || !Number.isSafeInteger(graphRevisionValue) || graphRevisionValue < 0 || targets.length === 0) {
     throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
   }
+  const graphRevision = graphRevisionValue;
   const normalizedTargets = targets.map((target) => {
     if (!target || typeof target !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is invalid.");
     const item = target as Record<string, unknown>;
@@ -86,7 +89,7 @@ function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
   return {
     batch: normalizedTargets.length > 1,
     flowId: input.flowId,
-    graphRevision: input.graphRevision,
+    graphRevision,
     requiresApproval: true,
     targets: normalizedTargets,
   };
@@ -382,7 +385,7 @@ export class AgentService {
     textRuntime?: Pick<DatabaseTextGenerationRuntime, "generateText"> & Partial<Pick<DatabaseTextGenerationRuntime, "streamText">>;
     skillService?: Pick<SkillService, "getPublishedVersion" | "getPublishedVersionByNumber"> | null;
     skillRunService?: Pick<SkillRunService, "createRun" | "getRun" | "transition" | "createStep" | "updateStep" | "replaceBudgetSnapshot" | "claimApprovalLaunch" | "approve" | "cancel"> | null;
-    workflowRunsService?: Pick<import("../workflow-runs/workflow-runs.service.js").WorkflowRunsService, "createWorkflowRun" | "getWorkflowRunStatus">;
+    workflowRunsService?: Pick<import("../workflow-runs/workflow-runs.service.js").WorkflowRunsService, "createWorkflowRun" | "getWorkflowRunStatus" | "getWorkflowRun">;
   }) {
     this.env = options.env;
     this.aiModelCatalogService = options.aiModelCatalogService ?? null;
@@ -648,7 +651,7 @@ export class AgentService {
     input: CreateAgentTurnInput & { routeKey?: string; idempotencyKey?: string },
     writeChunk: (chunk: string) => void | Promise<void>,
   ) {
-    if (!this.env.agentV2Enabled || !this.env.agentV2RuntimeEnabled) {
+    if (resolveAgentRuntimeIdentity(this.env) !== "v2_real") {
       throw new AgentApiError(404, "AGENT_V2_DISABLED", "Canvas Agent v2 is disabled.");
     }
     if (input.selectedSkillId && (!this.env.agentSkillsEnabled || !this.env.agentSkillRuntimeEnabled)) {
@@ -916,7 +919,7 @@ export class AgentService {
           graphRevision: expectedRevision,
           nodes: nodes.map((node) => {
             const data = node.data && typeof node.data === "object" ? node.data as Record<string, unknown> : {};
-            const kind = typeof data.kind === "string" ? data.kind : node.type;
+            const kind = typeof data.kind === "string" ? data.kind : typeof node.type === "string" ? node.type : "unknown";
             // Pricing is resolved by the server-side Workflow Run path. Never
             // trust graph JSON to mark a Skill target as free.
             return { id: String(node.id), type: kind, priced: true };

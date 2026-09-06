@@ -48,6 +48,18 @@ export const OFFICIAL_AGENT_SKILLS: OfficialAgentSkill[] = [
     category: "产品视觉",
     triggers: ["产品图", "电商主图"],
   }),
+  createOfficialSkill("taobao-product-image-suite", {
+    name: "淘宝商品套图",
+    summary: "分析商品实拍图，规划淘宝主图与详情页套图，并保持跨页面主体和视觉一致性。",
+    usageScenarios: "淘宝商品主图\n淘宝详情页\n电商上新套图",
+    inputs: "商品实拍图\n商品类目与规格\n主图数量\n详情页页数\n品牌风格与卖点\n不可改变的产品特征",
+    method: "先分析实拍图中的商品主体、材质、颜色、结构和可用视角\n根据淘宝展示目标规划主图与详情页的页面数量、顺序、画幅和信息层级\n建立商品视觉圣经，锁定主体特征、色板、字体语气、光线和背景规则\n为每一页生成包含构图、文案、负面约束和参考图绑定的提示词\n批量创建图片节点并复用同一视觉上下文\n逐页检查主体一致性、卖点覆盖、文字安全区和交付完整性，失败页面单独重试",
+    outputs: "实拍图分析\n主图与详情页规划\n商品视觉圣经\n逐页提示词\n套图节点与生成结果\n一致性与交付检查报告",
+    askWhen: "缺少商品实拍图、类目、目标尺寸或核心卖点时追问；未说明数量时按平台常见套图先给出可调整方案",
+    modality: "image",
+    category: "电商视觉",
+    triggers: ["淘宝主图", "淘宝详情页", "商品套图", "电商套图"],
+  }),
   createOfficialSkill("image-variations", {
     name: "图片变体",
     summary: "基于一张参考图生成多种可比较的视觉变体。",

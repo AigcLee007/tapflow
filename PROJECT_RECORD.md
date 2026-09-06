@@ -10,6 +10,14 @@ Last updated: 2026-08-30
 - Skill V2 is defined as a versioned executable contract with typed inputs/outputs, allowlisted tools, approval/pricing/retry policies, delivery checks, optional UI schema, and validated graph templates. Existing Skill IDs and versions remain stable through a restricted V1 adapter.
 - No runtime code, feature flag, database migration, staging configuration, or deployment was changed in this design-only step. V2/Skill runtime flags remain disabled pending the existing authenticated staging gates and the future V3 implementation plan.
 - Implementation plan confirmed at `docs/superpowers/plans/2026-08-30-canvas-agent-v3-implementation.md`. The plan is split into runtime truth/evaluation, server protocol/Director loop, delivery/recovery, frontend Agent Dock V3, and Skill Contract V2/visual context slices with focused tests and commit checkpoints.
+- Task 1 progress: added disabled-by-default V3 server/runtime flags, bounded tool-round configuration, Vite/Compose propagation, and truthful capability runtime identity (`v3_real`, `v2_real`, or `unavailable`) without DEV-based inference.
+- Task 5 progress: added the dependency-injected V3 Canvas Director loop with persisted mode/status events, bounded rounds, approval/input/run suspension, terminal replay, delivery verification, and one-repair failure semantics. Added authenticated V3 route boundaries that fail closed until the runtime adapter is wired.
+- Task 6 foundation: added a revisioned Canvas Operation Service with strict draft CAS, stable operation-set idempotency, reversible create/connect/delete/update/move changes, and focused regression coverage. Asset ownership and client-reference expansion remain the next slice before wiring an execution route.
+- V3 continuation: added asset-backed placement and client-reference checks, delivery verification with partial/waiting/failed states, failed-step retry metadata, frontend task projection/SSE replay, command bar/task sheet, ghost preview overlay, Skill Contract V2 projection, and bounded visual capture metadata. V3 focused validation currently passes 12 files / 43 tests; authenticated staging execution remains the release gate.
+- Final validation note: frontend production build passed. Worker tests had 44 passing tests and 8 suites blocked by pre-existing workspace package-entry resolution errors for `@aigc-flow/redis` and `@aigc-flow/storage`; no V3 worker runtime changes were made to mask those failures.
+- V3 canvas composition: `FlowCanvasPage` now accepts an injected `agentV3RuntimeIdentity` and renders the V3 command bar/task sheet only for `v3_real`; the default remains `unavailable`, preserving the existing V2 path until the server runtime adapter is enabled.
+- Cross-package V3 focused validation: 14 test files / 50 tests passed, API build passed, frontend production build passed, and `git diff --check` passed. Authenticated staging acceptance is still unavailable in this local environment because PostgreSQL, Redis/BullMQ, S3, real priced routes, and browser auth are not configured.
+- Workspace package validation: after building workspace dependencies, Worker build passed and Worker tests passed with 113 tests and 18 intentional skips; AI Gateway Core passed 176 tests; DB passed 55 tests with 38 infrastructure/DB skips.
 
 ## 2026-08-23 - Production Image Run Finalization Recovery
 
@@ -6788,12 +6796,11 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - `/billing` now prioritizes wallet summaries and activity, with the recharge entry followed directly by redeem code controls. Payment success continues to refresh wallet and billing data through the existing authenticated path.
 - the modal now traps keyboard focus, supports Shift+Tab/Tab cycling, and restores focus to the opening control when closed.
 - focused validation passed: 8 test files / 84 tests, `npm run build`, and `git diff --check`. Full workspace test/build follow-ups remain subject to existing unrelated failures. Browser acceptance was attempted against an isolated local database; the existing auth email-delivery configuration prevents creating a browser session, so authenticated desktop/mobile screenshots could not be completed in this environment.
-# 2026-09-06 - Conversational Canvas Agent Design
 
-- Confirmed product direction for a TapNow-style conversational co-creation Agent: clarify ambiguous goals first, present structured questions/options/briefs, recommend Skills and Apps, require confirmation before paid or broad canvas execution, then support result selection and iterative refinement.
-- Design spec: `docs/superpowers/specs/2026-09-06-conversational-canvas-agent-design.md`.
-# 2026-09-06 - Conversational Agent Implementation Progress
+## 2026-08-31 - Canvas Agent V3 Runtime Wiring Follow-Up
 
-- Added structured ConversationBlock normalization/rendering, explicit execution confirmation gates, context snapshots with graph revision checks, selectable answer options, and progressive ConversationView/Composer integration.
-- Widened Agent workspace default to 520px and added narrow-screen full-width drawer behavior.
-- Focused Agent validation: 47 tests passed across block types, state, snapshot, renderer, composer, conversation view, panel, and workspace shell.
+- V3 approval now applies the approved canvas operation set before launching workflow runs and forwards the resulting draft revision to the workflow adapter, preventing stale-revision launches after node/edge changes.
+- Planner-generated node and edge IDs are deterministic per task and operation index, preserving idempotent retries and replay behavior.
+- Added the official provider-agnostic `taobao-product-image-suite` Skill for real-product-photo analysis, main/detail page planning, visual bible generation, per-page prompts, batch node creation, consistency checks, and targeted retries.
+- Focused validation passed: official Skill, V3 runtime, and delivery suites (12 tests); API, DB, and AI Gateway builds passed. V3 remains fail-closed until authenticated staging acceptance with real provider routes, billing, object storage, and worker execution is completed.
+- Approval now resolves planner `client:*` references consistently across created nodes, edges, and `run_node` operations before applying or launching work, preventing invalid edge endpoints and stale client IDs during real execution.

@@ -5,7 +5,8 @@ import { seedOfficialSkills } from "../src/modules/agent/official-skill-seed.js"
 
 describe("official Agent Skills", () => {
   it("contains the provider-agnostic text, image, and video catalog", () => {
-    expect(OFFICIAL_AGENT_SKILLS).toHaveLength(7);
+    expect(OFFICIAL_AGENT_SKILLS).toHaveLength(8);
+    expect(OFFICIAL_AGENT_SKILLS.find((skill) => skill.slug === "taobao-product-image-suite")?.normalized.methodSteps.map((step) => step.instruction).join(" ")).toContain("视觉圣经");
     expect(new Set(OFFICIAL_AGENT_SKILLS.map((skill) => skill.modality))).toEqual(new Set(["text", "image", "video"]));
     for (const skill of OFFICIAL_AGENT_SKILLS) {
       expect(skill.slug).toMatch(/^[a-z0-9-]+$/);
@@ -38,12 +39,12 @@ describe("official Agent Skills", () => {
     const pool = { connect: async () => client } as never;
 
     const created = await seedOfficialSkills(pool);
-    expect(created.created).toBe(7);
+    expect(created.created).toBe(8);
     expect(sql).toContain("SELECT set_config('app.is_system_admin', 'true', true)");
     expect(sql.some((statement) => statement.includes("tenant_id, owner_user_id, visibility"))).toBe(true);
     expect(sql.some((statement) => statement.includes("source_markdown") && statement.includes("frontmatter_json"))).toBe(true);
     mode = "same";
     const unchanged = await seedOfficialSkills(pool);
-    expect(unchanged).toEqual({ created: 0, updated: 0, unchanged: 7 });
+    expect(unchanged).toEqual({ created: 0, updated: 0, unchanged: 8 });
   });
 });

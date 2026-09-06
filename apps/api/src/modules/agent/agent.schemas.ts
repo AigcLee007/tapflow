@@ -200,3 +200,12 @@ export type GetAgentImageRunSettingsEstimateQuery = z.infer<typeof getAgentImage
 export type ListAgentSessionsQuery = z.infer<typeof listAgentSessionsQuerySchema>;
 export const executeAgentTurnSchema = createAgentTurnSchema;
 export type ExecuteAgentTurnInput = z.infer<typeof executeAgentTurnSchema>;
+
+export const agentV3TaskIdParamsSchema = z.object({ taskId: z.string().trim().min(1).max(200) }).strict();
+export const agentV3SessionTurnParamsSchema = z.object({ sessionId: z.string().uuid() }).strict();
+export const agentV3EventsQuerySchema = z.object({ after: z.coerce.number().int().nonnegative().optional() }).strict();
+export const agentV3ApprovalSchema = z.object({ approved: z.boolean().optional(), input: z.unknown().optional() }).strict();
+export const agentV3RetrySchema = z.object({ stepId: z.string().trim().min(1).max(200) }).strict();
+export const agentV3UndoSchema = z.object({ expectedRevision: z.number().int().nonnegative() }).strict();
+export type AgentV3TaskIdParams = z.infer<typeof agentV3TaskIdParamsSchema>;
+export type AgentV3SessionTurnParams = z.infer<typeof agentV3SessionTurnParamsSchema>;

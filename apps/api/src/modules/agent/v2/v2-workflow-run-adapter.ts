@@ -5,7 +5,7 @@ type Context = { tenantId: string; userId: string | null; requestId?: string | n
 export class V2WorkflowRunAdapter {
   constructor(private readonly options: {
     getFlowRevision: (context: Context, flowId: string) => Promise<number>;
-    workflowRuns: Pick<WorkflowRunsService, "createWorkflowRun"> & Partial<Pick<WorkflowRunsService, "getWorkflowRunStatus">>;
+    workflowRuns: Pick<WorkflowRunsService, "createWorkflowRun"> & Partial<Pick<WorkflowRunsService, "getWorkflowRunStatus" | "getWorkflowRun">>;
   }) {}
 
   async runNodes(context: Context, input: { flowId: string; graphRevision: number; idempotencyKey: string; nodeIds: string[]; skillRunId?: string; skillVersionId?: string; skillStepIds?: Record<string, string> }) {
@@ -35,5 +35,20 @@ export class V2WorkflowRunAdapter {
     const runs = await Promise.all(uniqueRunIds.map((runId) => getStatus(context, runId)));
     const terminal = new Set(["succeeded", "failed", "cancelled"]);
     return { allTerminal: runs.every((run) => terminal.has(run.status)), runs };
+  }
+
+  async getDeliveryActuals(context: Context, runIds: string[]) {
+    if (!this.options.workflowRuns.getWorkflowRun) throw new Error("WORKFLOW_DETAILS_READER_NOT_CONFIGURED");
+    const details = await Promise.all(Array.from(new Set(runIds)).map((runId) => this.options.workflowRuns.getWorkflowRun!(context, runId)));
+    return details.flatMap((detail) => detail.nodeRuns.map((nodeRun) => ({
+      id: detail.workflowRun.id,
+      kind: nodeRun.nodeType,
+      status: detail.workflowRun.status === "succeeded" && nodeRun.status === "succeeded" ? "succeeded" : nodeRun.status,
+      nodeId: nodeRun.nodeId,
+      assetId: typeof nodeRun.outputJson?.assetId === "string" ? nodeRun.outputJson.assetId : undefined,
+      text: typeof nodeRun.outputJson?.text === "string" ? nodeRun.outputJson.text : undefined,
+      tenantId: detail.workflowRun.tenantId,
+      flowId: detail.workflowRun.flowId,
+    })));
   }
 }
