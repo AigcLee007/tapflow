@@ -1,5 +1,6 @@
 import React from "react";
 import type { ConversationBlock, AgentDecision } from "./agentV5Types";
+import { AgentResultGroup } from "./AgentResultGroup";
 
 export type AgentBlockAction = AgentDecision | { type: "select_choice"; blockId: string; optionId: string } | { type: "result"; resultId: string; action: "refine" | "variant" | "place" };
 
@@ -22,5 +23,6 @@ export function AgentBlockRenderer(props: { block: ConversationBlock; onAction: 
   if (block.type === "skill_card" || block.type === "app_card") return <section className="agent-v5-card agent-v5-capability-card"><span className="agent-v5-capability-icon">✦</span><span><strong>{block.capability.name}</strong><small>{block.capability.description}</small></span></section>;
   if (block.type === "confirmation_card") return <section className="agent-v5-card agent-v5-confirmation-card"><div className="agent-v5-card-kicker">需要你的确认</div><h3>{block.title ?? "准备开始"}</h3><p>{block.text}</p>{block.plan.costCredits !== undefined ? <div className="agent-v5-cost">预计消耗：{block.plan.costCredits} 积分</div> : null}<button className="agent-v5-primary" onClick={() => props.onAction({ type: "confirm" })} type="button">{block.title?.includes("设计") ? "确认并开始设计" : "确认并开始"}</button></section>;
   if (block.type === "progress_card") return <section className="agent-v5-card agent-v5-progress-card"><h3>{block.title ?? "正在执行"}</h3><div className="agent-v5-progress-list">{block.steps.map((step) => <div className={`agent-v5-progress-step is-${step.status}`} key={step.id}><span aria-hidden="true" />{step.label}</div>)}</div></section>;
-  return <section className="agent-v5-card agent-v5-result-card"><h3>{block.title ?? "结果"}</h3><div className="agent-v5-result-grid">{block.results.map((result) => <article key={result.id}><div className="agent-v5-result-placeholder">{result.label}</div><div className="agent-v5-result-actions"><button aria-label={`继续编辑 ${result.label}`} onClick={() => props.onAction({ type: "result", resultId: result.id, action: "refine" })} type="button">继续编辑</button><button aria-label={`放入画布 ${result.label}`} onClick={() => props.onAction({ type: "result", resultId: result.id, action: "place" })} type="button">放入画布</button></div></article>)}</div></section>;
+  if (block.type === "result_group") return <AgentResultGroup results={block.results} title={block.title} onAction={(resultId, action) => props.onAction({ type: "result", resultId, action })} />;
+  return null;
 }

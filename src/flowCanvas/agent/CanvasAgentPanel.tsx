@@ -425,6 +425,7 @@ export function CanvasAgentPanel(props: {
         if (action.type === "select_choice") void sessionActions.answerQuestion?.(action.optionId);
         if (action.type === "confirm") void sessionActions.answerQuestion?.("确认执行");
         if (action.type === "result" && action.action === "refine") setComposerDraft(`继续编辑结果 ${action.resultId}：保留主体和核心方向，进一步优化细节。`);
+        if (action.type === "result" && action.action === "variant") setComposerDraft(`基于结果 ${action.resultId} 生成一个新的设计变体，保持核心主题但改变细节和构图。`);
         if (action.type === "result" && action.action === "place") {
           const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === action.resultId);
           if (node) useFlowCanvasStore.getState().selectNodesByIds([node.id]);
