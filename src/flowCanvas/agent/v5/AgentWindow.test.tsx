@@ -39,18 +39,33 @@ describe("AgentWindow", () => {
     expect(onChangeMode).toHaveBeenCalledWith("auto");
   });
 
-  it("asks before forwarding an ambiguous first request, then sends only after Brief confirmation", () => {
+  it("forwards an ambiguous first request to the V5 session instead of synthesizing local discovery blocks", () => {
     const onSend = vi.fn();
     render(<AgentWindow onSend={onSend} />);
     fireEvent.change(screen.getByRole("textbox", { name: "Agent 输入" }), { target: { value: "根据小黄人设计儿童陪伴玩具" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getByText("你更想优先解决哪件事？")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "陪伴与情绪安抚" }));
-    fireEvent.click(screen.getByRole("button", { name: "3-6 岁" }));
-    expect(screen.getByText("共创 Brief")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "确认并开始设计" }));
-    expect(onSend).toHaveBeenCalledWith(expect.stringContaining("陪伴与情绪安抚"), null);
+    expect(onSend).toHaveBeenCalledWith("根据小黄人设计儿童陪伴玩具", null);
+    expect(screen.queryByText("你更想优先解决哪件事？")).toBeNull();
+  });
+
+  it("closes the history drawer before starting a new conversation", () => {
+    const onNewConversation = vi.fn();
+    render(<AgentWindow onNewConversation={onNewConversation} sessions={[{ id: "s1", title: "儿童陪伴玩具" }]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "聊天记录" }));
+    expect(screen.getByText("儿童陪伴玩具")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "新建历史对话" }));
+
+    expect(onNewConversation).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("region", { name: "聊天记录" })).toBeNull();
+    expect(screen.queryByText("儿童陪伴玩具")).toBeNull();
+  });
+
+  it("shows an actionable V5 session error without replacing conversation blocks", () => {
+    render(<AgentWindow blocks={[{ text: "已保存的 Brief", type: "paragraph" }]} error="本次决策提交失败" />);
+    expect(screen.getByText("已保存的 Brief")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("本次决策提交失败");
   });
 
   it("opens Skill capability selection from the attachment menu", () => {

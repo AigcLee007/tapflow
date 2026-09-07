@@ -22,6 +22,8 @@ import type { AiModelCatalogService } from "../ai-model-catalog/ai-model-catalog
 import type { FlowsService } from "../flows/flows.service.js";
 import type {
   ApproveAgentToolCallInput,
+  CreateAgentV5DecisionInput,
+  CreateAgentV5TurnInput,
   CanvasAgentSnapshotInput,
   CreateAgentSessionInput,
   CreateAgentTurnInput,
@@ -48,6 +50,8 @@ type V2AgentStreamingRuntime = {
 
 type AgentSessionRow = {
   created_at: string;
+  conversation_phase?: string;
+  execution_mode?: "auto" | "manual_confirmation";
   flow_id: string | null;
   id: string;
   project_id: string | null;
@@ -68,6 +72,103 @@ type AgentTurnRow = {
   updated_at: string;
   user_message_id: string | null;
 };
+
+type V5Block = Record<string, unknown>;
+
+type V5TurnRow = {
+  blocks_json: unknown;
+  conversation_phase: string;
+  execution_state: string;
+  graph_revision: string | null;
+  id: string;
+  plan_json: unknown;
+  requires_confirmation: boolean;
+  session_id: string;
+};
+
+function isV5Block(value: unknown): value is V5Block {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) && typeof (value as { type?: unknown }).type === "string";
+}
+
+function v5Blocks(value: unknown): V5Block[] {
+  return Array.isArray(value) ? value.filter(isV5Block) : [];
+}
+
+function choiceGrid(blocks: V5Block[], id: string): V5Block | null {
+  return blocks.find((block) => block.type === "choice_grid" && block.id === id) ?? null;
+}
+
+function choiceOption(block: V5Block | null, optionId: string): V5Block | null {
+  if (!block || !Array.isArray(block.options)) return null;
+  return block.options.find((option) => isV5Block(option) && option.id === optionId) ?? null;
+}
+
+function optionLabel(block: V5Block | null, optionId: string): string | null {
+  const option = choiceOption(block, optionId);
+  return typeof option?.label === "string" ? option.label : null;
+}
+
+function v5InitialBlocks(): V5Block[] {
+  return [
+    { type: "paragraph", text: "我先确认产品方向，再开始设计。" },
+    { type: "heading", level: 2, text: "先确定设计方向" },
+    {
+      type: "choice_grid",
+      id: "direction",
+      title: "你更想优先解决哪件事？",
+      selectionMode: "single",
+      options: [
+        { id: "comfort", label: "陪伴与情绪安抚", description: "让孩子获得稳定、被陪伴的体验。" },
+        { id: "learning", label: "成长与启蒙互动", description: "把探索、表达和认知融入日常互动。" },
+        { id: "routine", label: "习惯与日常陪伴", description: "帮助建立起床、收纳或睡前等日常节奏。" },
+      ],
+    },
+  ];
+}
+
+function v5AgeBlocks(): V5Block[] {
+  return [
+    { type: "paragraph", text: "方向已确定。再确认适用年龄，我会据此调整互动方式与安全边界。" },
+    { type: "heading", level: 2, text: "选择适用年龄" },
+    {
+      type: "choice_grid",
+      id: "age",
+      title: "这款玩具主要陪伴哪个年龄段？",
+      selectionMode: "single",
+      options: [
+        { id: "0-3", label: "0-3 岁", description: "感官陪伴与亲子共玩为主。" },
+        { id: "3-6", label: "3-6 岁", description: "角色互动、表达和习惯培养为主。" },
+        { id: "6-9", label: "6-9 岁", description: "任务探索与自主互动为主。" },
+      ],
+    },
+  ];
+}
+
+function v5BriefBlocks(input: { age: string; direction: string; goal: string }): V5Block[] {
+  return [
+    { type: "heading", level: 2, text: "共创 Brief" },
+    {
+      type: "brief_card",
+      title: "当前设计 Brief",
+      editable: true,
+      fields: [
+        { label: "产品目标", value: input.goal },
+        { label: "优先方向", value: input.direction },
+        { label: "适用年龄", value: input.age },
+        { label: "下一步", value: "输出儿童陪伴玩具的概念方案与互动设计。" },
+      ],
+    },
+    {
+      type: "confirmation_card",
+      title: "确认并开始设计",
+      text: "请确认这份 Brief。确认后将进入设计准备队列。",
+      plan: {
+        summary: "儿童陪伴玩具概念设计",
+        writesCanvas: false,
+      },
+    },
+  ];
+}
 
 function parseSkillLaunchApprovalPlan(value: unknown): SkillLaunchApprovalPlan {
   if (!value || typeof value !== "object") throw new AgentApiError(409, "SKILL_RUN_STALE_APPROVAL", "Skill approval plan is missing or invalid.");
@@ -668,21 +769,304 @@ export class AgentService {
     }, this.pool);
   }
 
-  async recordV5Decision(context: AgentContext, sessionId: string, turnId: string, decision: Record<string, unknown>) {
+  async createV5Turn(context: AgentContext, sessionId: string, input: CreateAgentV5TurnInput) {
     return withTenantTransaction(context, async (client) => {
-      await this.requireSession(client, sessionId);
-      const result = await client.query<{ id: string; blocks_json: unknown }>(
-        `SELECT id::text AS id, blocks_json FROM agent_turns WHERE id = $1::uuid AND session_id = $2::uuid LIMIT 1`,
-        [turnId, sessionId],
-      );
-      if (result.rowCount === 0) throw new AgentApiError(404, "AGENT_TURN_NOT_FOUND", "Agent turn not found.");
-      const type = typeof decision.type === "string" ? decision.type : "unknown";
-      const phase = type === "confirm" || type === "execute" ? "executing" : type === "select_choice" ? "drafting_brief" : "refining";
+      const session = await this.requireSession(client, sessionId, true);
+      this.assertV5SessionSnapshot(session, input);
+
+      // Serialize requests with the same tenant/idempotency key before any
+      // messages are written. The partial unique index remains the durable
+      // backstop, while this keeps concurrent retries from creating orphans.
       await client.query(
-        `UPDATE agent_turns SET conversation_phase = $3, execution_state = CASE WHEN $3 = 'executing' THEN 'queued' ELSE execution_state END, confirmed_at = CASE WHEN $3 = 'executing' THEN now() ELSE confirmed_at END, updated_at = now() WHERE id = $1::uuid AND session_id = $2::uuid`,
-        [turnId, sessionId, phase],
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [`${context.tenantId}:${input.idempotencyKey}`],
       );
-      return { blocks: result.rows[0]?.blocks_json ?? [], phase, sessionId, turnId };
+
+      const existing = await client.query<V5TurnRow>(
+        `
+          SELECT
+            id::text AS id,
+            session_id::text AS session_id,
+            blocks_json,
+            conversation_phase,
+            execution_state,
+            graph_revision::text AS graph_revision,
+            plan_json,
+            requires_confirmation
+          FROM agent_turns
+          WHERE tenant_id = $1::uuid
+            AND agent_version = 'v5'
+            AND idempotency_key = $2
+          LIMIT 1
+        `,
+        [context.tenantId, input.idempotencyKey],
+      );
+      if ((existing.rowCount ?? 0) > 0) {
+        const turn = existing.rows[0]!;
+        if (turn.session_id !== sessionId) {
+          throw new AgentApiError(409, "AGENT_TURN_IDEMPOTENCY_CONFLICT", "This request key is already associated with another conversation.");
+        }
+        return this.projectV5Turn({ ...turn, sessionId });
+      }
+
+      if (session.flow_id) {
+        const draft = await this.flowsService.getFlowDraft(context, session.flow_id);
+        if (draft.revision !== input.contextSnapshot.graphRevision) {
+          throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布已被其他修改，请刷新后重试。");
+        }
+      }
+
+      const prompt = input.prompt.trim();
+      const blocks = v5InitialBlocks();
+      const userMessageId = await this.insertMessage(client, {
+        content: prompt,
+        role: "user",
+        sessionId,
+        tenantId: context.tenantId,
+      });
+      const assistantMessageId = await this.insertMessage(client, {
+        content: "我先确认产品方向，再开始设计。",
+        metadata: { agentVersion: "v5", phase: "waiting_for_choice" },
+        role: "assistant",
+        sessionId,
+        tenantId: context.tenantId,
+      });
+
+      const inserted = await client.query<V5TurnRow>(
+        `
+          INSERT INTO agent_turns (
+            tenant_id,
+            session_id,
+            user_message_id,
+            assistant_message_id,
+            status,
+            agent_namespace,
+            agent_version,
+            idempotency_key,
+            graph_revision,
+            snapshot_json,
+            context_snapshot_json,
+            plan_json,
+            blocks_json,
+            conversation_phase,
+            execution_state,
+            requires_confirmation,
+            result_ids_json,
+            error_json,
+            updated_at
+          )
+          VALUES (
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'planned', 'canvas_agent', 'v5', $5,
+            $6::bigint, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, 'waiting_for_choice', 'idle', false,
+            '[]'::jsonb, NULL, now()
+          )
+          ON CONFLICT (tenant_id, idempotency_key) WHERE agent_version = 'v5' AND idempotency_key IS NOT NULL DO NOTHING
+          RETURNING
+            id::text AS id,
+            session_id::text AS session_id,
+            blocks_json,
+            conversation_phase,
+            execution_state,
+            graph_revision::text AS graph_revision,
+            plan_json,
+            requires_confirmation
+        `,
+        [
+          context.tenantId,
+          sessionId,
+          userMessageId,
+          assistantMessageId,
+          input.idempotencyKey,
+          input.contextSnapshot.graphRevision,
+          JSON.stringify(sanitizeSnapshot(input.snapshot)),
+          JSON.stringify(input.contextSnapshot),
+          JSON.stringify({
+            v5Conversation: {
+              goal: prompt.slice(0, 500),
+              mode: input.mode,
+              modelKey: input.modelKey,
+              referenceCount: input.referenceContext.items.length,
+            },
+          }),
+          JSON.stringify(blocks),
+        ],
+      );
+
+      if (inserted.rowCount === 0) {
+        const replay = await client.query<V5TurnRow>(
+          `
+            SELECT id::text AS id, session_id::text AS session_id, blocks_json, conversation_phase,
+              execution_state, graph_revision::text AS graph_revision, plan_json, requires_confirmation
+            FROM agent_turns
+            WHERE tenant_id = $1::uuid AND agent_version = 'v5' AND idempotency_key = $2
+            LIMIT 1
+          `,
+          [context.tenantId, input.idempotencyKey],
+        );
+        const turn = replay.rows[0];
+        if (!turn || turn.session_id !== sessionId) {
+          throw new AgentApiError(409, "AGENT_TURN_IDEMPOTENCY_CONFLICT", "This request key is already associated with another conversation.");
+        }
+        return this.projectV5Turn({ ...turn, sessionId });
+      }
+
+      await client.query(
+        `
+          UPDATE agent_sessions
+          SET execution_mode = $2, conversation_phase = 'waiting_for_choice', updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [sessionId, input.mode],
+      );
+      return this.projectV5Turn({ ...inserted.rows[0]!, sessionId });
+    }, this.pool);
+  }
+
+  async setV5ExecutionMode(context: AgentContext, sessionId: string, mode: "auto" | "manual_confirmation") {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<AgentSessionRow>(
+        `
+          UPDATE agent_sessions
+          SET execution_mode = $2, updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING id::text AS id, project_id::text AS project_id, flow_id::text AS flow_id, title, status,
+            execution_mode, conversation_phase, created_at::text AS created_at, updated_at::text AS updated_at
+        `,
+        [sessionId, mode],
+      );
+      if (result.rowCount === 0) throw new AgentApiError(404, "AGENT_SESSION_NOT_FOUND", "Agent session not found.");
+      return this.mapSession(result.rows[0]!);
+    }, this.pool);
+  }
+
+  async recordV5Decision(context: AgentContext, sessionId: string, turnId: string, decision: CreateAgentV5DecisionInput) {
+    return withTenantTransaction(context, async (client) => {
+      const session = await this.requireSession(client, sessionId, true);
+      const found = await client.query<V5TurnRow>(
+        `
+          SELECT id::text AS id, session_id::text AS session_id, blocks_json, conversation_phase,
+            execution_state, graph_revision::text AS graph_revision, plan_json, requires_confirmation
+          FROM agent_turns
+          WHERE tenant_id = $1::uuid AND id = $2::uuid AND session_id = $3::uuid AND agent_version = 'v5'
+          FOR UPDATE
+        `,
+        [context.tenantId, turnId, sessionId],
+      );
+      if (found.rowCount === 0) throw new AgentApiError(404, "AGENT_TURN_NOT_FOUND", "Agent turn not found.");
+
+      const turn = found.rows[0]!;
+      const fromPhase = turn.conversation_phase;
+      const blocks = v5Blocks(turn.blocks_json);
+      const plan = this.v5PlanState(turn.plan_json);
+      let nextBlocks = blocks;
+      let nextPhase = fromPhase;
+      let nextExecutionState = turn.execution_state;
+      let requiresConfirmation = turn.requires_confirmation;
+      let confirmed = false;
+
+      if (decision.type === "select_choice") {
+        if (fromPhase !== "waiting_for_choice") {
+          throw new AgentApiError(409, "AGENT_DECISION_STALE", "This choice is no longer available.");
+        }
+        const grid = choiceGrid(blocks, decision.blockId);
+        const selectedLabel = optionLabel(grid, decision.optionId);
+        if (!selectedLabel) {
+          throw new AgentApiError(409, "AGENT_DECISION_STALE", "This choice is no longer available.");
+        }
+
+        if (decision.blockId === "direction") {
+          if (plan.direction) throw new AgentApiError(409, "AGENT_DECISION_STALE", "The design direction is already selected.");
+          plan.direction = { id: decision.optionId, label: selectedLabel };
+          nextBlocks = [...blocks, ...v5AgeBlocks()];
+        } else if (decision.blockId === "age") {
+          if (!plan.direction || plan.age) throw new AgentApiError(409, "AGENT_DECISION_STALE", "The age range is not ready to be selected.");
+          plan.age = { id: decision.optionId, label: selectedLabel };
+          nextBlocks = [...blocks, ...v5BriefBlocks({
+            age: selectedLabel,
+            direction: plan.direction.label,
+            goal: plan.goal,
+          })];
+          nextPhase = "waiting_for_confirmation";
+          requiresConfirmation = true;
+        } else {
+          throw new AgentApiError(409, "AGENT_DECISION_STALE", "This choice is no longer available.");
+        }
+      } else if (decision.type === "update_brief") {
+        if (fromPhase !== "waiting_for_confirmation") {
+          throw new AgentApiError(409, "AGENT_DECISION_STALE", "The brief is not ready to edit.");
+        }
+        const field = this.v5BriefFieldLabel(decision.field);
+        const briefIndex = blocks.findIndex((block) => block.type === "brief_card");
+        if (!field || briefIndex < 0) throw new AgentApiError(409, "AGENT_DECISION_STALE", "The brief is not ready to edit.");
+        const brief = blocks[briefIndex]!;
+        const fields = Array.isArray(brief.fields) ? brief.fields.filter(isV5Block) : [];
+        const fieldIndex = fields.findIndex((item) => item.label === field);
+        if (fieldIndex < 0) throw new AgentApiError(409, "AGENT_DECISION_STALE", "This brief field is no longer available.");
+        const editedFields = fields.map((item, index) => index === fieldIndex ? { ...item, value: decision.value.trim() } : item);
+        nextBlocks = blocks.map((block, index) => index === briefIndex ? { ...brief, fields: editedFields } : block);
+        requiresConfirmation = nextBlocks.some((block) => block.type === "confirmation_card");
+      } else if (decision.type === "confirm") {
+        if (fromPhase !== "waiting_for_confirmation" || !turn.requires_confirmation || !blocks.some((block) => block.type === "confirmation_card")) {
+          throw new AgentApiError(409, "AGENT_DECISION_STALE", "There is no current design confirmation to accept.");
+        }
+        await this.assertV5GraphRevision(context, client, session, turn.graph_revision);
+        nextPhase = "executing";
+        nextExecutionState = "queued";
+        requiresConfirmation = false;
+        confirmed = true;
+        nextBlocks = [...blocks, {
+          type: "paragraph",
+          text: "设计准备已进入队列，尚未启动生成任务。",
+        }];
+      } else if (decision.type === "cancel") {
+        if (["executing", "presenting_results"].includes(fromPhase)) {
+          throw new AgentApiError(409, "AGENT_DECISION_STALE", "This design can no longer be cancelled from the conversation.");
+        }
+        nextPhase = "idle";
+        nextExecutionState = "idle";
+        requiresConfirmation = false;
+        nextBlocks = [...blocks, { type: "paragraph", text: "已取消当前设计准备。" }];
+      } else if (decision.type === "refine") {
+        if (fromPhase === "executing") throw new AgentApiError(409, "AGENT_DECISION_STALE", "The design is already queued.");
+        nextPhase = "refining";
+        nextBlocks = [...blocks, { type: "paragraph", text: "我会根据你的补充继续完善 Brief。" }];
+      }
+
+      await client.query(
+        `
+          UPDATE agent_turns
+          SET blocks_json = $3::jsonb,
+            plan_json = $4::jsonb,
+            conversation_phase = $5,
+            execution_state = $6,
+            requires_confirmation = $7,
+            confirmed_at = CASE WHEN $8 THEN now() WHEN $5 = 'idle' THEN NULL ELSE confirmed_at END,
+            updated_at = now()
+          WHERE id = $1::uuid AND session_id = $2::uuid
+        `,
+        [turnId, sessionId, JSON.stringify(nextBlocks), JSON.stringify({ v5Conversation: plan }), nextPhase, nextExecutionState, requiresConfirmation, confirmed],
+      );
+      await client.query(
+        `UPDATE agent_sessions SET conversation_phase = $2, updated_at = now() WHERE id = $1::uuid`,
+        [sessionId, nextPhase],
+      );
+      await client.query(
+        `
+          INSERT INTO agent_v5_decisions (tenant_id, session_id, turn_id, decision_json, from_phase, to_phase, created_by)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5, $6, $7::uuid)
+        `,
+        [context.tenantId, sessionId, turnId, JSON.stringify(decision), fromPhase, nextPhase, context.userId],
+      );
+
+      return this.projectV5Turn({
+        ...turn,
+        blocks_json: nextBlocks,
+        conversation_phase: nextPhase,
+        execution_state: nextExecutionState,
+        requires_confirmation: requiresConfirmation,
+        plan_json: { v5Conversation: plan },
+        sessionId,
+      });
     }, this.pool);
   }
 
@@ -1182,7 +1566,101 @@ export class AgentService {
     }
   }
 
-  private async requireSession(client: PoolClient, sessionId: string) {
+  private assertV5SessionSnapshot(session: AgentSessionRow, input: CreateAgentV5TurnInput): void {
+    const { contextSnapshot, snapshot } = input;
+    if (input.modelKey !== contextSnapshot.modelKey) {
+      throw new AgentApiError(400, "AGENT_V5_MODEL_CONTEXT_MISMATCH", "The selected text model does not match the conversation context.");
+    }
+    if (
+      snapshot.flowId !== contextSnapshot.flowId
+      || snapshot.projectId !== contextSnapshot.projectId
+      || (session.flow_id !== null && contextSnapshot.flowId !== session.flow_id)
+      || (session.project_id !== null && contextSnapshot.projectId !== session.project_id)
+    ) {
+      throw new AgentApiError(400, "AGENT_CANVAS_FLOW_MISMATCH", "Agent session is not bound to the requested canvas.");
+    }
+  }
+
+  private v5PlanState(value: unknown): {
+    age?: { id: string; label: string };
+    direction?: { id: string; label: string };
+    goal: string;
+    mode?: "auto" | "manual_confirmation";
+    modelKey?: string | null;
+    referenceCount?: number;
+  } {
+    const record = value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>).v5Conversation
+      : null;
+    const input = record && typeof record === "object" && !Array.isArray(record)
+      ? record as Record<string, unknown>
+      : {};
+    const selected = (field: "age" | "direction") => {
+      const value = input[field];
+      if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+      const option = value as Record<string, unknown>;
+      return typeof option.id === "string" && typeof option.label === "string"
+        ? { id: option.id, label: option.label }
+        : undefined;
+    };
+    return {
+      ...(selected("age") ? { age: selected("age") } : {}),
+      ...(selected("direction") ? { direction: selected("direction") } : {}),
+      goal: typeof input.goal === "string" && input.goal.trim() ? input.goal.slice(0, 500) : "儿童陪伴玩具概念设计",
+      ...(input.mode === "auto" || input.mode === "manual_confirmation" ? { mode: input.mode } : {}),
+      ...(typeof input.modelKey === "string" || input.modelKey === null ? { modelKey: input.modelKey } : {}),
+      ...(typeof input.referenceCount === "number" && Number.isSafeInteger(input.referenceCount) ? { referenceCount: input.referenceCount } : {}),
+    };
+  }
+
+  private v5BriefFieldLabel(value: string): string | null {
+    const fields: Record<string, string> = {
+      age: "适用年龄",
+      direction: "优先方向",
+      goal: "产品目标",
+      nextStep: "下一步",
+      "下一步": "下一步",
+      "产品目标": "产品目标",
+      "优先方向": "优先方向",
+      "适用年龄": "适用年龄",
+    };
+    return fields[value] ?? null;
+  }
+
+  private async assertV5GraphRevision(
+    context: AgentContext,
+    client: PoolClient,
+    session: AgentSessionRow,
+    storedRevision: string | null,
+  ): Promise<void> {
+    if (!session.flow_id) return;
+    if (storedRevision === null) {
+      throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布版本缺失，请刷新后重试。");
+    }
+    // Create the draft if needed through the ownership-aware Flow service, then
+    // take a row lock in this transaction so a concurrent draft write cannot
+    // pass the confirmation check after this point.
+    await this.flowsService.getFlowDraft(context, session.flow_id);
+    const current = await client.query<{ revision: string }>(
+      `SELECT revision::text AS revision FROM flow_drafts WHERE flow_id = $1::uuid FOR SHARE`,
+      [session.flow_id],
+    );
+    if (current.rowCount === 0 || Number(current.rows[0]!.revision) !== Number(storedRevision)) {
+      throw new AgentApiError(409, "FLOW_DRAFT_REVISION_CONFLICT", "画布已被其他修改，请刷新后重试。");
+    }
+  }
+
+  private projectV5Turn(turn: V5TurnRow & { sessionId?: string }) {
+    return {
+      blocks: v5Blocks(turn.blocks_json),
+      executionState: turn.execution_state,
+      phase: turn.conversation_phase,
+      sessionId: turn.sessionId ?? turn.session_id,
+      turnId: turn.id,
+    };
+  }
+
+  private async requireSession(client: PoolClient, sessionId: string, forUpdate = false) {
     const result = await client.query<AgentSessionRow>(
       `
         SELECT
@@ -1191,11 +1669,14 @@ export class AgentService {
           flow_id::text AS flow_id,
           title,
           status,
+          execution_mode,
+          conversation_phase,
           created_at::text AS created_at,
           updated_at::text AS updated_at
         FROM agent_sessions
         WHERE id = $1::uuid
         LIMIT 1
+        ${forUpdate ? "FOR UPDATE" : ""}
       `,
       [sessionId],
     );
@@ -1239,7 +1720,9 @@ export class AgentService {
 
   private mapSession(row: AgentSessionRow) {
     return {
+      conversationPhase: row.conversation_phase ?? "idle",
       createdAt: row.created_at,
+      executionMode: row.execution_mode ?? "manual_confirmation",
       flowId: row.flow_id,
       id: row.id,
       projectId: row.project_id,

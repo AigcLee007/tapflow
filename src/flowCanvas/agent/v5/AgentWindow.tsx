@@ -7,15 +7,9 @@ import { AgentConversationStream } from "./AgentConversationStream";
 import type { AgentBlockAction } from "./AgentBlockRenderer";
 import type { AgentExecutionMode, AgentV5Phase, ConversationBlock } from "./agentV5Types";
 
-const discoveryDirections = [
-  { id: "comfort", label: "陪伴与情绪安抚", description: "让孩子获得安定感" },
-  { id: "learning", label: "互动学习与启蒙", description: "把认知和习惯融进互动" },
-  { id: "story", label: "故事与角色扮演", description: "形成可持续的玩耍内容" },
-];
-const discoveryAges = ["0-3 岁", "3-6 岁", "6-9 岁"];
-
 export type AgentWindowProps = {
   blocks?: ConversationBlock[];
+  error?: string | null;
   models?: Array<{ key: string; label: string }>;
   skills?: Array<{ id: string; name: string; summary: string }>;
   phase?: AgentV5Phase;
@@ -42,55 +36,25 @@ export function AgentWindow(props: AgentWindowProps) {
   const [attachmentOpen, setAttachmentOpen] = React.useState(false);
   const [modelKey, setModelKey] = React.useState(props.models?.[0]?.key ?? "");
   const [draft, setDraft] = React.useState("");
-  const [discoveryPhase, setDiscoveryPhase] = React.useState<"idle" | "direction" | "age" | "brief" | "executing">("idle");
-  const [discoveryDirection, setDiscoveryDirection] = React.useState<string | null>(null);
-  const [discoveryAge, setDiscoveryAge] = React.useState<string | null>(null);
-  const [localBlocks, setLocalBlocks] = React.useState<ConversationBlock[]>([]);
   const [capabilityPanel, setCapabilityPanel] = React.useState<"skill" | "app" | null>(null);
   const mode = props.mode ?? "manual_confirmation";
-  const displayBlocks = props.blocks && props.blocks.length > 0 ? props.blocks : localBlocks;
-  const selectedDirection = discoveryDirections.find((item) => item.id === discoveryDirection);
-  const discoveryBrief = `基于参考形象设计一款${discoveryAge ?? "适龄"}儿童陪伴玩具，核心方向为“${selectedDirection?.label ?? "陪伴体验"}”。保留角色识别度，补充材质、交互方式、安全边界和可落地的产品细节。`;
-  const resetConversation = () => { setDiscoveryPhase("idle"); setDiscoveryDirection(null); setDiscoveryAge(null); setLocalBlocks([]); props.onNewConversation?.(); };
+  const displayBlocks = props.blocks ?? [];
+  const resetConversation = () => {
+    setHistoryOpen(false);
+    setAttachmentOpen(false);
+    setCapabilityPanel(null);
+    setDraft("");
+    props.onNewConversation?.();
+  };
 
   const send = () => {
     const value = draft.trim();
     if (!value || props.phase === "executing" || props.phase === "understanding") return;
-    if (discoveryPhase === "idle" && (!props.blocks || props.blocks.length === 0)) {
-      setDiscoveryPhase("direction");
-      setLocalBlocks([
-        { type: "paragraph", text: value },
-        { type: "heading", level: 2, text: "先把方向定清楚" },
-        { type: "paragraph", text: "我不会直接替你生成，先确认两个会影响结果的关键选择。" },
-        { type: "choice_grid", id: "direction", title: "你更想优先解决哪件事？", selectionMode: "single", options: discoveryDirections },
-      ]);
-      setDraft("");
-      return;
-    }
     props.onSend?.(value, modelKey || null);
     setDraft("");
   };
 
-  const handleAction = (action: AgentBlockAction) => {
-    if (action.type === "select_choice" && discoveryPhase === "direction" && action.blockId === "direction") {
-      setDiscoveryDirection(action.optionId);
-      setDiscoveryPhase("age");
-      setLocalBlocks((current) => [...current, { type: "heading", level: 2, text: "主要陪伴哪个年龄段？" }, { type: "choice_grid", id: "age", title: "选择年龄段", selectionMode: "single", options: discoveryAges.map((age) => ({ id: age, label: age })) }]);
-      return;
-    }
-    if (action.type === "select_choice" && discoveryPhase === "age" && action.blockId === "age") {
-      setDiscoveryAge(action.optionId);
-      setDiscoveryPhase("brief");
-      setLocalBlocks((current) => [...current, { type: "brief_card", title: "共创 Brief", editable: true, fields: [{ label: "目标", value: selectedDirection?.label ?? "儿童陪伴玩具" }, { label: "使用人群", value: action.optionId }, { label: "参考策略", value: "保留角色识别度，探索 3 个产品化方向" }] }, { type: "confirmation_card", title: "确认并开始设计", text: "确认后将生成 3 个方向并整理为可比较的结果组。", plan: { costCredits: 12 } }]);
-      return;
-    }
-    if (action.type === "confirm" && discoveryPhase === "brief") {
-      setDiscoveryPhase("executing");
-      props.onSend?.(discoveryBrief, modelKey || null);
-      return;
-    }
-    props.onAction?.(action);
-  };
+  const handleAction = (action: AgentBlockAction) => props.onAction?.(action);
 
   return (
     <aside className="agent-v5-window" data-testid="agent-v5-window">
@@ -100,7 +64,10 @@ export function AgentWindow(props: AgentWindowProps) {
         <div className="agent-v5-header-actions"><button aria-label="聊天记录" className="agent-v5-header-icon" onClick={() => setHistoryOpen(true)} type="button"><History size={16} /></button><button aria-label="收起 Agent" className="agent-v5-header-icon" onClick={props.onCollapse} type="button"><PanelRightClose size={16} /></button></div>
       </header>
 
-      <div className="agent-v5-window-content"><AgentConversationStream blocks={displayBlocks} onAction={handleAction} /></div>
+      <div className="agent-v5-window-content">
+        <AgentConversationStream blocks={displayBlocks} onAction={handleAction} />
+        {props.error ? <div className="agent-v5-error" role="alert">{props.error}</div> : null}
+      </div>
 
       <footer className="agent-v5-composer">
         <textarea aria-label="Agent 输入" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="输入消息、回答 Agent 问题或继续描述任务" value={draft} />

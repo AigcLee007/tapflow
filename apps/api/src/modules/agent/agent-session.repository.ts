@@ -8,7 +8,9 @@ type AgentContext = {
 };
 
 export type AgentSessionListItem = {
+  conversationPhase: string;
   createdAt: string;
+  executionMode: "auto" | "manual_confirmation";
   flowId: string | null;
   id: string;
   projectId: string | null;
@@ -19,6 +21,8 @@ export type AgentSessionListItem = {
 };
 
 export type AgentSessionLookup = {
+  conversationPhase: string;
+  executionMode: "auto" | "manual_confirmation";
   flowId: string | null;
   id: string;
   projectId: string | null;
@@ -35,10 +39,19 @@ export type AgentHistoryMessage = {
 };
 
 export type AgentHistoryTurn = {
+  agentVersion: string | null;
+  blocksJson: unknown;
+  confirmedAt: string | null;
+  contextSnapshotJson: unknown;
+  conversationPhase: string;
   createdAt: string;
   errorJson: unknown;
+  executionState: string;
+  graphRevision: number | null;
   id: string;
   planJson: unknown;
+  requiresConfirmation: boolean;
+  resultIdsJson: unknown;
   sessionId: string;
   snapshotJson: unknown;
   status: string;
@@ -99,7 +112,9 @@ function boundedLeaseMs(value: number | undefined): number {
 }
 
 type SessionRow = {
+  conversation_phase: string;
   created_at: string;
+  execution_mode: "auto" | "manual_confirmation";
   flow_id: string | null;
   id: string;
   project_id: string | null;
@@ -144,6 +159,8 @@ export class AgentSessionRepository {
             flow_id::text AS flow_id,
             title,
             status,
+            execution_mode,
+            conversation_phase,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM agent_sessions
@@ -184,10 +201,19 @@ export class AgentSessionRepository {
         [sessionId],
       );
       const turns = await client.query<{
+        agent_version: string | null;
+        blocks_json: unknown;
+        confirmed_at: string | null;
+        context_snapshot_json: unknown;
+        conversation_phase: string;
         created_at: string;
         error_json: unknown;
+        execution_state: string;
+        graph_revision: string | null;
         id: string;
         plan_json: unknown;
+        requires_confirmation: boolean;
+        result_ids_json: unknown;
         session_id: string;
         snapshot_json: unknown;
         status: string;
@@ -199,8 +225,17 @@ export class AgentSessionRepository {
             session_id::text AS session_id,
             status,
             snapshot_json,
+            context_snapshot_json,
             plan_json,
             error_json,
+            blocks_json,
+            conversation_phase,
+            execution_state,
+            confirmed_at::text AS confirmed_at,
+            graph_revision::text AS graph_revision,
+            agent_version,
+            requires_confirmation,
+            result_ids_json,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM agent_turns
@@ -221,10 +256,19 @@ export class AgentSessionRepository {
         })),
         session: this.mapSession(session),
         turns: turns.rows.map((row) => ({
+          agentVersion: row.agent_version,
+          blocksJson: row.blocks_json ?? [],
+          confirmedAt: row.confirmed_at,
+          contextSnapshotJson: row.context_snapshot_json ?? {},
+          conversationPhase: row.conversation_phase,
           createdAt: row.created_at,
           errorJson: row.error_json,
+          executionState: row.execution_state,
+          graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
           id: row.id,
           planJson: row.plan_json,
+          requiresConfirmation: row.requires_confirmation,
+          resultIdsJson: row.result_ids_json ?? [],
           sessionId: row.session_id,
           snapshotJson: row.snapshot_json,
           status: row.status,
@@ -266,6 +310,8 @@ export class AgentSessionRepository {
     return withTenantTransaction(context, async (client) => {
       const session = await this.requireSession(client, sessionId);
       return {
+        conversationPhase: session.conversation_phase,
+        executionMode: session.execution_mode,
         flowId: session.flow_id,
         id: session.id,
         projectId: session.project_id,
@@ -608,6 +654,8 @@ export class AgentSessionRepository {
           flow_id::text AS flow_id,
           title,
           status,
+          execution_mode,
+          conversation_phase,
           created_at::text AS created_at,
           updated_at::text AS updated_at
         FROM agent_sessions
@@ -626,7 +674,9 @@ export class AgentSessionRepository {
 
   private mapSession(row: SessionRow): AgentSessionListItem {
     return {
+      conversationPhase: row.conversation_phase,
       createdAt: row.created_at,
+      executionMode: row.execution_mode,
       flowId: row.flow_id,
       id: row.id,
       projectId: row.project_id,

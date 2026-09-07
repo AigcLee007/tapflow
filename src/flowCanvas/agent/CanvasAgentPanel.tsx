@@ -26,6 +26,8 @@ import { CanvasAgentV4Workspace } from "./CanvasAgentV4Workspace";
 import { AgentWindow } from "./v5/AgentWindow";
 import { normalizeAgentV5Blocks } from "./v5/agentV5Blocks";
 import type { AgentBlockAction } from "./v5/AgentBlockRenderer";
+import { listAgentV5Sessions } from "./v5/agentV5Api";
+import { useAgentV5Session } from "./v5/useAgentV5Session";
 import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useAgentWorkspacePanel } from "./useAgentWorkspacePanel";
@@ -123,14 +125,161 @@ function findSkillRunId(input: {
   return null;
 }
 
-export function CanvasAgentPanel(props: {
+type CanvasAgentPanelProps = {
   initialSessionId?: string | null;
   onClose: () => void;
   onConfirmPlan: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
   onCreateOnlyPlan?: (plan: CanvasAgentPlannerOutput) => Promise<ApplyResult>;
   onServerDraftApplied?: () => void | Promise<void>;
   open: boolean;
-}) {
+};
+
+/**
+ * The only mounted Agent surface. V5 owns conversation state and explicitly
+ * sends every prompt/decision through the durable V5 session protocol.
+ */
+export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
+  if (!props.open) return null;
+  return <CanvasAgentV5Panel {...props} />;
+}
+
+function CanvasAgentV5Panel(props: CanvasAgentPanelProps) {
+  const session = useAgentV5Session();
+  const [availableModels, setAvailableModels] = React.useState<ReturnType<typeof getEmptyModels>>([]);
+  const [availableSkills, setAvailableSkills] = React.useState<AgentSkillPreview[]>([]);
+  const [uploadedReferences, setUploadedReferences] = React.useState<AgentReferenceChip[]>([]);
+  const [sessionList, setSessionList] = React.useState<Array<{
+    id: string;
+    title: string;
+    updatedAt?: string;
+  }>>([]);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
+  const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
+  const selectedReferenceKey = useFlowCanvasStore((state) =>
+    JSON.stringify(
+      state.nodes
+        .filter((node) => node.selected)
+        .map((node) => ({
+          assetId: typeof node.data.assetId === "string" ? node.data.assetId : null,
+          id: node.id,
+          kind: node.data.kind,
+        })),
+    ),
+  );
+  const selectedReferenceChips = React.useMemo(() => buildSelectedCanvasReferenceChips(), [selectedReferenceKey]);
+  const referenceChips = React.useMemo(
+    () => [...selectedReferenceChips, ...uploadedReferences].slice(0, AGENT_REFERENCE_LIMIT),
+    [selectedReferenceChips, uploadedReferences],
+  );
+  const refreshSessions = React.useCallback(async () => {
+    try {
+      const sessions = await listAgentV5Sessions({ flowId: backendFlowId, projectId: backendProjectId });
+      setSessionList(sessions);
+    } catch {
+      setSessionList([]);
+    }
+  }, [backendFlowId, backendProjectId]);
+
+  React.useEffect(() => {
+    void getAgentImageRunSettings().then((response) => setAvailableModels(response.models)).catch(() => setAvailableModels([]));
+    void listAgentSkills({ scope: "available" }).then(setAvailableSkills).catch(() => setAvailableSkills([]));
+  }, []);
+
+  React.useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions, session.sessionId]);
+
+  React.useEffect(() => {
+    if (!props.initialSessionId) return;
+    void session.openSession(props.initialSessionId);
+  }, [props.initialSessionId, session.openSession]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent<OpenAgentSessionDetail>).detail;
+      if (detail?.sessionId) void session.openSession(detail.sessionId);
+    };
+    window.addEventListener(OPEN_AGENT_SESSION_EVENT, handleOpen as EventListener);
+    return () => window.removeEventListener(OPEN_AGENT_SESSION_EVENT, handleOpen as EventListener);
+  }, [session.openSession]);
+
+  const handleAction = React.useCallback((action: AgentBlockAction) => {
+    if (action.type === "select_choice") {
+      void session.submitDecision({ blockId: action.blockId, optionId: action.optionId, type: "select_choice" });
+      return;
+    }
+    if (action.type === "confirm") {
+      void session.submitDecision({ type: "confirm" });
+      return;
+    }
+    if (action.type !== "result") return;
+    if (action.action === "place") {
+      const node = useFlowCanvasStore.getState().nodes.find((item) => item.id === action.resultId);
+      if (node) useFlowCanvasStore.getState().selectNodesByIds([node.id]);
+      return;
+    }
+    void session.submitDecision({
+      ...(action.action === "variant" ? { prompt: "基于当前结果生成一个新的设计变体，保留主题并改变细节和构图。" } : {}),
+      resultId: action.resultId,
+      type: "refine",
+    });
+  }, [session.submitDecision]);
+
+  const handleSend = React.useCallback((prompt: string, modelKey: string | null) => {
+    const referenceContext = buildAgentReferenceContext({ chips: referenceChips });
+    void session.submitText(prompt, { modelKey, referenceContext })
+      .then(() => {
+        setUploadedReferences([]);
+        setNotice(null);
+        void refreshSessions();
+      })
+      .catch(() => {});
+  }, [referenceChips, refreshSessions, session.submitText]);
+
+  const models = availableModels.map((model) => ({ key: model.modelKey, label: model.displayName }));
+
+  return (
+    <>
+      <AgentWindow
+        blocks={session.blocks}
+        error={session.error ?? notice}
+        mode={session.mode}
+        models={models}
+        onAction={handleAction}
+        onAttachmentAction={(kind) => {
+          if (kind === "canvas") setNotice(selectedReferenceChips.length ? "已在本轮中附加选中的画布节点。" : "请先在画布中选中要引用的节点。");
+          if (kind === "app") setNotice("应用管理将随 V5 应用连接能力一起开放。");
+        }}
+        onChangeMode={session.setExecutionMode}
+        onCollapse={props.onClose}
+        onNewConversation={() => {
+          session.newConversation();
+          setUploadedReferences([]);
+          setNotice(null);
+        }}
+        onOpenSession={(sessionId) => { void session.openSession(sessionId); }}
+        onSelectSkill={(skillId) => setNotice(`已选择 Skill：${availableSkills.find((skill) => skill.id === skillId)?.name ?? skillId}`)}
+        onSend={handleSend}
+        onUploadError={setNotice}
+        onUploadReferences={(chips) => {
+          setUploadedReferences((references) => [...references, ...chips].slice(0, AGENT_REFERENCE_LIMIT));
+          setNotice(null);
+        }}
+        phase={session.phase}
+        projectId={backendProjectId}
+        referenceCount={referenceChips.length}
+        sessionTitle={session.sessionTitle}
+        sessions={sessionList}
+        skills={availableSkills.map((skill) => ({ id: skill.id, name: skill.name, summary: skill.summary }))}
+      />
+    </>
+  );
+}
+
+/** Retained only for source compatibility while V5 remains the mounted panel. */
+function LegacyCanvasAgentPanel(props: CanvasAgentPanelProps) {
   const [serverCapabilities, setServerCapabilities] = React.useState<AgentCapabilities | null>(null);
   const sessionActions = useCanvasAgentSessionV2({
     onServerDraftApplied: props.onServerDraftApplied,

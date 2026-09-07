@@ -1,5 +1,6 @@
-import { apiGet, apiPost } from "../../../services/v2HttpClient";
+import { apiGet, apiPatch, apiPost } from "../../../services/v2HttpClient";
 import type { AgentReferenceContext } from "../agentReferenceContext";
+import type { CanvasAgentSnapshot } from "../canvasAgentTypes";
 import type { AgentExecutionMode, AgentV5Phase, ConversationBlock } from "./agentV5Types";
 import { normalizeAgentV5Blocks } from "./agentV5Blocks";
 
@@ -17,6 +18,7 @@ export type AgentV5TurnInput = {
   modelKey?: string | null;
   prompt: string;
   referenceContext?: AgentReferenceContext;
+  snapshot: CanvasAgentSnapshot;
 };
 
 function normalizeResponse(value: unknown): AgentV5TurnResponse {
@@ -39,6 +41,10 @@ export function submitAgentV5Turn(sessionId: string, input: AgentV5TurnInput) {
 
 export function submitAgentV5Decision(sessionId: string, turnId: string, decision: Record<string, unknown>) {
   return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/v5-turns/${encodeURIComponent(turnId)}/decisions`, { decision }).then(normalizeResponse);
+}
+
+export function updateAgentV5Mode(sessionId: string, mode: AgentExecutionMode) {
+  return apiPatch<{ executionMode: AgentExecutionMode }>(`/agent/sessions/${encodeURIComponent(sessionId)}/v5-mode`, { mode });
 }
 
 export function listAgentV5Sessions(input?: { flowId?: string | null; projectId?: string | null }) {

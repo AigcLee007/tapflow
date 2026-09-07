@@ -112,6 +112,85 @@ export const createAgentTurnSchema = z.object({
   snapshot: canvasAgentSnapshotSchema,
 });
 
+/**
+ * V5 keeps the composer contract deliberately small and product-facing.  It
+ * carries stable references only; route details and executable canvas plans
+ * are server concerns and must never be accepted from the browser here.
+ */
+const agentV5ContextAssetRefSchema = z.object({
+  assetId: z.string().trim().min(1).max(200),
+  label: z.string().trim().min(1).max(400),
+  refId: z.string().trim().min(1).max(200),
+}).strict();
+
+const agentV5ContextSkillRefSchema = z.object({
+  id: z.string().uuid(),
+  version: z.number().int().positive(),
+}).strict();
+
+export const agentV5ContextSnapshotSchema = z.object({
+  appRefs: z.array(z.string().trim().min(1).max(200)).max(12),
+  assetRefs: z.array(agentV5ContextAssetRefSchema).max(12),
+  flowId: z.string().uuid().nullable(),
+  graphRevision: z.number().int().nonnegative(),
+  modelKey: z.string().trim().min(1).max(200).nullable(),
+  projectId: z.string().uuid().nullable(),
+  selectedNodeIds: z.array(z.string().trim().min(1).max(200)).max(100),
+  skillRefs: z.array(agentV5ContextSkillRefSchema).max(12),
+  uploadedAssetIds: z.array(z.string().trim().min(1).max(200)).max(12),
+}).strict().superRefine((value, ctx) => {
+  const assetRefIds = new Set<string>();
+  value.assetRefs.forEach((item, index) => {
+    if (assetRefIds.has(item.refId)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "contextSnapshot.assetRefs must use unique refId values",
+        path: ["assetRefs", index, "refId"],
+      });
+    }
+    assetRefIds.add(item.refId);
+  });
+});
+
+export const createAgentV5TurnSchema = z.object({
+  contextSnapshot: agentV5ContextSnapshotSchema,
+  idempotencyKey: z.string().trim().min(1).max(200),
+  mode: z.enum(["auto", "manual_confirmation"]),
+  modelKey: z.string().trim().min(1).max(200).nullable(),
+  prompt: z.string().trim().min(1).max(8_000),
+  referenceContext: agentReferenceContextSchema,
+  snapshot: canvasAgentSnapshotSchema,
+}).strict();
+
+export const updateAgentV5ModeSchema = z.object({
+  mode: z.enum(["auto", "manual_confirmation"]),
+}).strict();
+
+export const createAgentV5DecisionSchema = z.discriminatedUnion("type", [
+  z.object({
+    blockId: z.string().trim().min(1).max(200),
+    optionId: z.string().trim().min(1).max(200),
+    type: z.literal("select_choice"),
+  }).strict(),
+  z.object({
+    field: z.string().trim().min(1).max(120),
+    type: z.literal("update_brief"),
+    value: z.string().trim().min(1).max(4_000),
+  }).strict(),
+  z.object({
+    type: z.literal("confirm"),
+  }).strict(),
+  z.object({
+    reason: z.string().trim().min(1).max(1_000).optional(),
+    type: z.literal("cancel"),
+  }).strict(),
+  z.object({
+    prompt: z.string().trim().min(1).max(4_000).optional(),
+    resultId: z.string().trim().min(1).max(200).optional(),
+    type: z.literal("refine"),
+  }).strict(),
+]);
+
 export const createAgentMessageSchema = z.object({
   content: z.string().trim().min(1).max(8000),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -194,6 +273,10 @@ export type CanvasAgentSnapshotInput = z.infer<typeof canvasAgentSnapshotSchema>
 export type CreateAgentSessionInput = z.infer<typeof createAgentSessionSchema>;
 export type CreateAgentMessageInput = z.infer<typeof createAgentMessageSchema>;
 export type CreateAgentTurnInput = z.infer<typeof createAgentTurnSchema>;
+export type AgentV5ContextSnapshotInput = z.infer<typeof agentV5ContextSnapshotSchema>;
+export type CreateAgentV5TurnInput = z.infer<typeof createAgentV5TurnSchema>;
+export type CreateAgentV5DecisionInput = z.infer<typeof createAgentV5DecisionSchema>;
+export type UpdateAgentV5ModeInput = z.infer<typeof updateAgentV5ModeSchema>;
 export type AgentReferenceContextInput = z.infer<typeof agentReferenceContextSchema>;
 export type GetAgentEventsQuery = z.infer<typeof getAgentEventsQuerySchema>;
 export type GetAgentImageRunSettingsEstimateQuery = z.infer<typeof getAgentImageRunSettingsEstimateQuerySchema>;

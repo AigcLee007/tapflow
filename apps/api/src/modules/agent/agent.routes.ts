@@ -6,6 +6,8 @@ import {
   type AgentSessionIdParams,
   type ApproveAgentToolCallInput,
   type ApplyAgentCanvasOpsInput,
+  type CreateAgentV5DecisionInput,
+  type CreateAgentV5TurnInput,
   type CreateAgentMessageInput,
   type CreateAgentSessionInput,
   type CreateAgentTurnInput,
@@ -13,16 +15,20 @@ import {
   type GetAgentEventsQuery,
   type GetAgentImageRunSettingsEstimateQuery,
   type ListAgentSessionsQuery,
+  type UpdateAgentV5ModeInput,
   approveAgentToolCallSchema,
   agentSessionIdParamsSchema,
   applyAgentCanvasOpsSchema,
   createAgentMessageSchema,
   createAgentSessionSchema,
   createAgentTurnSchema,
+  createAgentV5DecisionSchema,
+  createAgentV5TurnSchema,
   executeAgentTurnSchema,
   getAgentEventsQuerySchema,
   getAgentImageRunSettingsEstimateQuerySchema,
   listAgentSessionsQuerySchema,
+  updateAgentV5ModeSchema,
   agentV3ApprovalSchema,
   agentV3EventsQuerySchema,
   agentV3SessionTurnParamsSchema,
@@ -342,8 +348,20 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const body = parseBody<CreateAgentTurnInput>(request, createAgentTurnSchema);
-        return reply.code(201).send(await app.agentService.createTurn(getAgentContext(request), params.sessionId, body));
+        const body = parseBody<CreateAgentV5TurnInput>(request, createAgentV5TurnSchema);
+        return reply.code(201).send(await app.agentService.createV5Turn(getAgentContext(request), params.sessionId, body));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.patch(
+    "/api/v2/agent/sessions/:sessionId/v5-mode",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<UpdateAgentV5ModeInput>(request, updateAgentV5ModeSchema);
+        return reply.send(await app.agentService.setV5ExecutionMode(getAgentContext(request), params.sessionId, body.mode));
       } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
@@ -354,7 +372,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
-        const body = z.object({ decision: z.record(z.string(), z.unknown()) }).strict().parse(request.body);
+        const body = z.object({ decision: createAgentV5DecisionSchema }).strict().parse(request.body) as { decision: CreateAgentV5DecisionInput };
         return reply.send(await app.agentService.recordV5Decision(getAgentContext(request), params.sessionId, params.turnId, body.decision));
       } catch (error) { return handleRouteError(error, request, reply); }
     },

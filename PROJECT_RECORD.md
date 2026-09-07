@@ -1,6 +1,14 @@
 ﻿# Project Record
 
-Last updated: 2026-08-30
+Last updated: 2026-09-07
+
+## 2026-09-07 - TapNow-style Agent V5 conversation protocol
+
+- Replaced the mounted Canvas Agent first-level surface with a fixed right-side V5 conversation window: new chat, history drawer, collapse, unified `+ -> mode -> input -> model -> send` composer, attachment/Skill/App entry points, structured blocks, and no voice/usage-statistics controls.
+- Removed local fake discovery behavior. Ambiguous requests now go through a durable V5 session and return server-generated understanding/choice blocks; direction and age decisions produce a Brief and confirmation card before execution.
+- Added V5 state/reducer and safe block normalization for headings, lists, tables, choices, Brief, capability, confirmation, progress, and result groups. Provider fields, HTML, credentials, signed URLs, and other unsafe values are excluded from the renderer boundary.
+- Added V5 API schemas, dedicated turn/decision/mode endpoints, idempotent V5 turn storage, tenant-scoped `agent_v5_decisions` with RLS, graph-revision checks, locked decision updates, and durable history projections for phase/execution/context/results.
+- Frontend and API focused tests pass: 25 V5/UI tests and 2 schema contract tests (3 database-backed API tests skipped when no `DATABASE_URL` is configured). Frontend production build and DB package build pass. Full API/type builds still report pre-existing unrelated repository errors; authenticated staging browser acceptance with PostgreSQL/Redis/S3/provider routes remains pending.
 
 ## 2026-08-30 - Canvas Agent V3 Redesign Direction
 
