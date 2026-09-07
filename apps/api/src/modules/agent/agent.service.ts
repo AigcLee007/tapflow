@@ -176,6 +176,29 @@ export const plannerOutputSchema = z.object({
 
 type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 
+function buildAgentV5Blocks(plan: PlannerOutput) {
+  const blocks: Array<Record<string, unknown>> = [
+    { type: "paragraph", text: plan.reply },
+  ];
+  if (plan.plan.length > 0) {
+    blocks.push({ type: "heading", level: 2, text: "执行方案" });
+    blocks.push({ type: "numbered_list", items: plan.plan.map((step) => step.step) });
+  }
+  if (plan.approvalRequired) {
+    blocks.push({
+      type: "confirmation_card",
+      title: "确认并开始执行",
+      text: "确认后 Agent 才会执行画布操作或生成任务。",
+      plan: {
+        costCredits: plan.costEstimate?.totalCredits ?? 0,
+        batch: false,
+        writesCanvas: plan.proposedOps.length > 0,
+      },
+    });
+  }
+  return blocks;
+}
+
 function getCanvasCenter(snapshot: CanvasAgentSnapshotInput) {
   return {
     x: -snapshot.viewport.x / snapshot.viewport.zoom + 160,
@@ -568,6 +591,8 @@ export class AgentService {
       const snapshot = sanitizeSnapshot(input.snapshot);
       const prompt = input.prompt.trim();
       const plan = await this.planTurn(context, prompt, snapshot);
+      const blocks = buildAgentV5Blocks(plan);
+      const conversationPhase = plan.approvalRequired ? "waiting_for_confirmation" : "idle";
 
       const userMessageId = await this.insertMessage(client, {
         content: prompt,
@@ -591,12 +616,15 @@ export class AgentService {
             user_message_id,
             assistant_message_id,
             status,
+            blocks_json,
+            conversation_phase,
+            execution_state,
             snapshot_json,
             plan_json,
             error_json,
             updated_at
           )
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'planned', $5::jsonb, $6::jsonb, $7::jsonb, now())
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'planned', $5::jsonb, $6, 'idle', $7::jsonb, $8::jsonb, $9::jsonb, now())
           RETURNING
             id::text AS id,
             session_id::text AS session_id,
@@ -614,6 +642,8 @@ export class AgentService {
           sessionId,
           userMessageId,
           assistantMessageId,
+          JSON.stringify(blocks),
+          conversationPhase,
           JSON.stringify(snapshot),
           JSON.stringify(plan),
           JSON.stringify({
@@ -630,9 +660,29 @@ export class AgentService {
 
       return {
         ...plan,
+        blocks,
+        phase: conversationPhase,
         sessionId,
         turnId: turn.rows[0]!.id,
       };
+    }, this.pool);
+  }
+
+  async recordV5Decision(context: AgentContext, sessionId: string, turnId: string, decision: Record<string, unknown>) {
+    return withTenantTransaction(context, async (client) => {
+      await this.requireSession(client, sessionId);
+      const result = await client.query<{ id: string; blocks_json: unknown }>(
+        `SELECT id::text AS id, blocks_json FROM agent_turns WHERE id = $1::uuid AND session_id = $2::uuid LIMIT 1`,
+        [turnId, sessionId],
+      );
+      if (result.rowCount === 0) throw new AgentApiError(404, "AGENT_TURN_NOT_FOUND", "Agent turn not found.");
+      const type = typeof decision.type === "string" ? decision.type : "unknown";
+      const phase = type === "confirm" || type === "execute" ? "executing" : type === "select_choice" ? "drafting_brief" : "refining";
+      await client.query(
+        `UPDATE agent_turns SET conversation_phase = $3, execution_state = CASE WHEN $3 = 'executing' THEN 'queued' ELSE execution_state END, confirmed_at = CASE WHEN $3 = 'executing' THEN now() ELSE confirmed_at END, updated_at = now() WHERE id = $1::uuid AND session_id = $2::uuid`,
+        [turnId, sessionId, phase],
+      );
+      return { blocks: result.rows[0]?.blocks_json ?? [], phase, sessionId, turnId };
     }, this.pool);
   }
 

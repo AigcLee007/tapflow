@@ -337,6 +337,30 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   );
 
   app.post(
+    "/api/v2/agent/sessions/:sessionId/v5-turns",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<CreateAgentTurnInput>(request, createAgentTurnSchema);
+        return reply.code(201).send(await app.agentService.createTurn(getAgentContext(request), params.sessionId, body));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/v5-turns/:turnId/decisions",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
+        const body = z.object({ decision: z.record(z.string(), z.unknown()) }).strict().parse(request.body);
+        return reply.send(await app.agentService.recordV5Decision(getAgentContext(request), params.sessionId, params.turnId, body.decision));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
     "/api/v2/agent/sessions/:sessionId/canvas-ops",
     {
       preHandler: [...authHandlers, requirePermission("flow:update")],
