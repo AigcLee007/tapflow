@@ -42,6 +42,7 @@ export function AgentWindow(props: AgentWindowProps) {
   const displayBlocks = props.blocks && props.blocks.length > 0 ? props.blocks : localBlocks;
   const selectedDirection = discoveryDirections.find((item) => item.id === discoveryDirection);
   const discoveryBrief = `基于参考形象设计一款${discoveryAge ?? "适龄"}儿童陪伴玩具，核心方向为“${selectedDirection?.label ?? "陪伴体验"}”。保留角色识别度，补充材质、交互方式、安全边界和可落地的产品细节。`;
+  const resetConversation = () => { setDiscoveryPhase("idle"); setDiscoveryDirection(null); setDiscoveryAge(null); setLocalBlocks([]); props.onNewConversation?.(); };
 
   const send = () => {
     const value = draft.trim();
@@ -85,7 +86,7 @@ export function AgentWindow(props: AgentWindowProps) {
   return (
     <aside className="agent-v5-window" data-testid="agent-v5-window">
       <header className="agent-v5-window-header">
-        <button aria-label="新建对话" className="agent-v5-header-button agent-v5-new-button" onClick={() => { setDiscoveryPhase("idle"); setDiscoveryDirection(null); setDiscoveryAge(null); setLocalBlocks([]); props.onNewConversation?.(); }} type="button"><Plus size={15} /> 新建对话</button>
+        <button aria-label="新建对话" className="agent-v5-header-button agent-v5-new-button" onClick={resetConversation} type="button"><Plus size={15} /> 新建对话</button>
         <div className="agent-v5-session-title"><Sparkles size={15} /><span>{props.sessionTitle ?? "新对话"}</span></div>
         <div className="agent-v5-header-actions"><button aria-label="聊天记录" className="agent-v5-header-icon" onClick={() => setHistoryOpen(true)} type="button"><History size={16} /></button><button aria-label="收起 Agent" className="agent-v5-header-icon" onClick={props.onCollapse} type="button"><PanelRightClose size={16} /></button></div>
       </header>
@@ -100,7 +101,7 @@ export function AgentWindow(props: AgentWindowProps) {
         {attachmentOpen ? <div className="agent-v5-attachment-menu"><button onClick={() => { props.onAttachmentAction?.("canvas"); setAttachmentOpen(false); }} type="button">从画布选择</button><button onClick={() => { props.onAttachmentAction?.("upload"); setAttachmentOpen(false); }} type="button">上传附件</button><button onClick={() => { props.onAttachmentAction?.("skill"); setAttachmentOpen(false); }} type="button">Skill</button><button onClick={() => { props.onAttachmentAction?.("app"); setAttachmentOpen(false); }} type="button">App</button></div> : null}
       </footer>
 
-      {historyOpen ? <div className="agent-v5-history-overlay" role="presentation" onClick={() => setHistoryOpen(false)}><section aria-label="聊天记录" className="agent-v5-history-drawer" onClick={(event) => event.stopPropagation()}><div className="agent-v5-history-header"><strong>聊天记录</strong><button aria-label="新建历史对话" onClick={props.onNewConversation} type="button"><Plus size={14} /> 新建对话</button></div><div className="agent-v5-history-list">{props.sessions?.length ? props.sessions.map((session) => <button key={session.id} onClick={() => { props.onOpenSession?.(session.id); setHistoryOpen(false); }} type="button">{session.title}</button>) : <span>暂无历史对话</span>}</div></section></div> : null}
+      {historyOpen ? <div className="agent-v5-history-overlay" role="presentation" onClick={() => setHistoryOpen(false)}><section aria-label="聊天记录" className="agent-v5-history-drawer" onClick={(event) => event.stopPropagation()}><div className="agent-v5-history-header"><strong>聊天记录</strong><button aria-label="新建历史对话" onClick={resetConversation} type="button"><Plus size={14} /> 新建对话</button></div><div className="agent-v5-history-list">{props.sessions?.length ? props.sessions.map((session) => <button key={session.id} onClick={() => { props.onOpenSession?.(session.id); setHistoryOpen(false); }} type="button">{session.title}</button>) : <span>暂无历史对话</span>}</div></section></div> : null}
     </aside>
   );
 }

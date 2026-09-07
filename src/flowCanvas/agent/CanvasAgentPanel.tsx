@@ -438,6 +438,7 @@ export function CanvasAgentPanel(props: {
         setUploadedReferences([]);
         void modelKey;
       }}
+      onOpenSession={(sessionId) => sessionActions.setSessionId?.(sessionId)}
       sessionTitle={sessionActions.sessionId ? "当前 Agent 对话" : "新对话"}
       sessions={sessionList}
     />
