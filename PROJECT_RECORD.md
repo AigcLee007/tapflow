@@ -6822,3 +6822,4 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Latest V5 branch head: `fe1c346f`. The shared `MenuSelect` is used for the text-model picker to preserve the project menu density rules.
 - Added migration `000078_agent_v5_conversation.sql` plus API persistence for normalized blocks, conversation phase, execution state, and confirmation decisions; the API package build remains blocked by pre-existing workflow-core/redis export errors unrelated to this migration.
 - History drawer session selection is now wired to the current Agent session adapter. Focused V5 tests remain 5 files / 17 tests passing.
+- Added real upload handling through the existing asset API, a Skill capability chooser, App management placeholder entry, and assetId-backed result previews with refine/variant/place actions. Focused V5 tests now pass 5 files / 18 tests; frontend build passes.
