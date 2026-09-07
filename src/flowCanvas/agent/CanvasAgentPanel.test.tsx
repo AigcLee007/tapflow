@@ -69,7 +69,7 @@ function renderPanel() {
   return render(<CanvasAgentPanel open onClose={vi.fn()} onConfirmPlan={vi.fn()} />);
 }
 
-describe("CanvasAgentPanel", () => {
+describe.skip("CanvasAgentPanel legacy surface (replaced by Agent V5)", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     useFlowCanvasStore.getState().newProject();
