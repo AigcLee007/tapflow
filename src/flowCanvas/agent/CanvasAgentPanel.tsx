@@ -406,12 +406,21 @@ export function CanvasAgentPanel(props: {
       blocks={v5Blocks}
       mode={v5Mode}
       models={v5Models}
+      onSelectSkill={(skillId) => {
+        const skill = availableSkills.find((item) => item.id === skillId);
+        if (skill) sessionActions.selectSkill({ id: skill.id, version: skill.version });
+      }}
+      skills={availableSkills.map((skill) => ({ id: skill.id, name: skill.name, summary: skill.summary }))}
       onAttachmentAction={(kind) => {
         if (kind === "skill") setSkillPickerOpen(true);
         if (kind === "canvas") setComposerDraft("已添加当前选中的画布节点作为参考。");
         if (kind === "upload") setUploadError("请使用当前会话的附件上传入口添加本地文件。");
         if (kind === "app") setUploadError("App 管理将在能力中心中开放。");
       }}
+      onUploadError={setUploadError}
+      onUploadReferences={(chips) => { setUploadError(null); setUploadedReferences((refs) => [...refs, ...chips].slice(0, AGENT_REFERENCE_LIMIT)); }}
+      projectId={backendProjectId}
+      referenceCount={composerReferenceChips.length}
       onAction={(action: AgentBlockAction) => {
         if (action.type === "select_choice") void sessionActions.answerQuestion?.(action.optionId);
         if (action.type === "confirm") void sessionActions.answerQuestion?.("确认执行");

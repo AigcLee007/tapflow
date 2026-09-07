@@ -8,6 +8,7 @@ const NON_IMAGE_ERROR = "只能上传图片作为参考图。";
 const DEFAULT_UPLOAD_ERROR = "参考图上传失败。";
 
 export function CanvasAgentReferenceUploadButton(props: {
+  ariaLabel?: string;
   disabled?: boolean;
   existingCount?: number;
   onError?: (message: string) => void;
@@ -66,18 +67,18 @@ export function CanvasAgentReferenceUploadButton(props: {
   return (
     <>
       <button
-        aria-label="上传参考图"
+        aria-label={props.ariaLabel ?? "上传参考图"}
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
         style={iconButtonStyle(disabled)}
-        title="上传参考图"
+        title={props.ariaLabel ?? "上传参考图"}
         type="button"
       >
         {uploading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={16} />}
       </button>
       <input
         accept="image/*"
-        aria-label="上传参考图"
+        aria-label={props.ariaLabel ?? "上传参考图"}
         disabled={disabled}
         multiple
         onChange={(event) => {

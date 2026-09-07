@@ -52,4 +52,13 @@ describe("AgentWindow", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认并开始设计" }));
     expect(onSend).toHaveBeenCalledWith(expect.stringContaining("陪伴与情绪安抚"), null);
   });
+
+  it("opens Skill capability selection from the attachment menu", () => {
+    const onSelectSkill = vi.fn();
+    render(<AgentWindow onSelectSkill={onSelectSkill} skills={[{ id: "skill-1", name: "儿童产品概念设计", summary: "角色和交互设计" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skill" }));
+    fireEvent.click(screen.getByRole("button", { name: /儿童产品概念设计/ }));
+    expect(onSelectSkill).toHaveBeenCalledWith("skill-1");
+  });
 });
