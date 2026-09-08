@@ -131,6 +131,60 @@ describeWithDatabase("agent routes", () => {
     });
   });
 
+  test("preserves auto and manual execution modes when reading a session", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const app = buildTestApp(appPool);
+        const owner = await registerOwner(app, "agent-session-mode@example.com", "Agent Session Mode");
+        const session = await createSession(app, owner.accessToken, "Mode Session");
+
+        const auto = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "PATCH",
+          payload: { flowId: null, graphRevision: 0, mode: "auto", projectId: null },
+          url: `/api/v2/agent/sessions/${session.id}/v5-mode`,
+        });
+        expect(auto.statusCode).toBe(200);
+        expect(auto.json()).toMatchObject({ executionMode: "auto" });
+
+        const autoRead = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: `/api/v2/agent/sessions/${session.id}`,
+        });
+        expect(autoRead.statusCode).toBe(200);
+        expect(autoRead.json()).toMatchObject({ executionMode: "auto" });
+
+        const manual = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "PATCH",
+          payload: { flowId: null, graphRevision: 0, mode: "manual_confirmation", projectId: null },
+          url: `/api/v2/agent/sessions/${session.id}/v5-mode`,
+        });
+        expect(manual.statusCode).toBe(200);
+        expect(manual.json()).toMatchObject({ executionMode: "manual_confirmation" });
+
+        const manualRead = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: `/api/v2/agent/sessions/${session.id}`,
+        });
+        expect(manualRead.statusCode).toBe(200);
+        expect(manualRead.json()).toMatchObject({ executionMode: "manual_confirmation" });
+
+        await app.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
   test("creates an agent turn without returning provider internals", async () => {
     await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
       process.env.DATABASE_URL = databaseUrl;

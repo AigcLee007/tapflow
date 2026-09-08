@@ -74,13 +74,25 @@ function safePlan(value: unknown): ConversationState["plan"] {
   };
 }
 
+function hasResponseScopeMismatch(state: ReplayState, response: AgentV6Response, scope: AgentV6Scope): boolean {
+  if (state.replaySeq > 0 && state.sessionId && response.sessionId !== state.sessionId) return true;
+  if (response.projectId !== undefined && response.projectId !== scope.projectId) return true;
+  if (response.flowId !== undefined && response.flowId !== scope.flowId) return true;
+  const snapshot = asRecord(response.contextSnapshot);
+  if (snapshot.projectId !== undefined && snapshot.projectId !== scope.projectId) return true;
+  if (snapshot.flowId !== undefined && snapshot.flowId !== scope.flowId) return true;
+  const decision = asRecord(response.pendingDecision);
+  if (decision.sessionId !== undefined && decision.sessionId !== response.sessionId) return true;
+  return false;
+}
+
 export function createReplayState(scope: AgentV6Scope, seed?: string, mode?: ConversationState["mode"]): ReplayState {
-  return initialConversationState({ mode, sessionId: undefined, contextSnapshot: { projectId: scope.projectId, flowId: scope.flowId, selectedNodeIds: [], assetRefs: [], uploadedAssetIds: [], skillRefs: [], appRefs: [], modelKey: null, graphRevision: scope.graphRevision }, graphRevision: scope.graphRevision }, seed ? { replaySeed: seed } : {});
+  const state = initialConversationState({ mode, sessionId: undefined, contextSnapshot: { projectId: scope.projectId, flowId: scope.flowId, selectedNodeIds: [], assetRefs: [], uploadedAssetIds: [], skillRefs: [], appRefs: [], modelKey: null, graphRevision: scope.graphRevision }, graphRevision: scope.graphRevision }, seed ? { replaySeed: seed } : {});
+  return { ...state, sessionId: undefined, turnId: undefined } as unknown as ReplayState;
 }
 
 export function applyResponse(state: ReplayState, response: AgentV6Response, scope: AgentV6Scope): ReplayState {
-  if (response.projectId !== undefined && response.projectId !== scope.projectId) return { ...state, replayError: "resync-required" };
-  if (response.flowId !== undefined && response.flowId !== scope.flowId) return { ...state, replayError: "resync-required" };
+  if (hasResponseScopeMismatch(state, response, scope)) return { ...state, replayError: "resync-required" };
   if (response.graphRevision < state.graphRevision || response.graphRevision < scope.graphRevision) return state;
   const normalizedBlocks = normalizeBlocks(response.blocks);
   let next = initialConversationState({ mode: response.mode ?? state.mode, sessionId: response.sessionId, turnId: response.turnId, prompt: response.prompt ?? state.prompt, contextSnapshot: response.contextSnapshot ?? state.contextSnapshot, graphRevision: response.graphRevision }, { replaySeed: response.sessionId });
@@ -96,13 +108,22 @@ export function applyResponse(state: ReplayState, response: AgentV6Response, sco
 export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent, scope: AgentV6Scope): ReplayState {
   if (!Number.isSafeInteger(event.seq) || event.seq <= state.replaySeq || event.seq !== state.replaySeq + 1) return state;
   const payload = asRecord(event.eventJson);
-  const eventSessionId = safeId(payload.sessionId);
-  const eventProjectId = payload.projectId === null || typeof payload.projectId === "string" ? payload.projectId as string | null : undefined;
-  const eventFlowId = payload.flowId === null || typeof payload.flowId === "string" ? payload.flowId as string | null : undefined;
+  const eventSessionId = safeId(event.sessionId) ?? safeId(payload.sessionId);
+  const eventProjectId = event.projectId !== undefined ? event.projectId : (payload.projectId === null || typeof payload.projectId === "string" ? payload.projectId as string | null : undefined);
+  const eventFlowId = event.flowId !== undefined ? event.flowId : (payload.flowId === null || typeof payload.flowId === "string" ? payload.flowId as string | null : undefined);
   if (eventSessionId && state.replaySeq > 0 && eventSessionId !== state.sessionId || eventProjectId !== undefined && eventProjectId !== scope.projectId || eventFlowId !== undefined && eventFlowId !== scope.flowId) return { ...state, replayError: "resync-required" };
   const response = asRecord(payload.response);
+  const responseCandidate = (response.phase ? response : payload) as AgentV6Response;
+  if ((eventSessionId && typeof responseCandidate.sessionId === "string" && responseCandidate.sessionId !== eventSessionId)
+    || (eventProjectId !== undefined && responseCandidate.projectId !== undefined && responseCandidate.projectId !== eventProjectId)
+    || (eventFlowId !== undefined && responseCandidate.flowId !== undefined && responseCandidate.flowId !== eventFlowId)) {
+    return { ...state, replayError: "resync-required" };
+  }
+  if (!state.sessionId && event.sessionId && typeof responseCandidate.sessionId !== "string" && !payload.sessionId) {
+    return { ...state, replayError: "resync-required" };
+  }
   let next = state;
-  if (event.eventType === "v6_response" || typeof response.phase === "string" || typeof payload.phase === "string") next = applyResponse(state, (response.phase ? response : payload) as AgentV6Response, scope);
+  if (event.eventType === "v6_response" || typeof response.phase === "string" || typeof payload.phase === "string") next = applyResponse(state, responseCandidate, scope);
   else {
     const type = payload.type;
     if (type === "turn_failed") next = reduceConversation(state, { type, error: boundedText(payload.error) });

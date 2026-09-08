@@ -69,11 +69,11 @@ describe("agentV6Api contract adapter", () => {
   });
 
   it("returns event cursor metadata and requests the next sequence after history", async () => {
-    apiGet.mockResolvedValueOnce({ events: [{ id: "event-5", seq: 5, eventType: "v6_response", eventJson: {} }], lastSeq: 5, replayCursor: "event-5" });
+    apiGet.mockResolvedValueOnce({ events: [{ id: "event-5", seq: 5, sessionId: "s", projectId: "p", flowId: "f", eventType: "v6_response", eventJson: {} }], lastSeq: 5, replayCursor: "event-5" });
 
     const response = await agentV6Api.listEvents("s", { projectId: "p", flowId: "f", afterSeq: 4 });
 
-    expect(response).toMatchObject({ lastSeq: 5, replayCursor: "event-5", events: [{ seq: 5 }] });
+    expect(response).toMatchObject({ lastSeq: 5, replayCursor: "event-5", events: [{ seq: 5, sessionId: "s", projectId: "p", flowId: "f" }] });
     expect(apiGet.mock.calls[0]?.[0]).toBe("/agent/sessions/s/events?projectId=p&flowId=f&afterSeq=4");
   });
 

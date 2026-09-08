@@ -105,10 +105,48 @@ describe("Agent V6 replay controller", () => {
   it("marks a scope-mismatched event as resync-required without blocking a later explicit resync", () => {
     const controller = new ReplayController(scope);
     const state = controller.applyEvents([
-      { id: "event-1", seq: 1, eventType: "future_event", eventJson: { sessionId: "session-1", projectId: "other-project", flowId: "flow-1" } },
+      { id: "event-1", seq: 1, eventType: "future_event", sessionId: "session-1", projectId: "other-project", flowId: "flow-1", eventJson: {} },
     ]);
 
     expect(state.replaySeq).toBe(0);
+    expect(state.replayError).toBe("resync-required");
+  });
+
+  it("uses top-level event scope and rejects a cross-session first event without state pollution", () => {
+    const controller = new ReplayController(scope, initialConversationState({ sessionId: "session-1", graphRevision: 3 }));
+    const state = controller.applyEvents([{
+      id: "event-1",
+      seq: 1,
+      eventType: "future_event",
+      sessionId: "other-session",
+      projectId: "project-1",
+      flowId: "flow-1",
+      eventJson: { response: { ...liveResponse, sessionId: "session-1" } },
+    }]);
+
+    expect(state.replaySeq).toBe(0);
+    expect(state.replayCursor).toBeNull();
+    expect(state.sessionId).toBe("session-1");
+    expect(state.mode).toBe("manual_confirmation");
+    expect(state.replayError).toBe("resync-required");
+  });
+
+  it("validates embedded response scope even when the durable event scope is valid", () => {
+    const controller = new ReplayController(scope);
+    const state = controller.applyEvents([{
+      id: "event-1",
+      seq: 1,
+      eventType: "v6_response",
+      sessionId: "session-1",
+      projectId: "project-1",
+      flowId: "flow-1",
+      eventJson: { response: { ...liveResponse, sessionId: "other-session" } },
+    }]);
+
+    expect(state.replaySeq).toBe(0);
+    expect(state.replayCursor).toBeNull();
+    expect(state.phase).toBe("idle");
+    expect(state.sessionId).toBeUndefined();
     expect(state.replayError).toBe("resync-required");
   });
 });

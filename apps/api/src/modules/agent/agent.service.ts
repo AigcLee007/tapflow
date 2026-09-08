@@ -571,6 +571,7 @@ export class AgentService {
             flow_id::text AS flow_id,
             title,
             status,
+            execution_mode,
             created_at::text AS created_at,
             updated_at::text AS updated_at
         `,
@@ -596,6 +597,7 @@ export class AgentService {
             flow_id::text AS flow_id,
             title,
             status,
+            execution_mode,
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM agent_sessions
@@ -638,7 +640,11 @@ export class AgentService {
     try {
       const session = await this.sessionRepository.getSession(context, sessionId);
       this.assertSessionScope({ projectId: session.projectId, flowId: session.flowId }, scope);
-      return await this.eventService.getReplay(context, sessionId, afterSeq);
+      const replay = await this.eventService.getReplay(context, sessionId, afterSeq);
+      return {
+        ...replay,
+        events: replay.events.map((event) => ({ ...event, flowId: session.flowId, projectId: session.projectId })),
+      };
     } catch (error) {
       return toAgentRepositoryError(error);
     }
