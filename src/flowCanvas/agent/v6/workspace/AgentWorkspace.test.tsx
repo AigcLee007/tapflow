@@ -163,4 +163,20 @@ describe("AgentWorkspace", () => {
     expect(screen.queryByRole("menuitem", { name: "TapFlow Pro" })).toBeNull();
     expect(screen.getByRole("menu", { name: "Agent 能力" })).toBeTruthy();
   });
+
+  it.each([
+    ["执行模式 Agent 自动执行", "用户确认"],
+    ["模型 TapFlow Fast", "TapFlow Pro"],
+    ["添加能力", /画布/],
+  ])("keeps history open when a stale %s dismissal fires while opening history", (triggerLabel, menuItemLabel) => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole("button", { name: triggerLabel }));
+    expect(screen.getByRole("menuitem", { name: menuItemLabel })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "历史" }));
+
+    expect(screen.getByRole("complementary", { name: "对话历史" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: menuItemLabel })).toBeNull();
+  });
 });

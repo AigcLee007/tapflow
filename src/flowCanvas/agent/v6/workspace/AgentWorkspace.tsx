@@ -45,8 +45,11 @@ export function AgentWorkspace({ blocks, title, phase, prompt, references, histo
   const [activeLayer, setActiveLayer] = useState<AgentWorkspaceLayer>(null);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const setLayer = (layer: Exclude<AgentWorkspaceLayer, "history" | null> | null) => {
-    setActiveLayer(layer);
+  const setLayer = (layer: Exclude<AgentWorkspaceLayer, "history" | null>, open: boolean) => {
+    setActiveLayer((currentLayer) => {
+      if (open) return layer;
+      return currentLayer === layer ? null : currentLayer;
+    });
   };
 
   return (
