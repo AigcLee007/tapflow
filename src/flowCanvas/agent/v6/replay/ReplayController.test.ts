@@ -65,4 +65,27 @@ describe("Agent V6 replay controller", () => {
     expect(controller.applyResponse({ ...liveResponse, graphRevision: 2 })).toBe(initial);
     expect(controller.applyResponse({ ...liveResponse, projectId: "other-project" } as AgentV6Response & { projectId: string })).toBe(initial);
   });
+
+  it("normalizes replay fields and rejects duplicate or out-of-order durable events", () => {
+    const controller = new ReplayController(scope);
+    const first = controller.applyEvents([{
+      id: "event-1",
+      seq: 1,
+      eventType: "v6_response",
+      eventJson: {
+        ...liveResponse,
+        contextSnapshot: { projectId: "project-1", flowId: "flow-1", graphRevision: 3, injected: "drop" },
+        plan: { costCredits: 999999999, injected: "drop" },
+        pendingDecision: { type: "execute", decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 3, payload: { secret: "drop" }, idempotencyKey: "idem-1", costCredits: 1 },
+        error: "e".repeat(5000),
+      },
+    }]);
+    expect(first.replaySeq).toBe(1);
+    expect(first.contextSnapshot).not.toHaveProperty("injected");
+    expect(first.plan?.costCredits).toBeLessThanOrEqual(1_000_000);
+    expect(first.pendingDecision?.payload).toEqual({});
+    expect(first.error?.length).toBeLessThanOrEqual(4000);
+    expect(controller.applyEvents([{ id: "event-1", seq: 1, eventType: "v6_response", eventJson: liveResponse }])).toBe(first);
+    expect(controller.applyEvents([{ id: "event-3", seq: 3, eventType: "v6_response", eventJson: { ...liveResponse, phase: "failed" } }])).toBe(first);
+  });
 });

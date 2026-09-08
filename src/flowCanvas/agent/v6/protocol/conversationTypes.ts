@@ -112,4 +112,6 @@ export type ConversationState = {
   error: string | null;
   sessionId?: string;
   turnId?: string;
+  replaySeq: number;
+  replayCursor: string | null;
 };

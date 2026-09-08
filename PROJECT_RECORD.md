@@ -1,6 +1,13 @@
 ﻿# Project Record
 
-Last updated: 2026-09-07
+Last updated: 2026-09-09
+
+## 2026-09-09 - Agent V6 Task 5 contract and replay hardening
+
+- Reworked the V6 frontend adapter to use the existing `/api/v2/agent` history, event, V5 turn/decision/mode, and V2 cancel contracts; no client calls the unimplemented V6-only paths.
+- Added durable event listing, unified live/history/event projection through normalized blocks and the conversation reducer, allowlisted replay fields, stable ID and numeric/text bounds, and replay seq/cursor rejection for duplicate or out-of-order events.
+- Confirm and cancel remain decision/control projections only: confirmation sends an allowlisted V5 decision, while cancel projects the existing V2 cancellation acknowledgement locally for replay without directly invoking generation, billing, or canvas execution.
+- V6 focused tests passed 113 tests and the frontend production build passed. API workspace build remains blocked by pre-existing unrelated environment/V3/Skill/Redis type errors in the current worktree.
 
 ## 2026-09-08 - Agent V6 Task 1 protocol hardening
 

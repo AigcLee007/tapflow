@@ -80,6 +80,8 @@ export function initialConversationState(overrides: Partial<ConversationState> =
     graphRevision,
     plan: normalizePlan(overrides.plan ?? undefined),
     contextSnapshot: context,
+    replaySeq: typeof overrides.replaySeq === "number" && Number.isInteger(overrides.replaySeq) && overrides.replaySeq >= 0 ? overrides.replaySeq : 0,
+    replayCursor: typeof overrides.replayCursor === "string" ? boundedId(overrides.replayCursor) || null : null,
   };
   return {
     ...baseState,

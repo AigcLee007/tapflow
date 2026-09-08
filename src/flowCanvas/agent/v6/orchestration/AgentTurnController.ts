@@ -1,6 +1,7 @@
 import type { AgentDecision, AgentExecutionMode } from "../protocol/conversationTypes";
 import { agentV6Api, type AgentV6Api, type AgentV6CancelInput, type AgentV6DecisionInput, type AgentV6Response, type AgentV6Scope, type AgentV6TurnInput } from "./agentV6Api";
 import { AgentSessionController } from "./AgentSessionController";
+import type { ReplayController } from "../replay/ReplayController";
 
 export type SubmitTurnInput = AgentV6Scope & { prompt: string; idempotencyKey: string; sessionId?: string };
 export type DecisionInput = AgentV6Scope & { sessionId: string; turnId: string; idempotencyKey: string };
@@ -9,7 +10,7 @@ export class AgentTurnController {
   private readonly api: AgentV6Api;
   private readonly sessions: AgentSessionController;
 
-  constructor(api: AgentV6Api = agentV6Api, sessions = new AgentSessionController(api)) {
+  constructor(api: AgentV6Api = agentV6Api, sessions = new AgentSessionController(api), private readonly replay?: ReplayController) {
     this.api = api;
     this.sessions = sessions;
   }
@@ -18,16 +19,22 @@ export class AgentTurnController {
     const sessionId = input.sessionId ?? this.sessions.sessionId;
     if (!sessionId) throw new Error("AGENT_V6_SESSION_REQUIRED");
     const request: AgentV6TurnInput = { projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision, prompt: input.prompt, idempotencyKey: input.idempotencyKey };
-    return this.api.submitTurn(sessionId, request);
+    const response = await this.api.submitTurn(sessionId, request);
+    this.replay?.applyResponse(response);
+    return response;
   }
 
   async decision(decision: AgentDecision | Record<string, unknown>, input: DecisionInput): Promise<AgentV6Response> {
     const request: AgentV6DecisionInput = { ...input, type: typeof decision.type === "string" ? decision.type : "decision", payload: decision as Record<string, unknown> };
-    return this.api.submitDecision(input.sessionId, input.turnId, request);
+    const response = await this.api.submitDecision(input.sessionId, input.turnId, request);
+    this.replay?.applyResponse(response);
+    return response;
   }
 
   async confirm(input: DecisionInput): Promise<AgentV6Response> {
-    return this.api.confirmExecution(input.sessionId, input.turnId, { ...input, type: "confirm", payload: { type: "confirm" } });
+    const response = await this.api.confirmExecution(input.sessionId, input.turnId, { ...input, type: "confirm", payload: { type: "confirm" } });
+    this.replay?.applyResponse(response);
+    return response;
   }
 
   async setMode(mode: AgentExecutionMode, input: AgentV6Scope & { sessionId?: string }): Promise<void> {
@@ -38,6 +45,18 @@ export class AgentTurnController {
   }
 
   async cancel(input: AgentV6CancelInput): Promise<AgentV6Response> {
-    return this.api.cancelTurn(input.sessionId, input);
+    const result = await this.api.cancelTurn(input.sessionId, input);
+    const response: AgentV6Response = {
+      sessionId: input.sessionId,
+      turnId: result.turnId ?? input.turnId ?? "",
+      projectId: input.projectId,
+      flowId: input.flowId,
+      phase: result.cancelled ? "failed" : "idle",
+      executionState: result.cancelled ? "failed" : "idle",
+      graphRevision: input.graphRevision,
+      error: result.cancelled ? input.reason?.slice(0, 4000) || "已取消" : null,
+    };
+    if (result.cancelled) this.replay?.applyResponse(response);
+    return response;
   }
 }

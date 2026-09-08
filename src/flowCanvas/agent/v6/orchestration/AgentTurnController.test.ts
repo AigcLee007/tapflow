@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionController } from "./AgentSessionController";
 import { AgentTurnController } from "./AgentTurnController";
 import type { AgentV6Api, AgentV6Response, AgentV6Scope } from "./agentV6Api";
+import { ReplayController } from "../replay/ReplayController";
 
 const scope: AgentV6Scope = { projectId: "project-1", flowId: "flow-1", graphRevision: 7 };
 
@@ -31,7 +32,7 @@ function makeApi(): AgentV6Api & { calls: Array<{ method: string; input: unknown
     submitDecision: vi.fn(async (sessionId, turnId, input) => { calls.push({ method: "submitDecision", input: { sessionId, turnId, ...input } }); return response({ sessionId, turnId, phase: "drafting_brief" }); }),
     confirmExecution: vi.fn(async (sessionId, turnId, input) => { calls.push({ method: "confirmExecution", input: { sessionId, turnId, ...input } }); return response({ sessionId, turnId, phase: "executing", executionState: "running" }); }),
     setMode: vi.fn(async (sessionId, input) => { calls.push({ method: "setMode", input: { sessionId, ...input } }); return { id: sessionId, title: "已保存", projectId: input.projectId, flowId: input.flowId, mode: input.mode }; }),
-    cancelTurn: vi.fn(async (sessionId, input) => { calls.push({ method: "cancelTurn", input: { sessionId, ...input } }); return response({ sessionId, phase: "failed", executionState: "failed", error: "已取消" }); }),
+    cancelTurn: vi.fn(async (sessionId, input) => { calls.push({ method: "cancelTurn", input: { sessionId, ...input } }); return { cancelled: true, turnId: input.turnId }; }),
   };
 }
 
@@ -84,5 +85,17 @@ describe("Agent V6 session and turn controllers", () => {
     await sessions.create(scope);
     const turns = new AgentTurnController(api, sessions);
     await expect(turns.submit({ ...scope, prompt: "重试", idempotencyKey: "same-key" })).rejects.toMatchObject({ status: 409, code: "AGENT_V6_STALE_REVISION" });
+  });
+
+  it("projects cancellation locally without invoking execution APIs", async () => {
+    const api = makeApi();
+    const replay = new ReplayController(scope);
+    const sessions = new AgentSessionController(api);
+    await sessions.create(scope);
+    const turns = new AgentTurnController(api, sessions, replay);
+    const response = await turns.cancel({ ...scope, sessionId: "session-1", turnId: "turn-1", idempotencyKey: "cancel-idem", reason: "用户停止" });
+    expect(response.phase).toBe("failed");
+    expect(replay.state.phase).toBe("failed");
+    expect(api.calls.map((call) => call.method)).toEqual(["createSession", "cancelTurn"]);
   });
 });
