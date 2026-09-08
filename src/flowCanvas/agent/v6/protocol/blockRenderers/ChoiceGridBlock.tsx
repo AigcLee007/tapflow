@@ -12,7 +12,7 @@ export function ChoiceGridBlock({ block, onAction }: { block: ChoiceBlock; onAct
   };
   return <section className={`agent-v6-choice ${block.locked ? "is-locked" : ""}`} aria-label={block.title ?? "请选择"}>
     {block.title ? <h3>{block.title}</h3> : null}
-    <div className="agent-v6-choice-grid" role="group" aria-label={block.title ?? "选项"}>
+    <div className="agent-v6-choice-grid" role="group" aria-label={block.title ?? "选项"} aria-disabled={Boolean(block.locked)} data-state={block.locked ? "locked" : "active"}>
       {block.options.map((option) => <button key={option.id} type="button" aria-pressed={selected.includes(option.id)} disabled={block.locked} onClick={() => choose(option.id)}>
         <strong>{option.label}</strong>{option.description ? <small>{option.description}</small> : null}
       </button>)}

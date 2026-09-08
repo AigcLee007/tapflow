@@ -121,6 +121,9 @@ describe("ConversationStream", () => {
     );
 
     const locked = screen.getByRole("button", { name: "已锁定" });
+    const lockedChoiceGrid = screen.getByRole("group", { name: "选项" });
+    expect(lockedChoiceGrid.getAttribute("aria-disabled")).toBe("true");
+    expect(lockedChoiceGrid.getAttribute("data-state")).toBe("locked");
     expect((locked as HTMLButtonElement).disabled).toBe(true);
     expect(locked.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByText("失败步骤").closest("li")?.getAttribute("data-status")).toBe("failed");
@@ -128,6 +131,19 @@ describe("ConversationStream", () => {
     expect(screen.getByRole("button", { name: "已锁定" }).tabIndex).toBe(0);
     expect(within(screen.getByRole("table", { name: "宽表" })).getByText("更多内容")).toBeTruthy();
     expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("exposes an active state for an unlocked choice grid container", () => {
+    render(
+      <ConversationStream
+        blocks={[{ type: "choice_grid", id: "active", selectionMode: "single", options: [{ id: "x", label: "可选择" }] }]}
+        onAction={vi.fn()}
+      />
+    );
+
+    const choiceGrid = screen.getByRole("group", { name: "选项" });
+    expect(choiceGrid.getAttribute("aria-disabled")).toBe("false");
+    expect(choiceGrid.getAttribute("data-state")).toBe("active");
   });
 
   it("locks every interactive V6 block while keeping its content viewable", () => {
