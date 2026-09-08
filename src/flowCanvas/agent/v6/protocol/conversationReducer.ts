@@ -116,6 +116,11 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
 
 const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds"]);
 const SENSITIVE_PAYLOAD_KEYS = new Set(["provider", "route", "credential", "credentialid", "apikey", "baseurl", "signedurl", "authorization", "token", "secret", "password", "nonce", "authtag", "data", "blob", "html", "base64"]);
+const MAX_PAYLOAD_DEPTH = 32;
+const MAX_PAYLOAD_NODES = 256;
+const MAX_PAYLOAD_ARRAY_LENGTH = 32;
+const MAX_PAYLOAD_KEYS = 32;
+const MAX_PAYLOAD_STRING_LENGTH = 4_000;
 
 function normalizePayloadKey(key: string) {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -127,6 +132,26 @@ function isSensitiveString(value: string) {
   if (/^ey[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i.test(value)) return true;
   if (/^(?:sk-|rk-|gh[pousr]_|xox[baprs]-|AIza)/i.test(value)) return true;
   return value.length >= 64 && /^[a-z0-9+/=_-]+$/i.test(value) && (/[+/=_-]/.test(value) || value.length >= 128);
+}
+
+function isPayloadWithinLimits(value: unknown, depth = 0, state = { nodes: 0, seen: new Set<object>() }): boolean {
+  if (value === null || typeof value === "boolean") return true;
+  if (typeof value === "string") return value.length <= MAX_PAYLOAD_STRING_LENGTH;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || depth > MAX_PAYLOAD_DEPTH || state.seen.has(value)) return false;
+  state.nodes += 1;
+  if (state.nodes > MAX_PAYLOAD_NODES) return false;
+  state.seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.length <= MAX_PAYLOAD_ARRAY_LENGTH && value.every((item) => isPayloadWithinLimits(item, depth + 1, state));
+    }
+    if (!isPlainObject(value)) return false;
+    const keys = Object.keys(value);
+    return keys.length <= MAX_PAYLOAD_KEYS && keys.every((key) => key.length <= MAX_PAYLOAD_STRING_LENGTH && isPayloadWithinLimits(value[key], depth + 1, state));
+  } catch {
+    return false;
+  }
 }
 
 function sanitizePayloadValue(value: unknown, strict: boolean, root: boolean, seen: Set<object>): unknown | null {
@@ -163,6 +188,7 @@ function sanitizePayloadValue(value: unknown, strict: boolean, root: boolean, se
 function stableSerialize(value: unknown): string | null {
   try {
     if (!isPlainObject(value)) return null;
+    if (!isPayloadWithinLimits(value)) return null;
     const normalized = sanitizePayloadValue(value, true, true, new Set());
     if (!normalized || !isPlainObject(normalized)) return null;
     const sort = (item: unknown): unknown => {
@@ -177,9 +203,14 @@ function stableSerialize(value: unknown): string | null {
   }
 }
 
-function normalizeApprovedPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> {
-  const normalized = sanitizePayloadValue(payload ?? {}, false, true, new Set());
-  return isPlainObject(normalized) ? normalized : {};
+function normalizeApprovedPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!isPayloadWithinLimits(payload ?? {})) return null;
+  try {
+    const normalized = sanitizePayloadValue(payload ?? {}, false, true, new Set());
+    return isPlainObject(normalized) ? normalized : null;
+  } catch {
+    return null;
+  }
 }
 
 function decisionIdFor(state: ConversationState, decisionId?: string) {
@@ -187,9 +218,11 @@ function decisionIdFor(state: ConversationState, decisionId?: string) {
   return supplied || boundedId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`);
 }
 
-function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision, payload?: Record<string, unknown>): AgentDecision {
+function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision, payload?: Record<string, unknown>): AgentDecision | null {
   const stableId = decisionIdFor(state, decisionId);
-  return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: normalizeApprovedPayload(payload), idempotencyKey: stableId };
+  const normalizedPayload = normalizeApprovedPayload(payload);
+  if (!normalizedPayload) return null;
+  return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: normalizedPayload, idempotencyKey: stableId };
 }
 
 function isSafeDecision(decision: AgentDecision) {
@@ -204,7 +237,8 @@ function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | un
 function briefReadyState(state: ConversationState, event: Extract<ConversationEvent, { type: "brief_ready" }>): ConversationState {
   if (!isValidGraphRevision(event.graphRevision)) return state;
   const next = { ...state, graphRevision: event.graphRevision, contextSnapshot: { ...state.contextSnapshot, graphRevision: event.graphRevision }, phase: "waiting_for_confirmation" as const, plan: normalizePlan(event.plan), confirmed: false };
-  return { ...next, pendingDecision: pendingDecision(next, event.decisionId, event.graphRevision, event.payload) };
+  const decision = pendingDecision(next, event.decisionId, event.graphRevision, event.payload);
+  return decision ? { ...next, pendingDecision: decision } : state;
 }
 
 function isHighRiskPlan(plan: ConfirmationPlan | null) {
@@ -213,7 +247,7 @@ function isHighRiskPlan(plan: ConfirmationPlan | null) {
 
 function recoverFromFailure(state: ConversationState, event: Extract<ConversationEvent, { type: "retry" | "revise" | "recover" }>): ConversationState {
   const decision = state.pendingDecision ?? (state.plan ? pendingDecision(state) : null);
-  if (isHighRiskPlan(state.plan) && !state.confirmed) {
+  if (decision && !state.confirmed && (isHighRiskPlan(state.plan) || (event.type === "retry" && state.mode === "manual_confirmation"))) {
     return { ...state, phase: "waiting_for_confirmation", executionState: "idle", error: null, pendingDecision: decision, confirmed: false };
   }
   if (event.type === "retry" && decision) return { ...state, phase: "executing", executionState: "running", error: null, pendingDecision: decision, confirmed: state.confirmed };

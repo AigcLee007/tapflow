@@ -189,6 +189,23 @@ describe("Agent V6 conversation reducer", () => {
     }
   });
 
+  it("keeps manual low-risk retries behind confirmation", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 1, mode: "manual_confirmation" });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 1 });
+    const failed = reduceConversation(state, { type: "turn_failed", error: "failed" });
+    const retried = reduceConversation(failed, { type: "retry" });
+    expect(retried.phase).toBe("waiting_for_confirmation");
+    expect(retried.executionState).toBe("idle");
+    expect(retried.confirmed).toBe(false);
+    expect(retried.pendingDecision).not.toBeNull();
+    expect(canExecuteDecision(retried, retried.pendingDecision!)).toBe(false);
+
+    const confirmed = reduceConversation(retried, { type: "confirmation_granted", decisionId: "d", graphRevision: 1 });
+    expect(confirmed.phase).toBe("executing");
+    expect(confirmed.confirmed).toBe(true);
+    expect(canExecuteDecision(confirmed, confirmed.pendingDecision!)).toBe(true);
+  });
+
   it("returns false instead of throwing for unsafe payloads", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
@@ -201,6 +218,38 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, { ...base, payload: { value: BigInt(1) } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: new Date() as unknown as Record<string, unknown> })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { value: "x".repeat(4_001) } })).toBe(false);
+  });
+
+  it("rejects deeply nested and oversized payloads without overflowing the stack", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+
+    const deeplyNested: Record<string, unknown> = {};
+    let cursor = deeplyNested;
+    for (let index = 0; index < 10_000; index += 1) {
+      const next: Record<string, unknown> = {};
+      cursor.value = next;
+      cursor = next;
+    }
+    expect(() => canExecuteDecision(state, { ...base, payload: { value: deeplyNested } })).not.toThrow();
+    expect(canExecuteDecision(state, { ...base, payload: { value: deeplyNested } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: Array.from({ length: 33 }, () => "x") } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: Array.from({ length: 257 }, () => "x") } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`field${index}`, "x"])) })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: "x".repeat(4_001) } })).toBe(false);
+  });
+
+  it("rejects oversized approved payloads instead of normalizing them into executable data", () => {
+    const state = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 }), {
+      type: "brief_ready",
+      decisionId: "d",
+      graphRevision: 0,
+      payload: { value: Array.from({ length: 33 }, () => "x") },
+    });
+    expect(state.phase).toBe("idle");
+    expect(state.pendingDecision).toBeNull();
   });
 
   it("preserves graph revision when resetting", () => {
