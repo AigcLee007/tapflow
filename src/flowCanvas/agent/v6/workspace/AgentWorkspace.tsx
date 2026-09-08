@@ -43,7 +43,9 @@ const phaseLabels: Record<AgentV6Phase, string> = { idle: "准备中", understan
 
 export function AgentWorkspace({ blocks, title, phase, prompt, references, history, historyLoading, historyNow, model, modelOptions, mode = "auto", busy = false, onNewConversation, onRename, onHistorySelect, onPromptChange, onRemoveReference, onSend, onCancel, onCapability, onModeChange, onModelChange, onCollapse, onBlockAction = () => undefined }: AgentWorkspaceProps) {
   const [activeLayer, setActiveLayer] = useState<AgentWorkspaceLayer>(null);
+  const [mountedHistoryNow] = useState(() => new Date());
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
+  const stableHistoryNow = historyNow ?? mountedHistoryNow;
 
   const setLayer = (layer: Exclude<AgentWorkspaceLayer, "history" | null>, open: boolean) => {
     setActiveLayer((currentLayer) => {
@@ -58,7 +60,7 @@ export function AgentWorkspace({ blocks, title, phase, prompt, references, histo
       <div className="agent-v6-workspace-body">
         <main className="agent-v6-message-stream" data-testid="agent-v6-message-stream" aria-label="Agent 消息流"><ConversationStream blocks={blocks} onAction={onBlockAction} /></main>
         <AgentComposer prompt={prompt} references={references} mode={mode} model={model} modelOptions={modelOptions} busy={busy} onPromptChange={onPromptChange} onModeChange={onModeChange} onModelChange={onModelChange} onLayerChange={setLayer} onSend={onSend} onCancel={onCancel} onCapability={onCapability} onRemoveReference={onRemoveReference} />
-        {activeLayer === "history" ? <AgentHistory items={history} loading={historyLoading} now={historyNow} onSelect={onHistorySelect} onClose={() => setActiveLayer((layer) => layer === "history" ? null : layer)} triggerRef={historyTriggerRef} /> : null}
+        {activeLayer === "history" ? <AgentHistory items={history} loading={historyLoading} now={stableHistoryNow} onSelect={onHistorySelect} onClose={() => setActiveLayer((layer) => layer === "history" ? null : layer)} triggerRef={historyTriggerRef} /> : null}
       </div>
     </section>
   );

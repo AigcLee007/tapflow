@@ -91,6 +91,25 @@ describe("AgentWorkspace", () => {
     expect(screen.getByText("正在加载历史...")).toBeTruthy();
   });
 
+  it("keeps history date labels stable when a mounted workspace rerenders across midnight", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-09T23:59:59"));
+
+    try {
+      renderWorkspace({ history: [history[0]], historyNow: undefined });
+      fireEvent.click(screen.getByRole("button", { name: "历史" }));
+      expect(screen.getByText("今天")).toBeTruthy();
+
+      vi.setSystemTime(new Date("2026-09-10T00:00:01"));
+      fireEvent.change(screen.getByRole("textbox", { name: "Agent 输入" }), { target: { value: "继续" } });
+
+      expect(screen.getByText("今天")).toBeTruthy();
+      expect(screen.queryByText("昨天")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps composer controls in order, disables blank sends, and emits a busy cancel", () => {
     const onSend = vi.fn();
     const onCancel = vi.fn();
