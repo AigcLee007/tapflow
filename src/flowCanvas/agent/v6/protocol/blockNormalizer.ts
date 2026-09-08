@@ -78,6 +78,8 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
   }
   if (type === "confirmation_card") {
     const plan = asRecord(raw.plan);
+    const policy = asRecord(plan.serverPolicy);
+    const policyHash = id(policy.policyHash);
     return {
       type,
       ...(label(raw.title) ? { title: label(raw.title) } : {}),
@@ -86,6 +88,7 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
         ...(label(plan.title) ? { title: label(plan.title) } : {}),
         ...(label(plan.summary) ? { summary: label(plan.summary) } : {}),
         ...(typeof plan.costCredits === "number" && Number.isFinite(plan.costCredits) ? { costCredits: Math.max(0, plan.costCredits) } : {}),
+        ...(typeof policy.requiresConfirmation === "boolean" && policyHash ? { serverPolicy: { requiresConfirmation: policy.requiresConfirmation, policyHash } } : {}),
         ...(plan.batch === true ? { batch: true } : {}),
         ...(plan.writesCanvas === true ? { writesCanvas: true } : {}),
         ...(plan.skill === true ? { skill: true } : {}),

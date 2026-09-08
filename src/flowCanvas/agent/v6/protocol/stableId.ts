@@ -18,3 +18,27 @@ export function normalizeStableId(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length === 0 || value.length > AGENT_V6_ID_MAX_LENGTH) return undefined;
   return STABLE_ID_PATTERN.test(value) && !isTokenLike(value) ? value : undefined;
 }
+
+function canonicalize(value: unknown, seen = new Set<object>()): unknown {
+  if (value === undefined) return "undefined";
+  if (typeof value === "number" && !Number.isFinite(value)) return String(value);
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => canonicalize(item, seen));
+  return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [key, canonicalize((value as Record<string, unknown>)[key], seen)]));
+}
+
+export function stableHash(value: unknown): string {
+  const input = JSON.stringify(canonicalize(value));
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < input.length; index += 1) {
+    const code = input.charCodeAt(index);
+    first ^= code;
+    first = Math.imul(first, 0x01000193);
+    second ^= code + index;
+    second = Math.imul(second, 0x85ebca6b);
+  }
+  return `h${(first >>> 0).toString(16).padStart(8, "0")}${(second >>> 0).toString(16).padStart(8, "0")}`;
+}

@@ -29,6 +29,10 @@ export type ConfirmationPlan = {
   title?: string;
   summary?: string;
   costCredits?: number;
+  serverPolicy?: {
+    requiresConfirmation: boolean;
+    policyHash: string;
+  };
   batch?: boolean;
   writesCanvas?: boolean;
   skill?: boolean;

@@ -63,7 +63,7 @@ describe("Agent V6 conversation reducer", () => {
     const state = applyBrief(initialConversationState({ mode: "auto", sessionId: "s", turnId: "t" }), {
       type: "brief_ready",
       decisionId: "d",
-      plan: { costCredits: 0 },
+      plan: { costCredits: 0, serverPolicy: { requiresConfirmation: false, policyHash: "policy-1" } },
       graphRevision: 0,
     });
 
@@ -121,7 +121,7 @@ describe("Agent V6 conversation reducer", () => {
       ...state.pendingDecision!,
       costCredits: 0,
       writesCanvas: false,
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it("generates distinct injected IDs for missing session and turn IDs", () => {
@@ -218,7 +218,7 @@ describe("Agent V6 conversation reducer", () => {
     const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 12, writesCanvas: true };
     expect(canExecuteDecision(state, { ...base, graphRevision: 3 })).toBe(false);
     expect(canExecuteDecision(state, { ...base, writesCanvas: false })).toBe(true);
-    expect(canExecuteDecision(state, { ...base, costCredits: 11 })).toBe(true);
+    expect(canExecuteDecision(state, { ...base, costCredits: 11 })).toBe(false);
     expect(canExecuteDecision(state, base)).toBe(true);
     expect(canExecuteDecision(state, { ...base, idempotencyKey: "x".repeat(201) })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "x".repeat(4_001) } })).toBe(false);
@@ -245,7 +245,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: { prompt: "approved", fields: { tone: "calm" } } });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
-    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey };
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm" } } })).toBe(true);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "replaced", fields: { tone: "calm" } } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm", route: "internal" } } })).toBe(false);
@@ -262,7 +262,7 @@ describe("Agent V6 conversation reducer", () => {
       payload: { prompt: "approved", parameters: { apiKey: "secret", signed_url: "temporary", baseUrl: "internal", safe: "ok" } },
     });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
-    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey };
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok" } } })).toBe(true);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", api_key: "secret" } } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "signed-url": "temporary" } } })).toBe(false);
@@ -473,6 +473,104 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, { ...base, payload: { value: "x".repeat(4_001) } })).toBe(false);
   });
 
+  it("requires an explicit server policy before auto execution", () => {
+    const state = applyBrief(initialConversationState({ mode: "auto", sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      plan: { costCredits: 0 },
+      graphRevision: 0,
+    });
+
+    expect(state.phase).toBe("waiting_for_confirmation");
+    expect(canExecuteDecision(state, state.pendingDecision!)).toBe(false);
+  });
+
+  it("rejects an execution decision whose cost was tampered", () => {
+    const state = applyBrief(initialConversationState({ mode: "auto", sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      plan: { costCredits: 12, serverPolicy: { requiresConfirmation: false, policyHash: "policy-1" } },
+      graphRevision: 0,
+    });
+    const decision = state.pendingDecision!;
+
+    expect(state.phase).toBe("executing");
+    expect(canExecuteDecision(state, { ...decision, costCredits: 11 })).toBe(false);
+    expect(canExecuteDecision(state, decision)).toBe(true);
+  });
+
+  it("requires the confirmed decision cost to match the server plan", () => {
+    const state = applyBrief(initialConversationState({ sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      plan: { costCredits: 12, writesCanvas: true, serverPolicy: { requiresConfirmation: true, policyHash: "policy-1" } },
+      graphRevision: 0,
+    });
+    const tampered = { ...state, pendingDecision: { ...state.pendingDecision!, costCredits: 11 } };
+
+    expect(reduceConversation(tampered, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 })).toBe(tampered);
+  });
+
+  it("returns false for null and non-object decisions", () => {
+    const state = applyBrief(initialConversationState({ sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      plan: { costCredits: 0, serverPolicy: { requiresConfirmation: true, policyHash: "policy-1" } },
+      graphRevision: 0,
+    });
+    const executing = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
+
+    expect(canExecuteDecision(executing, null)).toBe(false);
+    expect(canExecuteDecision(executing, "decision")).toBe(false);
+    expect(canExecuteDecision(executing, 1)).toBe(false);
+  });
+
+  it("replays missing identities deterministically without random values", () => {
+    const make = () => {
+      let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", mode: "auto" });
+      state = reduceConversation(state, { type: "turn_submitted", prompt: "same" });
+      state = reduceConversation(state, { type: "choice_requested", id: "direction" });
+      state = reduceConversation({
+        ...state,
+        blocks: [{ type: "choice_grid", id: "direction", options: [{ id: "one", label: "One" }], selectionMode: "single" }],
+      }, {
+        type: "choice_submitted",
+        sessionId: state.sessionId!,
+        turnId: state.turnId!,
+        graphRevision: state.graphRevision,
+        idempotencyKey: state.pendingChoice!.idempotencyKey,
+        pendingQuestionId: "direction",
+        payload: {},
+        optionIds: ["one"],
+      });
+      return reduceConversation(state, {
+        type: "brief_ready",
+        graphRevision: 0,
+        plan: { costCredits: 0, serverPolicy: { requiresConfirmation: false, policyHash: "policy-1" } },
+      });
+    };
+
+    const first = make();
+    const second = make();
+    expect(second).toEqual(first);
+    expect(first.pendingChoice).toBeNull();
+    expect(first.pendingDecision?.decisionId).toBeTruthy();
+    expect(first.pendingDecision?.idempotencyKey).toBeTruthy();
+  });
+
+  it("derives missing choice IDs and ignores duplicate brief replays", () => {
+    const start = reduceConversation(initialConversationState({ sessionId: "session-1", turnId: "turn-1" }), { type: "turn_submitted", prompt: "same" });
+    const firstChoice = reduceConversation(start, { type: "choice_requested" });
+    const secondChoice = reduceConversation(start, { type: "choice_requested" });
+    expect(secondChoice).toEqual(firstChoice);
+    expect(firstChoice.pendingChoice?.pendingQuestionId).toMatch(/^question-h[0-9a-f]{16}$/);
+
+    const drafting = { ...firstChoice, phase: "drafting_brief" as const };
+    const event = { type: "brief_ready" as const, graphRevision: 0, plan: { costCredits: 0, serverPolicy: { requiresConfirmation: true, policyHash: "policy-1" } } };
+    const first = reduceConversation(drafting, event);
+    expect(reduceConversation(first, event)).toBe(first);
+  });
+
   it("rejects deeply nested and oversized payloads without overflowing the stack", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
@@ -513,7 +611,7 @@ describe("Agent V6 conversation reducer", () => {
     expect(reset.graphRevision).toBe(12);
     expect(reset.contextSnapshot.graphRevision).toBe(12);
     expect(reset.sessionId).toBe("session-1");
-    expect(reset.turnId).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(reset.turnId).toMatch(/^turn-h[0-9a-f]{16}$/);
     expect(reset.turnId).not.toBe(state.turnId);
     expect(reset.turnId).toMatch(/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$/);
   });
@@ -529,20 +627,20 @@ describe("Agent V6 conversation reducer", () => {
     const secondDecision = applyBrief(secondReset, { type: "brief_ready", graphRevision: 0 }).pendingDecision!;
 
     expect(firstReset.sessionId).toBe(secondReset.sessionId);
-    expect(firstReset.turnId).not.toBe(secondReset.turnId);
+    expect(firstReset.turnId).toBe(secondReset.turnId);
     expect(firstDecision.sessionId).toBe("session-1");
     expect(secondDecision.sessionId).toBe("session-1");
     expect(firstDecision.turnId).toBe(firstReset.turnId);
     expect(secondDecision.turnId).toBe(secondReset.turnId);
-    expect(firstDecision.decisionId).not.toBe(secondDecision.decisionId);
+    expect(firstDecision.decisionId).toBe(secondDecision.decisionId);
   });
 
   it("generates the same required decision ID when brief_ready omits one", () => {
     const first = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
     const second = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
-    expect(first.pendingDecision?.decisionId).toHaveLength(36);
-    expect(second.pendingDecision?.decisionId).not.toBe(first.pendingDecision?.decisionId);
-    expect(first.pendingDecision?.idempotencyKey).not.toBe(first.pendingDecision?.decisionId);
+    expect(first.pendingDecision?.decisionId).toMatch(/^decision-h[0-9a-f]{16}$/);
+    expect(second.pendingDecision?.decisionId).toBe(first.pendingDecision?.decisionId);
+    expect(first.pendingDecision?.idempotencyKey).toMatch(/^idempotency-h[0-9a-f]{16}$/);
     expect(first.pendingDecision?.sessionId).toBe("s");
     expect(first.pendingDecision?.turnId).toBe("t");
   });
@@ -625,10 +723,11 @@ describe("Agent V6 conversation reducer", () => {
       reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "test" }),
       { type: "choice_requested", id: "invalid question id" },
     );
-    expect(understanding.phase).toBe("understanding");
+    expect(understanding.phase).toBe("waiting_for_choice");
 
     const waiting = reduceConversation({
       ...understanding,
+      phase: "understanding",
       blocks: [{ type: "choice_grid", id: "direction", options: [{ id: "one", label: "One" }], selectionMode: "single" }],
     }, { type: "choice_requested", id: "direction" });
     const optionIds = ["one"];
