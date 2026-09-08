@@ -45,7 +45,7 @@ function renderPanel() {
   );
 }
 
-describe("CanvasAgentPanel Agent V5 integration", () => {
+describe("CanvasAgentPanel V6 integration", () => {
   beforeEach(() => {
     useFlowCanvasStore.getState().newProject();
     mockGetAgentImageRunSettings.mockReset().mockResolvedValue({ models: [] });
@@ -65,12 +65,13 @@ describe("CanvasAgentPanel Agent V5 integration", () => {
     mockSession.submitText.mockReset().mockResolvedValue(undefined);
   });
 
-  it("renders only the TapNow-style V5 window backed by durable V5 blocks", async () => {
+  it("renders the V6 workspace backed by the durable session adapter", async () => {
     await act(async () => {
       renderPanel();
     });
 
-    expect(screen.getByTestId("agent-v5-window")).toBeTruthy();
+    expect(screen.getByTestId("agent-v6-workspace")).toBeTruthy();
+    expect(screen.getByTestId("agent-v6-composer")).toBeTruthy();
     expect(screen.getByText("请先选择产品方向。")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Agent 输入" })).toBeTruthy();
     expect(screen.queryByTestId("agent-panel-conversation")).toBeNull();
@@ -78,7 +79,7 @@ describe("CanvasAgentPanel Agent V5 integration", () => {
     expect(screen.queryByTestId("agent-shell-toolbar")).toBeNull();
   });
 
-  it("submits composer input with V5 reference context and never uses the legacy turn flow", async () => {
+  it("submits composer input with the V6 reference context adapter", async () => {
     renderPanel();
 
     fireEvent.change(screen.getByRole("textbox", { name: "Agent 输入" }), {
@@ -97,10 +98,12 @@ describe("CanvasAgentPanel Agent V5 integration", () => {
     });
   });
 
-  it("opens durable V5 history and resets the V5 session from the header", async () => {
+  it("opens durable history and resets the session from the V6 header", async () => {
     renderPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: "聊天记录" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "历史" }));
+    });
     expect(await screen.findByText("上一次玩具探索")).toBeTruthy();
     fireEvent.click(screen.getByText("上一次玩具探索"));
 
