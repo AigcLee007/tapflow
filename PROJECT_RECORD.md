@@ -2,6 +2,12 @@
 
 Last updated: 2026-09-09
 
+## 2026-09-09 - Agent V6 Task 8 delivery verification contract
+
+- Added a pure Worker delivery verifier for Agent V6 that accepts only non-empty text or stable asset IDs, rejects temporary URLs/base64/blob/data/provider fields, and distinguishes canceled from retryable delivery failure without duplicating billing logic.
+- Added 13 focused Worker tests covering verified text/assets, unsafe and empty outputs, cancellation, and retryable recovery classification. The focused delivery suite and 19 related Worker regression tests pass.
+- Worker build remains blocked by pre-existing Redis asset-video-reference queue/type export errors in `apps/worker/src/main.ts`, `apps/worker/src/queues/registry.ts`, and related reconciler/processor files.
+
 ## 2026-09-09 - Agent V6 Task 7 minimal persistence slice
 
 - Confirmed Task 7 was not previously started; it did require a migration rather than being a no-op.
