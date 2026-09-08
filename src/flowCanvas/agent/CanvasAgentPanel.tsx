@@ -32,6 +32,9 @@ import { useAgentConversationHistory } from "./useAgentConversationHistory";
 import { useAgentEventStream } from "./useAgentEventStream";
 import { useAgentWorkspacePanel } from "./useAgentWorkspacePanel";
 import { useCanvasAgentSessionV2 } from "./v2/useCanvasAgentSessionV2";
+import { AgentWorkspace } from "./v6/workspace/AgentWorkspace";
+import type { AgentBlockAction as AgentV6BlockAction } from "./v6/protocol/BlockRenderer";
+import type { AgentV6Phase, ConversationBlock } from "./v6/protocol/conversationTypes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { MenuSelect } from "../../components/menu/MenuSelect";
 
@@ -135,12 +138,105 @@ type CanvasAgentPanelProps = {
 };
 
 /**
- * The only mounted Agent surface. V5 owns conversation state and explicitly
- * sends every prompt/decision through the durable V5 session protocol.
+ * The only mounted Agent surface. V5 remains the durable session adapter while
+ * the user-facing shell is the completed V6 workspace.
  */
 export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
   if (!props.open) return null;
-  return <CanvasAgentV5Panel {...props} />;
+  return <CanvasAgentV6Panel {...props} />;
+}
+
+function toAgentV6Phase(value: string): AgentV6Phase {
+  const phases: AgentV6Phase[] = ["idle", "understanding", "waiting_for_choice", "drafting_brief", "waiting_for_confirmation", "executing", "verifying", "presenting_results", "refining", "failed"];
+  return phases.includes(value as AgentV6Phase) ? value as AgentV6Phase : "understanding";
+}
+
+function CanvasAgentV6Panel(props: CanvasAgentPanelProps) {
+  const session = useAgentV5Session();
+  const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
+  const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
+  const [prompt, setPrompt] = React.useState("");
+  const [history, setHistory] = React.useState<Array<{ id: string; title: string; date: string; updatedAt?: string }>>([]);
+  const [models, setModels] = React.useState<Array<{ modelKey: string; displayName: string }>>([]);
+  const selectedReferenceKey = useFlowCanvasStore((state) =>
+    JSON.stringify(
+      state.nodes
+        .filter((node) => node.selected)
+        .map((node) => ({
+          assetId: typeof node.data.assetId === "string" ? node.data.assetId : null,
+          id: node.id,
+          kind: node.data.kind,
+        })),
+    ),
+  );
+  const references = React.useMemo(() => buildSelectedCanvasReferenceChips(), [selectedReferenceKey]);
+
+  React.useEffect(() => {
+    void getAgentImageRunSettings().then((response) => setModels(response.models)).catch(() => setModels([]));
+  }, []);
+
+  React.useEffect(() => {
+    void listAgentV5Sessions({ flowId: backendFlowId, projectId: backendProjectId })
+      .then((sessions) => setHistory(sessions.map((item) => ({
+        date: item.updatedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+        id: item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
+      }))))
+      .catch(() => setHistory([]));
+  }, [backendFlowId, backendProjectId, session.sessionId]);
+
+  React.useEffect(() => {
+    if (props.initialSessionId) void session.openSession(props.initialSessionId);
+  }, [props.initialSessionId, session.openSession]);
+
+  const modelOptions = React.useMemo(() => models.map((model) => ({ label: model.displayName, value: model.modelKey })), [models]);
+  const model = modelOptions[0]?.value ?? "";
+  const blocks = session.blocks as unknown as readonly ConversationBlock[];
+  const busy = session.phase === "understanding" || session.phase === "executing";
+  const handleBlockAction = React.useCallback((action: AgentV6BlockAction) => {
+    if (action.type === "select_choice") {
+      void session.submitDecision({ type: "select_choice", optionIds: action.optionIds });
+    } else if (action.type === "answer_question") {
+      void session.submitDecision({ type: "select_choice", optionIds: [action.value] });
+    } else if (action.type === "confirm_execution") {
+      void session.submitDecision({ type: "confirm" });
+    } else if (action.type === "refine_result" || action.type === "variant_result") {
+      void session.submitDecision({ type: "refine", resultId: action.resultId });
+    }
+  }, [session.submitDecision]);
+
+  return (
+    <AgentWorkspace
+      blocks={blocks}
+      busy={busy}
+      history={history}
+      model={model}
+      modelOptions={modelOptions}
+      onBlockAction={handleBlockAction}
+      onCancel={() => { void session.submitDecision({ type: "cancel" }); }}
+      onCapability={() => undefined}
+      onCollapse={props.onClose}
+      onHistorySelect={(sessionId) => { void session.openSession(sessionId); }}
+      onModeChange={session.setExecutionMode}
+      onModelChange={() => undefined}
+      onNewConversation={session.newConversation}
+      onPromptChange={setPrompt}
+      onRemoveReference={() => undefined}
+      onRename={() => undefined}
+      onSend={async (nextPrompt) => {
+        setPrompt("");
+        await session.submitText(nextPrompt, {
+          modelKey: modelOptions[0]?.value ?? null,
+          referenceContext: buildAgentReferenceContext({ chips: references }),
+        });
+      }}
+      phase={toAgentV6Phase(session.phase)}
+      prompt={prompt}
+      references={references}
+      title={session.sessionTitle}
+    />
+  );
 }
 
 function CanvasAgentV5Panel(props: CanvasAgentPanelProps) {
