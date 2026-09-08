@@ -6,6 +6,13 @@ import {
 } from "./conversationReducer";
 
 describe("Agent V6 conversation reducer", () => {
+  const applyBrief = (state: ReturnType<typeof initialConversationState>, event: Extract<Parameters<typeof reduceConversation>[1], { type: "brief_ready" }>) => {
+    let next = state;
+    if (next.phase === "idle") next = reduceConversation(next, { type: "turn_submitted", prompt: "test" });
+    if (next.phase === "understanding") next = reduceConversation(next, { type: "brief_started" });
+    return reduceConversation(next, event);
+  };
+
   it("keeps an ambiguous prompt in choice state", () => {
     const state = reduceConversation(initialConversationState(), {
       type: "turn_submitted",
@@ -18,7 +25,7 @@ describe("Agent V6 conversation reducer", () => {
   });
 
   it("requires confirmation for paid canvas writes", () => {
-    const state = reduceConversation(initialConversationState(), {
+    const state = applyBrief(initialConversationState(), {
       type: "brief_ready",
       plan: { costCredits: 12, writesCanvas: true },
       graphRevision: 0,
@@ -39,7 +46,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("tracks execution state and requires matching confirmation metadata", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 4 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12 }, graphRevision: 4 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12 }, graphRevision: 4 });
     expect(state.executionState).toBe("idle");
     expect(reduceConversation(state, { type: "confirmation_granted", decisionId: "wrong", graphRevision: 4 }).phase).toBe("waiting_for_confirmation");
     expect(reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 3 }).phase).toBe("waiting_for_confirmation");
@@ -54,7 +61,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("only permits execution decisions during executing, never during verification", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 1 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 1 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 1 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 1 });
     const decision = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 1, payload: {}, idempotencyKey: "decision-1", costCredits: 0 };
     expect(canExecuteDecision(state, decision)).toBe(true);
@@ -65,7 +72,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("rejects execution decisions whose metadata or risk differs from the confirmed plan", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 2 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12, writesCanvas: true }, graphRevision: 2 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12, writesCanvas: true }, graphRevision: 2 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 2 });
     const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: "decision-1", costCredits: 12, writesCanvas: true };
     expect(canExecuteDecision(state, { ...base, graphRevision: 3 })).toBe(false);
@@ -80,7 +87,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("requires execution payload to match the approved payload exactly", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: { prompt: "approved", fields: { tone: "calm" } } });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: { prompt: "approved", fields: { tone: "calm" } } });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
     const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm" } } })).toBe(true);
@@ -92,7 +99,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("rejects sensitive keys nested inside parameters and keeps safe fields comparable", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
-    state = reduceConversation(state, {
+    state = applyBrief(state, {
       type: "brief_ready",
       decisionId: "d",
       graphRevision: 0,
@@ -108,7 +115,7 @@ describe("Agent V6 conversation reducer", () => {
 
   const expectSensitiveKeysToBeRemoved = (sensitiveKeyVariants: string[]) => {
     for (const key of sensitiveKeyVariants) {
-      const state = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 }), {
+      const state = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 }), {
         type: "brief_ready",
         decisionId: "d",
         graphRevision: 0,
@@ -137,7 +144,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("rejects token-like and encoded sensitive string values", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: {} });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: {} });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
     const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
     expect(canExecuteDecision(state, { ...base, payload: { value: "Bearer abc.def.ghi" } })).toBe(false);
@@ -147,7 +154,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("returns failed conversations to explicit retry, revise, and recover phases", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 0 });
-    state = reduceConversation(state, { type: "brief_ready", plan: { costCredits: 0 }, graphRevision: 0 });
+    state = applyBrief(state, { type: "brief_ready", plan: { costCredits: 0 }, graphRevision: 0 });
     expect(state.pendingDecision?.decisionId).toBe("decision:session-1:turn-1:0");
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision:session-1:turn-1:0", graphRevision: 0 });
     const failed = reduceConversation(state, { type: "turn_failed", error: "错误" });
@@ -168,7 +175,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("binds brief decisions and context to a finite non-negative event revision", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 1 });
-    state = reduceConversation(state, { type: "brief_ready", plan: {}, graphRevision: 7 });
+    state = applyBrief(state, { type: "brief_ready", plan: {}, graphRevision: 7 });
     expect(state.graphRevision).toBe(7);
     expect(state.contextSnapshot.graphRevision).toBe(7);
     expect(state.pendingDecision?.graphRevision).toBe(7);
@@ -177,14 +184,36 @@ describe("Agent V6 conversation reducer", () => {
     expect(reduceConversation(state, { type: "brief_ready", graphRevision: -1 }).graphRevision).toBe(7);
   });
 
+  it("rejects a stale brief without changing state or creating a pending decision", () => {
+    const state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 5 });
+    const readyState = reduceConversation(state, { type: "turn_submitted", prompt: "brief" });
+    const next = reduceConversation(readyState, { type: "brief_ready", decisionId: "stale", graphRevision: 4 });
+    expect(next).toBe(readyState);
+    expect(next.graphRevision).toBe(5);
+    expect(next.pendingDecision).toBeNull();
+  });
+
+  it("rejects events that do not belong to the idle state", () => {
+    const state = initialConversationState({ graphRevision: 3 });
+    for (const event of [
+      { type: "brief_ready" as const, graphRevision: 3 },
+      { type: "execution_started" as const },
+      { type: "confirmation_granted" as const, decisionId: "d", graphRevision: 3 },
+    ]) {
+      expect(reduceConversation(state, event)).toBe(state);
+    }
+  });
+
   it("uses the event revision when a refinement produces a new brief", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 2 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "old", plan: {}, graphRevision: 2 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "old", plan: {}, graphRevision: 2 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "old", graphRevision: 2 });
     state = reduceConversation(state, { type: "verification_started" });
     state = reduceConversation(state, { type: "results_presented" });
     state = reduceConversation(state, { type: "refinement_requested", resultId: "result-1" });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "new", plan: { writesCanvas: true }, graphRevision: 9 });
+    state = reduceConversation(state, { type: "turn_submitted", prompt: "refine" });
+    state = reduceConversation(state, { type: "brief_started" });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "new", plan: { writesCanvas: true }, graphRevision: 9 });
     expect(state.phase).toBe("waiting_for_confirmation");
     expect(state.graphRevision).toBe(9);
     expect(state.contextSnapshot.graphRevision).toBe(9);
@@ -194,7 +223,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("keeps confirmed high-risk plan metadata through recovery", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 1 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: { costCredits: 4, batch: true, writesCanvas: true, skill: true, app: true, title: "Plan" }, graphRevision: 1 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: { costCredits: 4, batch: true, writesCanvas: true, skill: true, app: true, title: "Plan" }, graphRevision: 1 });
     const plan = state.plan;
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 1 });
     const failed = reduceConversation(state, { type: "turn_failed", error: "failed" });
@@ -207,7 +236,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("keeps an unconfirmed high-risk recovery behind confirmation", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 1 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: { costCredits: 4, writesCanvas: true }, graphRevision: 1 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: { costCredits: 4, writesCanvas: true }, graphRevision: 1 });
     const failed = reduceConversation(state, { type: "turn_failed", error: "failed" });
     for (const event of [{ type: "retry" as const }, { type: "revise" as const }, { type: "recover" as const }]) {
       const recovered = reduceConversation(failed, event);
@@ -220,7 +249,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("keeps manual low-risk retries behind confirmation", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 1, mode: "manual_confirmation" });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 1 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 1 });
     const failed = reduceConversation(state, { type: "turn_failed", error: "failed" });
     const retried = reduceConversation(failed, { type: "retry" });
     expect(retried.phase).toBe("waiting_for_confirmation");
@@ -237,7 +266,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("returns false instead of throwing for unsafe payloads", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
     const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "i", costCredits: 0 };
     const circular: Record<string, unknown> = {};
@@ -251,7 +280,7 @@ describe("Agent V6 conversation reducer", () => {
 
   it("rejects deeply nested and oversized payloads without overflowing the stack", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
+    state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
     const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
 
@@ -271,13 +300,13 @@ describe("Agent V6 conversation reducer", () => {
   });
 
   it("rejects oversized approved payloads instead of normalizing them into executable data", () => {
-    const state = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 }), {
+    const state = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 }), {
       type: "brief_ready",
       decisionId: "d",
       graphRevision: 0,
       payload: { value: Array.from({ length: 33 }, () => "x") },
     });
-    expect(state.phase).toBe("idle");
+    expect(state.phase).toBe("drafting_brief");
     expect(state.pendingDecision).toBeNull();
   });
 
@@ -290,8 +319,8 @@ describe("Agent V6 conversation reducer", () => {
   });
 
   it("generates the same required decision ID when brief_ready omits one", () => {
-    const first = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
-    const second = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
+    const first = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
+    const second = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
     expect(first.pendingDecision?.decisionId).toBe("decision:s:t:3");
     expect(second.pendingDecision?.decisionId).toBe(first.pendingDecision?.decisionId);
     expect(first.pendingDecision?.sessionId).toBe("s");
@@ -328,6 +357,26 @@ describe("Agent V6 conversation reducer", () => {
     expect(state.contextSnapshot.appRefs).toEqual([]);
   });
 
+  it("drops transient and token-like context identifiers", () => {
+    const state = initialConversationState({
+      contextSnapshot: {
+        projectId: "https://signed.example/project?token=secret",
+        flowId: "flow-1",
+        selectedNodeIds: ["node-1", "blob:https://local/node"],
+        assetRefs: [{ assetId: "data:image/png;base64,abc", refId: "ref-1", label: "bad", nodeId: "node-1" }, { assetId: "asset-1", refId: "https://signed.example/ref", label: "bad", nodeId: "node-2" }],
+        uploadedAssetIds: ["asset-2", "https://signed.example/upload?token=secret"],
+        skillRefs: [],
+        appRefs: [],
+        modelKey: null,
+        graphRevision: 0,
+      },
+    });
+    expect(state.contextSnapshot.projectId).toBeNull();
+    expect(state.contextSnapshot.selectedNodeIds).toEqual(["node-1"]);
+    expect(state.contextSnapshot.assetRefs).toEqual([]);
+    expect(state.contextSnapshot.uploadedAssetIds).toEqual(["asset-2"]);
+  });
+
   it("bounds prompts, errors, context references, and rejects non-finite cost", () => {
     const long = "x".repeat(10_000);
     let state = initialConversationState({
@@ -337,9 +386,9 @@ describe("Agent V6 conversation reducer", () => {
     expect(state.prompt?.length).toBeLessThanOrEqual(4_000);
     state = reduceConversation(state, { type: "turn_failed", error: long });
     expect(state.error?.length).toBeLessThanOrEqual(4_000);
-    expect(state.contextSnapshot.projectId?.length).toBeLessThanOrEqual(200);
-    expect(state.contextSnapshot.assetRefs[0].nodeId?.length).toBeLessThanOrEqual(200);
-    const planned = reduceConversation(initialConversationState(), { type: "brief_ready", plan: { costCredits: Number.NaN }, graphRevision: 0 });
+    expect(state.contextSnapshot.projectId).toBeNull();
+    expect(state.contextSnapshot.assetRefs).toEqual([]);
+    const planned = applyBrief(initialConversationState(), { type: "brief_ready", plan: { costCredits: Number.NaN }, graphRevision: 0 });
     expect(planned.plan?.costCredits).toBeUndefined();
   });
 

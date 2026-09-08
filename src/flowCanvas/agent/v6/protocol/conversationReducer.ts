@@ -5,6 +5,7 @@ import type {
   ConfirmationPlan,
   ConversationState,
 } from "./conversationTypes";
+import { normalizeStableId } from "./stableId";
 
 export type ConversationEvent =
   | { type: "turn_submitted"; prompt: string }
@@ -79,24 +80,36 @@ function isValidGraphRevision(value: unknown): value is number {
 
 function normalizeContext(context: ConversationState["contextSnapshot"] | undefined): ConversationState["contextSnapshot"] {
   const source = isPlainObject(context) ? context : EMPTY_CONTEXT;
-  const strings = (value: unknown, limit: number) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, limit).map((item) => boundedText(item, 200)) : [];
+  const strings = (value: unknown, limit: number) => Array.isArray(value) ? value.flatMap((item) => {
+    const stableId = normalizeStableId(item);
+    return stableId ? [stableId] : [];
+  }).slice(0, limit) : [];
   const assetRefs = Array.isArray(source.assetRefs) ? source.assetRefs.flatMap((value) => {
-    if (!isPlainObject(value) || typeof value.assetId !== "string" || typeof value.refId !== "string" || typeof value.label !== "string") return [];
-    return [{ assetId: boundedId(value.assetId), refId: boundedId(value.refId), label: boundedText(value.label, 400), ...(typeof value.nodeId === "string" ? { nodeId: boundedId(value.nodeId) } : {}) }];
+    if (!isPlainObject(value) || typeof value.label !== "string") return [];
+    const assetId = normalizeStableId(value.assetId);
+    const refId = normalizeStableId(value.refId);
+    const nodeId = value.nodeId === undefined ? undefined : normalizeStableId(value.nodeId);
+    if (!assetId || !refId || (value.nodeId !== undefined && !nodeId)) return [];
+    return [{ assetId, refId, label: boundedText(value.label, 400), ...(nodeId ? { nodeId } : {}) }];
   }).slice(0, 12) : [];
   const skillRefs = Array.isArray(source.skillRefs) ? source.skillRefs.flatMap((value) => {
-    if (!isPlainObject(value) || typeof value.id !== "string") return [];
-    return [{ id: boundedId(value.id), version: typeof value.version === "number" && Number.isFinite(value.version) && value.version >= 0 ? value.version : 0 }];
+    if (!isPlainObject(value)) return [];
+    const id = normalizeStableId(value.id);
+    if (!id) return [];
+    return [{ id, version: typeof value.version === "number" && Number.isFinite(value.version) && value.version >= 0 ? value.version : 0 }];
   }).slice(0, 12) : [];
+  const projectId = normalizeStableId(source.projectId);
+  const flowId = normalizeStableId(source.flowId);
+  const modelKey = normalizeStableId(source.modelKey);
   return {
-    projectId: typeof source.projectId === "string" ? boundedId(source.projectId) : null,
-    flowId: typeof source.flowId === "string" ? boundedId(source.flowId) : null,
+    projectId: projectId ?? null,
+    flowId: flowId ?? null,
     selectedNodeIds: strings(source.selectedNodeIds, 12),
     assetRefs,
     uploadedAssetIds: strings(source.uploadedAssetIds, 12),
     skillRefs,
     appRefs: strings(source.appRefs, 12),
-    modelKey: typeof source.modelKey === "string" ? boundedId(source.modelKey) : null,
+    modelKey: modelKey ?? null,
     graphRevision: isValidGraphRevision(source.graphRevision) ? source.graphRevision : 0,
   };
 }
@@ -259,7 +272,7 @@ function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | un
 }
 
 function briefReadyState(state: ConversationState, event: Extract<ConversationEvent, { type: "brief_ready" }>): ConversationState {
-  if (!isValidGraphRevision(event.graphRevision)) return state;
+  if (!isValidGraphRevision(event.graphRevision) || event.graphRevision < state.graphRevision) return state;
   const next = { ...state, graphRevision: event.graphRevision, contextSnapshot: { ...state.contextSnapshot, graphRevision: event.graphRevision }, phase: "waiting_for_confirmation" as const, plan: normalizePlan(event.plan), confirmed: false };
   const decision = pendingDecision(next, event.decisionId, event.graphRevision, event.payload);
   return decision ? { ...next, pendingDecision: decision } : state;
@@ -296,7 +309,6 @@ export function reduceConversation(state: ConversationState, event: Conversation
   switch (state.phase) {
     case "idle":
       if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], progress: [], plan: null, pendingDecision: null, confirmed: false };
-      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "understanding":
       if (event.type === "choice_requested") return { ...state, phase: "waiting_for_choice", pendingQuestionId: event.id };
@@ -324,7 +336,6 @@ export function reduceConversation(state: ConversationState, event: Conversation
       return state;
     case "refining":
       if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null };
-      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "failed":
       if (event.type === "retry" || event.type === "revise" || event.type === "recover") return recoverFromFailure(state, event);

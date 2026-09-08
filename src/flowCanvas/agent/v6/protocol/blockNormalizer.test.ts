@@ -41,6 +41,21 @@ describe("normalizeBlocks", () => {
     expect(block).toEqual({ type: "confirmation_card", text: "确认", plan: { writesCanvas: true } });
   });
 
+  it("drops transient and token-like identifiers from result blocks", () => {
+    const [block] = normalizeBlocks([{
+      type: "result_group",
+      results: [
+        { id: "r1", label: "bad asset", assetId: "data:image/png;base64,abc", nodeId: "node-1", refId: "ref-1", uploadedAssetIds: ["asset-1"] },
+        { id: "r2", label: "bad ref", assetId: "asset-2", nodeId: "https://signed.example/node", refId: "blob:https://local/ref", uploadedAssetIds: ["https://signed.example/asset?token=x"] },
+        { id: "r3", label: "safe", assetId: "asset-3", nodeId: "node-3", refId: "ref-3", uploadedAssetIds: ["asset-4"] },
+      ],
+    }]);
+    expect(block).toEqual({
+      type: "result_group",
+      results: [{ id: "r3", label: "safe", assetId: "asset-3", nodeId: "node-3", refId: "ref-3", uploadedAssetIds: ["asset-4"] }],
+    });
+  });
+
   it("caps text, list items, and table dimensions", () => {
     const long = "x".repeat(10_000);
     const [paragraph, list, table] = normalizeBlocks([

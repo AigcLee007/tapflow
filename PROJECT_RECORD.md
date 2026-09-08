@@ -2,6 +2,12 @@
 
 Last updated: 2026-09-07
 
+## 2026-09-08 - Agent V6 Task 1 protocol hardening
+
+- Hardened the V6 conversation reducer so `brief_ready` cannot lower the current graph revision or create a pending decision from a stale event; illegal idle/refinement event shortcuts are rejected while the valid conversation chain remains covered by tests.
+- Added one shared stable-ID normalizer for V6 context references and result-block `assetId`, `nodeId`, `refId`, and `uploadedAssetIds`; transient URLs, signed URLs, token-like strings, whitespace IDs, and overlong values are rejected.
+- Added focused regression coverage for revision monotonicity, state ordering, context references, block results, and stable-ID validation.
+
 ## 2026-09-07 - TapNow-style Agent V5 conversation protocol
 
 - Replaced the mounted Canvas Agent first-level surface with a fixed right-side V5 conversation window: new chat, history drawer, collapse, unified `+ -> mode -> input -> model -> send` composer, attachment/Skill/App entry points, structured blocks, and no voice/usage-statistics controls.

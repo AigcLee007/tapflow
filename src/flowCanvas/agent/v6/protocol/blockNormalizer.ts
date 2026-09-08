@@ -1,5 +1,4 @@
 import {
-  AGENT_V6_ID_MAX_LENGTH,
   AGENT_V6_LABEL_MAX_LENGTH,
   AGENT_V6_MAX_ITEMS,
   AGENT_V6_TEXT_MAX_LENGTH,
@@ -8,11 +7,12 @@ import {
   type ProgressStep,
   type ResultRef,
 } from "./conversationTypes";
+import { normalizeStableId } from "./stableId";
 
 const asRecord = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
 const text = (value: unknown, max = AGENT_V6_TEXT_MAX_LENGTH) => typeof value === "string" ? value.slice(0, max) : "";
 const label = (value: unknown) => text(value, AGENT_V6_LABEL_MAX_LENGTH);
-const id = (value: unknown) => text(value, AGENT_V6_ID_MAX_LENGTH);
+const id = (value: unknown) => normalizeStableId(value) ?? "";
 const bounded = <T>(items: T[]) => items.slice(0, AGENT_V6_MAX_ITEMS);
 
 function option(value: unknown): AgentOption | undefined {
@@ -37,13 +37,20 @@ function result(value: unknown): ResultRef | undefined {
   const resultLabel = label(raw.label);
   const statuses = ["ready", "selected", "failed"] as const;
   const status = statuses.includes(raw.status as typeof statuses[number]) ? raw.status as ResultRef["status"] : undefined;
-  return resultId && resultLabel ? {
+  const assetId = raw.assetId === undefined ? undefined : id(raw.assetId);
+  const nodeId = raw.nodeId === undefined ? undefined : id(raw.nodeId);
+  const refId = raw.refId === undefined ? undefined : id(raw.refId);
+  const uploadedAssetIds = raw.uploadedAssetIds === undefined ? undefined : Array.isArray(raw.uploadedAssetIds) ? raw.uploadedAssetIds.map(id) : [];
+  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.uploadedAssetIds !== undefined && (!uploadedAssetIds?.length || uploadedAssetIds.some((value) => !value)))) return undefined;
+  return {
     id: resultId,
     label: resultLabel,
-    ...(typeof raw.assetId === "string" ? { assetId: id(raw.assetId) } : {}),
-    ...(typeof raw.nodeId === "string" ? { nodeId: id(raw.nodeId) } : {}),
+    ...(assetId ? { assetId } : {}),
+    ...(nodeId ? { nodeId } : {}),
+    ...(refId ? { refId } : {}),
+    ...(uploadedAssetIds ? { uploadedAssetIds } : {}),
     ...(status ? { status } : {}),
-  } : undefined;
+  };
 }
 
 function normalizeOne(value: unknown): ConversationBlock | undefined {

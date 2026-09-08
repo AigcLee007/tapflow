@@ -23,7 +23,7 @@ export type BriefField = { label: string; value: string };
 export type ProgressStepStatus = "pending" | "running" | "completed" | "failed";
 export type ProgressStep = { id: string; label: string; status: ProgressStepStatus; detail?: string };
 export type ResultStatus = "ready" | "selected" | "failed";
-export type ResultRef = { id: string; label: string; assetId?: string; nodeId?: string; status?: ResultStatus };
+export type ResultRef = { id: string; label: string; assetId?: string; nodeId?: string; refId?: string; uploadedAssetIds?: string[]; status?: ResultStatus };
 
 export type ConfirmationPlan = {
   title?: string;
