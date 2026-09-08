@@ -99,6 +99,104 @@ export type AgentV2TurnLookup = {
   status: string;
 };
 
+export type AgentV6TurnSnapshotInput = {
+  blocksJson: unknown;
+  capabilityRefsJson: unknown;
+  contextSnapshotJson: unknown;
+  conversationPhase: string;
+  executionState: string;
+  graphRevision: number;
+  progressJson: unknown;
+  requiresConfirmation: boolean;
+  resultRefsJson: unknown;
+  sessionId: string;
+  turnId: string;
+};
+
+export type AgentV6TurnSnapshot = {
+  blocksJson: unknown;
+  capabilityRefsJson: unknown;
+  contextSnapshotJson: unknown;
+  conversationPhase: string;
+  executionState: string;
+  graphRevision: number | null;
+  progressJson: unknown;
+  requiresConfirmation: boolean;
+  resultRefsJson: unknown;
+  turnId: string;
+};
+
+export type AgentV6DecisionInput = {
+  decisionJson: Record<string, unknown>;
+  fromPhase: string;
+  idempotencyKey: string;
+  sessionId: string;
+  toPhase: string;
+  turnId: string;
+};
+
+export type AgentV6DecisionRecord = AgentV6DecisionInput & {
+  createdAt: string;
+  id: string;
+};
+
+const V6_JSON_MAX_DEPTH = 8;
+const V6_JSON_MAX_ITEMS = 32;
+const V6_JSON_MAX_KEYS = 32;
+const V6_JSON_MAX_TEXT = 4_000;
+const V6_ALLOWED_JSON_KEYS = new Set([
+  "app", "appid", "apprefs", "assetid", "assetids", "assetrefs", "batch", "blocks", "capabilityrefs", "columns",
+  "code", "costcredits", "createdat", "data", "decisionid", "description", "detail", "editable", "error", "executionstate",
+  "field", "fields", "finaltext", "flowid", "fromphase", "graphrevision", "html", "id", "index", "label", "level", "list",
+  "locked", "message", "modelkey", "mode", "nodeid", "optionids", "options", "parameters", "payload", "phase", "policyhash",
+  "prompt", "progress", "projectid", "refid", "referenceids", "resultid", "results", "resultrefs", "rows", "safe", "selectednodeids",
+  "selectedoptionids", "selectionmode", "serverpolicy", "sessionid", "skill", "skillid", "skillrefs", "status", "steps", "summary",
+  "text", "title", "toPhase", "turnid", "type", "updatedat", "uploadedassetids", "value", "writescanvas",
+].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, "")));
+const V6_SENSITIVE_JSON_KEYS = new Set([
+  "provider", "route", "credential", "credentialid", "apikey", "apisecret", "clientsecret", "privatekey", "baseurl", "signedurl",
+  "authorization", "token", "secret", "password", "nonce", "authtag", "html", "base64", "blob", "data", "refreshtoken", "accesstoken",
+].map((key) => key.toLowerCase().replace(/[^a-z0-9]/g, "")));
+
+function normalizeV6JsonKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function unsafeV6JsonString(value: string): boolean {
+  return /^(?:data:|blob:|https?:\/\/)/i.test(value)
+    || /(?:authorization\s*:\s*|\b(?:bearer|basic)\s+)\S+/i.test(value)
+    || /^(?:sk-|rk-|gh[pousr]_|xox[baprs]-|AIza)/i.test(value)
+    || /^ey[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i.test(value)
+    || (value.length >= 128 && /^[a-z0-9+/=_-]+$/i.test(value) && /[+/=_-]/.test(value));
+}
+
+function sanitizeV6JsonValue(value: unknown, depth: number, seen: Set<object>): unknown {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") return unsafeV6JsonString(value) ? undefined : value.slice(0, V6_JSON_MAX_TEXT);
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "object" || depth >= V6_JSON_MAX_DEPTH || seen.has(value)) return undefined;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.slice(0, V6_JSON_MAX_ITEMS).flatMap((item) => {
+      const sanitized = sanitizeV6JsonValue(item, depth + 1, seen);
+      return sanitized === undefined ? [] : [sanitized];
+    });
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value).slice(0, V6_JSON_MAX_KEYS)) {
+    const normalizedKey = normalizeV6JsonKey(key);
+    if (V6_SENSITIVE_JSON_KEYS.has(normalizedKey) || !V6_ALLOWED_JSON_KEYS.has(normalizedKey) || key.length > 128) continue;
+    const sanitized = sanitizeV6JsonValue(item, depth + 1, seen);
+    if (sanitized !== undefined) result[key] = sanitized;
+  }
+  return result;
+}
+
+export function sanitizeAgentV6Json(value: unknown): Record<string, unknown> {
+  const sanitized = sanitizeV6JsonValue(value, 0, new Set());
+  return sanitized && typeof sanitized === "object" && !Array.isArray(sanitized) ? sanitized as Record<string, unknown> : {};
+}
+
 const DEFAULT_TURN_LEASE_MS = 30_000;
 const MIN_TURN_LEASE_MS = 5_000;
 const MAX_TURN_LEASE_MS = 5 * 60_000;
@@ -424,6 +522,147 @@ export class AgentSessionRepository {
         metadata: result.rows[0]!.metadata_json ?? {},
         role: "user",
         sessionId: result.rows[0]!.session_id,
+      };
+    }, this.pool);
+  }
+
+  async saveV6TurnSnapshot(
+    context: AgentContext,
+    input: AgentV6TurnSnapshotInput,
+  ): Promise<AgentV6TurnSnapshot> {
+    return withTenantTransaction(context, async (client) => {
+      await this.requireSession(client, input.sessionId);
+      const result = await client.query<{
+        blocks_json: unknown;
+        capability_refs_json: unknown;
+        context_snapshot_json: unknown;
+        conversation_phase: string;
+        execution_state: string;
+        graph_revision: string | null;
+        progress_json: unknown;
+        requires_confirmation: boolean;
+        result_refs_json: unknown;
+        id: string;
+      }>(
+        `
+          UPDATE agent_turns
+          SET blocks_json = $5::jsonb,
+              context_snapshot_json = $6::jsonb,
+              progress_json = $7::jsonb,
+              capability_refs_json = $8::jsonb,
+              result_refs_json = $9::jsonb,
+              conversation_phase = $10,
+              execution_state = $11,
+              graph_revision = $4::bigint,
+              requires_confirmation = $12,
+              updated_at = now()
+          WHERE tenant_id = $1::uuid
+            AND session_id = $2::uuid
+            AND id = $3::uuid
+          RETURNING
+            id::text AS id,
+            blocks_json,
+            context_snapshot_json,
+            progress_json,
+            capability_refs_json,
+            result_refs_json,
+            conversation_phase,
+            execution_state,
+            graph_revision::text AS graph_revision,
+            requires_confirmation
+        `,
+        [
+          context.tenantId,
+          input.sessionId,
+          input.turnId,
+          input.graphRevision,
+          JSON.stringify(sanitizeAgentV6Json(input.blocksJson)),
+          JSON.stringify(sanitizeAgentV6Json(input.contextSnapshotJson)),
+          JSON.stringify(sanitizeAgentV6Json(input.progressJson)),
+          JSON.stringify(sanitizeAgentV6Json(input.capabilityRefsJson)),
+          JSON.stringify(sanitizeAgentV6Json(input.resultRefsJson)),
+          input.conversationPhase,
+          input.executionState,
+          input.requiresConfirmation,
+        ],
+      );
+      if (result.rowCount === 0) throw new Error("AGENT_TURN_NOT_FOUND");
+      const row = result.rows[0]!;
+      return {
+        blocksJson: row.blocks_json,
+        capabilityRefsJson: row.capability_refs_json,
+        contextSnapshotJson: row.context_snapshot_json,
+        conversationPhase: row.conversation_phase,
+        executionState: row.execution_state,
+        graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
+        progressJson: row.progress_json,
+        requiresConfirmation: row.requires_confirmation,
+        resultRefsJson: row.result_refs_json,
+        turnId: row.id,
+      };
+    }, this.pool);
+  }
+
+  async recordV6Decision(
+    context: AgentContext,
+    input: AgentV6DecisionInput,
+  ): Promise<AgentV6DecisionRecord> {
+    return withTenantTransaction(context, async (client) => {
+      await this.requireSession(client, input.sessionId);
+      const inserted = await client.query<{ created_at: string; id: string }>(
+        `
+          INSERT INTO agent_v5_decisions (
+            tenant_id, session_id, turn_id, decision_json,
+            from_phase, to_phase, idempotency_key, created_by
+          )
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5, $6, $7, $8::uuid)
+          ON CONFLICT DO NOTHING
+          RETURNING id::text AS id, created_at::text AS created_at
+        `,
+        [
+          context.tenantId,
+          input.sessionId,
+          input.turnId,
+          JSON.stringify(sanitizeAgentV6Json(input.decisionJson)),
+          input.fromPhase,
+          input.toPhase,
+          input.idempotencyKey,
+          context.userId,
+        ],
+      );
+      if (inserted.rows[0]) {
+        return {
+          ...input,
+          createdAt: inserted.rows[0].created_at,
+          id: inserted.rows[0].id,
+        };
+      }
+      const existing = await client.query<{
+        created_at: string;
+        decision_json: Record<string, unknown>;
+        from_phase: string;
+        id: string;
+        to_phase: string;
+      }>(
+        `
+          SELECT id::text AS id, created_at::text AS created_at, decision_json, from_phase, to_phase
+          FROM agent_v5_decisions
+          WHERE tenant_id = $1::uuid AND idempotency_key = $2
+          LIMIT 1
+        `,
+        [context.tenantId, input.idempotencyKey],
+      );
+      const row = existing.rows[0];
+      if (!row) throw new Error("AGENT_DECISION_IDEMPOTENCY_CONFLICT");
+      return {
+        createdAt: row.created_at,
+        decisionJson: row.decision_json,
+        fromPhase: row.from_phase,
+        id: row.id,
+        idempotencyKey: input.idempotencyKey,
+        sessionId: input.sessionId,
+        toPhase: row.to_phase,
+        turnId: input.turnId,
       };
     }, this.pool);
   }

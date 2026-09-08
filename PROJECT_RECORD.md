@@ -2,6 +2,14 @@
 
 Last updated: 2026-09-09
 
+## 2026-09-09 - Agent V6 Task 7 minimal persistence slice
+
+- Confirmed Task 7 was not previously started; it did require a migration rather than being a no-op.
+- Added `000080_agent_v6_conversation.sql` to extend tenant-scoped V5 turns with progress, capability-reference, and result-reference JSON plus tenant-scoped decision idempotency.
+- Added repository persistence for V6 turn snapshots and idempotent decisions, reusing the existing tenant transaction, RLS, and durable event sequence paths.
+- Added API persistence contract coverage. Two non-database contract tests pass; the PostgreSQL tenant-isolation/replay test is skipped because `DATABASE_URL` is not configured locally.
+- DB package build passes. API build remains blocked by pre-existing workflow-core, Redis asset-variant, and workflow compiled-node/edge type errors.
+
 ## 2026-09-09 - Agent V6 Task 5 contract and replay hardening
 
 - Reworked the V6 frontend adapter to use the existing `/api/v2/agent` history, event, V5 turn/decision/mode, and V2 cancel contracts; no client calls the unimplemented V6-only paths.
