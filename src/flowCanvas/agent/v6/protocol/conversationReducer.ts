@@ -115,11 +115,23 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
 }
 
 const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds"]);
-const SENSITIVE_PAYLOAD_KEY = /(?:provider|route|credential|signedurl|authorization|secret|password|html|base64)/i;
+const SENSITIVE_PAYLOAD_KEYS = new Set(["provider", "route", "credential", "credentialid", "apikey", "baseurl", "signedurl", "authorization", "token", "secret", "password", "nonce", "authtag", "data", "blob", "html", "base64"]);
+
+function normalizePayloadKey(key: string) {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSensitiveString(value: string) {
+  if (/^(?:data:|blob:)/i.test(value)) return true;
+  if (/(?:authorization\s*:\s*|\b(?:bearer|basic)\s+)\S+/i.test(value)) return true;
+  if (/^ey[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i.test(value)) return true;
+  if (/^(?:sk-|rk-|gh[pousr]_|xox[baprs]-|AIza)/i.test(value)) return true;
+  return value.length >= 64 && /^[a-z0-9+/=_-]+$/i.test(value) && (/[+/=_-]/.test(value) || value.length >= 128);
+}
 
 function sanitizePayloadValue(value: unknown, strict: boolean, root: boolean, seen: Set<object>): unknown | null {
   if (value === null || typeof value === "string" || typeof value === "boolean") {
-    if (typeof value === "string" && /^(?:data:|blob:)/i.test(value)) return null;
+    if (typeof value === "string" && isSensitiveString(value)) return null;
     return value;
   }
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -132,7 +144,8 @@ function sanitizePayloadValue(value: unknown, strict: boolean, root: boolean, se
   if (!isPlainObject(value)) return null;
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
-    const allowed = !SENSITIVE_PAYLOAD_KEY.test(key) && (!root || SAFE_PAYLOAD_KEYS.has(key));
+    const normalizedKey = normalizePayloadKey(key);
+    const allowed = !SENSITIVE_PAYLOAD_KEYS.has(normalizedKey) && (!root || SAFE_PAYLOAD_KEYS.has(key));
     if (!allowed) {
       if (strict) return null;
       continue;

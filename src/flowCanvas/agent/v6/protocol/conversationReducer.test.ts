@@ -90,6 +90,32 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", credential: "secret" } })).toBe(false);
   });
 
+  it("rejects sensitive keys nested inside parameters and keeps safe fields comparable", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
+    state = reduceConversation(state, {
+      type: "brief_ready",
+      decisionId: "d",
+      graphRevision: 0,
+      payload: { prompt: "approved", parameters: { apiKey: "secret", signed_url: "temporary", baseUrl: "internal", safe: "ok" } },
+    });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok" } } })).toBe(true);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", api_key: "secret" } } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "signed-url": "temporary" } } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "base-url": "internal" } } })).toBe(false);
+  });
+
+  it("rejects token-like and encoded sensitive string values", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: {} });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+    expect(canExecuteDecision(state, { ...base, payload: { value: "Bearer abc.def.ghi" } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: "A".repeat(80) + "=" } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: "Authorization: Bearer secret-token" } })).toBe(false);
+  });
+
   it("returns failed conversations to explicit retry, revise, and recover phases", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 0 });
     state = reduceConversation(state, { type: "brief_ready", plan: { costCredits: 0 }, graphRevision: 0 });
