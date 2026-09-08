@@ -130,6 +130,67 @@ describe("ConversationStream", () => {
     expect(onAction).not.toHaveBeenCalled();
   });
 
+  it("locks every interactive V6 block while keeping its content viewable", () => {
+    const onAction = vi.fn<(action: AgentBlockAction) => void>();
+    render(
+      <ConversationStream
+        blocks={[
+          { type: "question", id: "locked-question", title: "锁定问题", prompt: "查看问题内容", options: ["选项 A"], locked: true },
+          { type: "brief_card", id: "locked-brief", title: "锁定 Brief", editable: true, fields: [{ label: "目标", value: "保留内容" }], locked: true },
+          { type: "confirmation_card", id: "locked-confirmation", title: "锁定确认", text: "查看确认内容", plan: { costCredits: 3 }, locked: true },
+          { type: "progress_card", id: "locked-progress", title: "锁定进度", steps: [{ id: "failed", label: "失败步骤", status: "failed", detail: "保留状态" }], locked: true },
+          { type: "progress_card", id: "locked-active-progress", title: "锁定活动进度", steps: [{ id: "running", label: "运行步骤", status: "running" }], locked: true },
+          { type: "result_group", id: "locked-results", title: "锁定结果", results: [{ id: "result-1", label: "保留结果" }], locked: true },
+        ] as AgentV6StreamBlock[]}
+        onAction={onAction}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "锁定问题" }).getAttribute("aria-disabled")).toBe("true");
+    expect((screen.getByRole("button", { name: "选项 A" }) as HTMLButtonElement).disabled).toBe(true);
+
+    const brief = screen.getByRole("region", { name: "锁定 Brief" });
+    expect(brief.getAttribute("aria-disabled")).toBe("true");
+    expect(within(brief).getByText("保留内容")).toBeTruthy();
+    expect((within(brief).getByRole("button", { name: "编辑 Brief" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(brief).getByRole("button", { name: "提交 Brief" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(brief).getByRole("button", { name: "修改 Brief" }) as HTMLButtonElement).disabled).toBe(true);
+
+    const confirmation = screen.getByRole("region", { name: "锁定确认" });
+    expect(confirmation.getAttribute("aria-disabled")).toBe("true");
+    expect(within(confirmation).getByText("查看确认内容")).toBeTruthy();
+    expect((within(confirmation).getByRole("button", { name: "确认并执行" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(confirmation).getByRole("button", { name: "修改计划" }) as HTMLButtonElement).disabled).toBe(true);
+
+    const progress = screen.getByRole("region", { name: "锁定进度" });
+    expect(progress.getAttribute("aria-disabled")).toBe("true");
+    expect(within(progress).getByText("保留状态")).toBeTruthy();
+    expect((within(progress).getByRole("button", { name: "重试失败步骤" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(progress).getByRole("button", { name: "修改失败步骤" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(progress).getByRole("button", { name: "恢复失败步骤" }) as HTMLButtonElement).disabled).toBe(true);
+
+    const activeProgress = screen.getByRole("region", { name: "锁定活动进度" });
+    expect((within(activeProgress).getByRole("button", { name: "取消执行" }) as HTMLButtonElement).disabled).toBe(true);
+
+    const results = screen.getByRole("region", { name: "锁定结果" });
+    expect(results.getAttribute("aria-disabled")).toBe("true");
+    expect(within(results).getByText("保留结果")).toBeTruthy();
+    expect((within(results).getByRole("button", { name: "选择保留结果" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(results).getByRole("button", { name: "预览保留结果" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(results).getByRole("button", { name: "继续编辑保留结果" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(results).getByRole("button", { name: "生成保留结果的变体" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(results).getByRole("button", { name: "设置保留结果为参考" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(results).getByRole("button", { name: "放入画布保留结果" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "选项 A" }));
+    fireEvent.click(within(brief).getByRole("button", { name: "编辑 Brief" }));
+    fireEvent.click(within(confirmation).getByRole("button", { name: "确认并执行" }));
+    fireEvent.click(within(progress).getByRole("button", { name: "重试失败步骤" }));
+    fireEvent.click(within(activeProgress).getByRole("button", { name: "取消执行" }));
+    fireEvent.click(within(results).getByRole("button", { name: "选择保留结果" }));
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
   it("emits typed recovery actions for failed steps and cancel for active progress", () => {
     const onAction = vi.fn<(action: AgentBlockAction) => void>();
     render(
