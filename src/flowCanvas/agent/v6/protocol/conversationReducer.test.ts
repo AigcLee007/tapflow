@@ -109,6 +109,69 @@ describe("Agent V6 conversation reducer", () => {
     expect(reduceConversation(state, { type: "brief_ready", graphRevision: -1 }).graphRevision).toBe(7);
   });
 
+  it("uses the event revision when a refinement produces a new brief", () => {
+    let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 2 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "old", plan: {}, graphRevision: 2 });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "old", graphRevision: 2 });
+    state = reduceConversation(state, { type: "verification_started" });
+    state = reduceConversation(state, { type: "results_presented" });
+    state = reduceConversation(state, { type: "refinement_requested", resultId: "result-1" });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "new", plan: { writesCanvas: true }, graphRevision: 9 });
+    expect(state.phase).toBe("waiting_for_confirmation");
+    expect(state.graphRevision).toBe(9);
+    expect(state.contextSnapshot.graphRevision).toBe(9);
+    expect(state.pendingDecision?.decisionId).toBe("new");
+    expect(state.pendingDecision?.graphRevision).toBe(9);
+  });
+
+  it("keeps confirmed high-risk plan metadata through recovery", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 1 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: { costCredits: 4, batch: true, writesCanvas: true, skill: true, app: true, title: "Plan" }, graphRevision: 1 });
+    const plan = state.plan;
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 1 });
+    const failed = reduceConversation(state, { type: "turn_failed", error: "failed" });
+    for (const event of [{ type: "retry" as const }, { type: "revise" as const }, { type: "recover" as const }]) {
+      const recovered = reduceConversation(failed, event);
+      expect(recovered.plan).toEqual(plan);
+      expect(recovered.pendingDecision).toEqual(failed.pendingDecision);
+    }
+  });
+
+  it("keeps an unconfirmed high-risk recovery behind confirmation", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 1 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: { costCredits: 4, writesCanvas: true }, graphRevision: 1 });
+    const failed = reduceConversation(state, { type: "turn_failed", error: "failed" });
+    for (const event of [{ type: "retry" as const }, { type: "revise" as const }, { type: "recover" as const }]) {
+      const recovered = reduceConversation(failed, event);
+      expect(recovered.phase).toBe("waiting_for_confirmation");
+      expect(recovered.confirmed).toBe(false);
+      expect(recovered.pendingDecision).not.toBeNull();
+      expect(canExecuteDecision(recovered, recovered.pendingDecision!)).toBe(false);
+    }
+  });
+
+  it("returns false instead of throwing for unsafe payloads", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "i", costCredits: 0 };
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => canExecuteDecision(state, { ...base, payload: circular })).not.toThrow();
+    expect(canExecuteDecision(state, { ...base, payload: circular })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: BigInt(1) } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: new Date() as unknown as Record<string, unknown> })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { value: "x".repeat(4_001) } })).toBe(false);
+  });
+
+  it("preserves graph revision when resetting", () => {
+    const state = initialConversationState({ graphRevision: 12 });
+    const reset = reduceConversation(state, { type: "reset" });
+    expect(reset.phase).toBe("idle");
+    expect(reset.graphRevision).toBe(12);
+    expect(reset.contextSnapshot.graphRevision).toBe(12);
+  });
+
   it("generates the same required decision ID when brief_ready omits one", () => {
     const first = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
     const second = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });

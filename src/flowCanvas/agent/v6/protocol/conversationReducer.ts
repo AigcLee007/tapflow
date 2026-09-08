@@ -109,9 +109,35 @@ function pendingDecision(state: ConversationState, decisionId?: string, graphRev
   return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: {}, idempotencyKey: stableId };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isJsonSafeValue(value: unknown, seen: Set<object>): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) return value.every((item) => isJsonSafeValue(item, seen));
+  if (!isPlainObject(value)) return false;
+  return Object.values(value).every((item) => isJsonSafeValue(item, seen));
+}
+
+function serializePayload(payload: unknown): string | null {
+  try {
+    if (!isPlainObject(payload) || !isJsonSafeValue(payload, new Set())) return null;
+    const serialized = JSON.stringify(payload);
+    return typeof serialized === "string" && serialized.length <= 4_000 ? serialized : null;
+  } catch {
+    return null;
+  }
+}
+
 function isSafeDecision(decision: AgentDecision) {
-  const payload = JSON.stringify(decision.payload);
-  return decision.sessionId.length <= 200 && decision.turnId.length <= 200 && decision.idempotencyKey.length <= 200 && decision.decisionId.length <= 200 && isValidGraphRevision(decision.graphRevision) && typeof payload === "string" && payload.length <= 4_000 && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
+  return decision.sessionId.length <= 200 && decision.turnId.length <= 200 && decision.idempotencyKey.length <= 200 && decision.decisionId.length <= 200 && isValidGraphRevision(decision.graphRevision) && serializePayload(decision.payload) !== null && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
 }
 
 function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | undefined) {
@@ -125,13 +151,28 @@ function briefReadyState(state: ConversationState, event: Extract<ConversationEv
   return { ...next, pendingDecision: pendingDecision(next, event.decisionId, event.graphRevision) };
 }
 
+function isHighRiskPlan(plan: ConfirmationPlan | null) {
+  return Boolean(plan && ((plan.costCredits ?? 0) > 0 || plan.batch || plan.writesCanvas || plan.skill || plan.app));
+}
+
+function recoverFromFailure(state: ConversationState, event: Extract<ConversationEvent, { type: "retry" | "revise" | "recover" }>): ConversationState {
+  const decision = state.pendingDecision ?? (state.plan ? pendingDecision(state) : null);
+  if (isHighRiskPlan(state.plan) && !state.confirmed) {
+    return { ...state, phase: "waiting_for_confirmation", executionState: "idle", error: null, pendingDecision: decision, confirmed: false };
+  }
+  if (event.type === "retry" && decision) return { ...state, phase: "executing", executionState: "running", error: null, pendingDecision: decision, confirmed: state.confirmed };
+  if (event.type === "retry") return { ...state, phase: "understanding", executionState: "idle", error: null, confirmed: false };
+  if (event.type === "revise") return { ...state, phase: "drafting_brief", executionState: "idle", error: null, pendingDecision: decision, confirmed: false };
+  return { ...state, phase: "understanding", executionState: "idle", error: null, pendingDecision: decision, confirmed: false };
+}
+
 function isActive(phase: AgentV6Phase) {
   return phase !== "idle" && phase !== "failed";
 }
 
 export function reduceConversation(state: ConversationState, event: ConversationEvent): ConversationState {
   if (event.type === "mode_changed") return { ...state, mode: event.mode };
-  if (event.type === "reset") return initialConversationState({ mode: state.mode, contextSnapshot: state.contextSnapshot });
+  if (event.type === "reset") return initialConversationState({ mode: state.mode, contextSnapshot: state.contextSnapshot, graphRevision: state.graphRevision });
   if (event.type === "turn_failed") {
     return isActive(state.phase)
       ? { ...state, phase: "failed", executionState: "failed", error: boundedText(event.error ?? "Agent 执行失败。", 4_000), pendingDecision: state.pendingDecision, confirmed: Boolean(state.confirmed && state.pendingDecision) }
@@ -169,17 +210,10 @@ export function reduceConversation(state: ConversationState, event: Conversation
       return state;
     case "refining":
       if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null };
-      if (event.type === "brief_ready") return { ...state, phase: "waiting_for_confirmation", plan: normalizePlan(event.plan), pendingDecision: pendingDecision(state, event.decisionId), confirmed: false };
+      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "failed":
-      if (event.type === "retry") {
-        const decision = state.pendingDecision ?? (state.plan ? pendingDecision(state) : null);
-        return decision
-          ? { ...state, phase: "executing", executionState: "running", error: null, pendingDecision: decision, confirmed: Boolean(state.confirmed && decision) }
-          : { ...state, phase: "understanding", executionState: "idle", error: null, confirmed: false };
-      }
-      if (event.type === "revise") return { ...state, phase: "drafting_brief", executionState: "idle", error: null, confirmed: false };
-      if (event.type === "recover") return { ...state, phase: "understanding", executionState: "idle", error: null, confirmed: false };
+      if (event.type === "retry" || event.type === "revise" || event.type === "recover") return recoverFromFailure(state, event);
     default:
       return state;
   }
