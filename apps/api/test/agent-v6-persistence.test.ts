@@ -36,6 +36,55 @@ describe("Agent V6 persistence contract", () => {
     expect(typeof AgentSessionRepository.prototype.recordV6Decision).toBe("function");
   });
 
+  test("rejects a stale V6 snapshot instead of updating the turn", async () => {
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM agent_sessions")) return { rowCount: 1, rows: [{ id: "session-1", tenant_id: "tenant-1", project_id: null, flow_id: null, title: "V6", status: "active", execution_mode: "manual_confirmation", conversation_phase: "idle" }] };
+        if (sql.includes("UPDATE agent_turns")) return { rowCount: 0, rows: [] };
+        return { rowCount: 0, rows: [] };
+      },
+      release: () => undefined,
+    };
+    const repository = new AgentSessionRepository({ pool: { connect: async () => client } as never });
+
+    await expect(repository.saveV6TurnSnapshot({ tenantId: "tenant-1", userId: "user-1" }, {
+      sessionId: "session-1",
+      turnId: "turn-1",
+      expectedGraphRevision: 6,
+      blocksJson: {},
+      contextSnapshotJson: {},
+      progressJson: [],
+      capabilityRefsJson: [],
+      resultRefsJson: [],
+      graphRevision: 7,
+      conversationPhase: "executing",
+      executionState: "running",
+      requiresConfirmation: true,
+    })).rejects.toThrow("AGENT_GRAPH_REVISION_CONFLICT");
+  });
+
+  test("rejects an idempotency key owned by another session or turn", async () => {
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM agent_sessions")) return { rowCount: 1, rows: [{ id: "session-1", tenant_id: "tenant-1", project_id: null, flow_id: null, title: "V6", status: "active", execution_mode: "manual_confirmation", conversation_phase: "idle" }] };
+        if (sql.includes("INSERT INTO agent_v5_decisions")) return { rowCount: 0, rows: [] };
+        if (sql.includes("FROM agent_v5_decisions")) return { rowCount: 1, rows: [{ id: "decision-1", created_at: "2026-09-09T00:00:00.000Z", decision_json: { type: "execute" }, from_phase: "waiting_for_confirmation", to_phase: "executing", session_id: "other-session", turn_id: "other-turn" }] };
+        return { rowCount: 0, rows: [] };
+      },
+      release: () => undefined,
+    };
+    const repository = new AgentSessionRepository({ pool: { connect: async () => client } as never });
+
+    await expect(repository.recordV6Decision({ tenantId: "tenant-1", userId: "user-1" }, {
+      sessionId: "session-1",
+      turnId: "turn-1",
+      idempotencyKey: "decision-owned-elsewhere",
+      decisionJson: { type: "execute" },
+      fromPhase: "waiting_for_confirmation",
+      toPhase: "executing",
+    })).rejects.toThrow("AGENT_DECISION_IDEMPOTENCY_CONFLICT");
+  });
+
   test("redacts unsafe recursive JSON before binding snapshot and decision query parameters", async () => {
     const queryParameters: unknown[][] = [];
     const client = {

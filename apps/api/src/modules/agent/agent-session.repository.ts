@@ -105,6 +105,7 @@ export type AgentV6TurnSnapshotInput = {
   contextSnapshotJson: unknown;
   conversationPhase: string;
   executionState: string;
+  expectedGraphRevision?: number;
   graphRevision: number;
   progressJson: unknown;
   requiresConfirmation: boolean;
@@ -532,6 +533,7 @@ export class AgentSessionRepository {
   ): Promise<AgentV6TurnSnapshot> {
     return withTenantTransaction(context, async (client) => {
       await this.requireSession(client, input.sessionId);
+      const revisionPredicate = input.expectedGraphRevision === undefined ? "" : "\n            AND graph_revision = $13::bigint";
       const result = await client.query<{
         blocks_json: unknown;
         capability_refs_json: unknown;
@@ -559,6 +561,7 @@ export class AgentSessionRepository {
           WHERE tenant_id = $1::uuid
             AND session_id = $2::uuid
             AND id = $3::uuid
+            ${revisionPredicate}
           RETURNING
             id::text AS id,
             blocks_json,
@@ -584,9 +587,12 @@ export class AgentSessionRepository {
           input.conversationPhase,
           input.executionState,
           input.requiresConfirmation,
+          ...(input.expectedGraphRevision === undefined ? [] : [input.expectedGraphRevision]),
         ],
       );
-      if (result.rowCount === 0) throw new Error("AGENT_TURN_NOT_FOUND");
+      if (result.rowCount === 0) {
+        throw new Error(input.expectedGraphRevision === undefined ? "AGENT_TURN_NOT_FOUND" : "AGENT_GRAPH_REVISION_CONFLICT");
+      }
       const row = result.rows[0]!;
       return {
         blocksJson: row.blocks_json,
@@ -642,10 +648,13 @@ export class AgentSessionRepository {
         decision_json: Record<string, unknown>;
         from_phase: string;
         id: string;
+        session_id: string;
         to_phase: string;
+        turn_id: string;
       }>(
         `
-          SELECT id::text AS id, created_at::text AS created_at, decision_json, from_phase, to_phase
+          SELECT id::text AS id, session_id::text AS session_id, turn_id::text AS turn_id,
+                 created_at::text AS created_at, decision_json, from_phase, to_phase
           FROM agent_v5_decisions
           WHERE tenant_id = $1::uuid AND idempotency_key = $2
           LIMIT 1
@@ -654,6 +663,9 @@ export class AgentSessionRepository {
       );
       const row = existing.rows[0];
       if (!row) throw new Error("AGENT_DECISION_IDEMPOTENCY_CONFLICT");
+      if (row.session_id !== input.sessionId || row.turn_id !== input.turnId) {
+        throw new Error("AGENT_DECISION_IDEMPOTENCY_CONFLICT");
+      }
       return {
         createdAt: row.created_at,
         decisionJson: row.decision_json,
