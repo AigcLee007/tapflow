@@ -1,4 +1,6 @@
-import { listSkills, type AgentSkillPreview } from "../../skillApi";
+import { listSkills } from "../../skillApi";
+import type { AgentSkillPreview } from "../../canvasAgentApi";
+import type { AgentSkillInputHint } from "../../canvasAgentSkillTypes";
 
 export type SkillDisplayMetadata = Pick<AgentSkillPreview, "category" | "id" | "inputHints" | "modality" | "name" | "summary" | "version" | "visibility">;
 
@@ -33,9 +35,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function projectInputHints(value: unknown[]): Array<{ kind: string; label: string; required: boolean }> {
+const skillInputKinds = new Set<AgentSkillInputHint["kind"]>(["asset", "choice", "number", "text"]);
+
+function projectInputHints(value: unknown[]): AgentSkillInputHint[] {
   return value.flatMap((hint) => {
-    if (!isRecord(hint) || typeof hint.kind !== "string" || typeof hint.label !== "string" || typeof hint.required !== "boolean") return [];
-    return [{ kind: hint.kind, label: hint.label, required: hint.required }];
+    if (!isRecord(hint) || typeof hint.kind !== "string" || !skillInputKinds.has(hint.kind as AgentSkillInputHint["kind"]) || typeof hint.label !== "string" || typeof hint.required !== "boolean") return [];
+    return [{ kind: hint.kind as AgentSkillInputHint["kind"], label: hint.label, required: hint.required }];
   });
 }

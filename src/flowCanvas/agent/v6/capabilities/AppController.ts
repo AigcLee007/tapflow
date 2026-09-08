@@ -6,16 +6,21 @@ export type AppDisplayMetadata = {
 
 export type AppCatalogAdapter = () => Promise<readonly unknown[]>;
 
+export type AppCatalogResult =
+  | { available: true; apps: AppDisplayMetadata[] }
+  | { available: false; apps: []; reason: "APP_CLIENT_UNAVAILABLE" };
+
 export class AppController {
-  private readonly listApps: AppCatalogAdapter;
+  private readonly listApps?: AppCatalogAdapter;
 
   constructor(options: { listApps?: AppCatalogAdapter } = {}) {
-    this.listApps = options.listApps ?? (async () => []);
+    this.listApps = options.listApps;
   }
 
-  async list(): Promise<AppDisplayMetadata[]> {
+  async list(): Promise<AppCatalogResult> {
+    if (!this.listApps) return { available: false, apps: [], reason: "APP_CLIENT_UNAVAILABLE" };
     const items = await this.listApps();
-    return items.flatMap((value) => {
+    const apps = items.flatMap((value) => {
       if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") return [];
       return [{
         ...(typeof value.description === "string" && value.description.trim() ? { description: value.description } : {}),
@@ -23,6 +28,7 @@ export class AppController {
         name: value.name,
       }];
     });
+    return { available: true, apps };
   }
 }
 

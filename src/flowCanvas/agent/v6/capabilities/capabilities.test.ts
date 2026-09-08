@@ -61,12 +61,28 @@ describe("Agent V6 capability controllers", () => {
     expect(controller.limitReferences(refs)).toHaveLength(AGENT_REFERENCE_LIMIT);
   });
 
+  it("deduplicates canvas references with the same refId before applying the limit", () => {
+    const controller = new CanvasReferenceController();
+
+    expect(controller.limitReferences([
+      { assetId: "asset-first", label: "First", refId: "same-ref" },
+      { assetId: "asset-duplicate", label: "Duplicate", refId: "same-ref" },
+      { assetId: "asset-second", label: "Second", refId: "second-ref" },
+    ])).toEqual([
+      { assetId: "asset-first", label: "First", refId: "same-ref" },
+      { assetId: "asset-second", label: "Second", refId: "second-ref" },
+    ]);
+  });
+
   it("projects skills to safe display metadata", async () => {
     const controller = new SkillController({
       listSkills: vi.fn().mockResolvedValue([{
         category: "image",
         id: "skill-1",
-        inputHints: [{ credential: "should-not-leak", kind: "asset", label: "参考图", required: true }],
+        inputHints: [
+          { credential: "should-not-leak", kind: "asset", label: "参考图", required: true },
+          { kind: "unsafe-custom-kind", label: "未知", required: true },
+        ],
         modality: "image",
         name: "海报设计",
         provider: "should-not-leak",
@@ -104,11 +120,22 @@ describe("Agent V6 capability controllers", () => {
       }]),
     });
 
-    await expect(controller.list()).resolves.toEqual([{
+    await expect(controller.list()).resolves.toEqual({
+      available: true,
+      apps: [{
       description: "同步到外部应用",
       id: "app-1",
       name: "外部应用",
-    }]);
+      }],
+    });
+  });
+
+  it("reports app capability unavailable when no authenticated app client is configured", async () => {
+    await expect(new AppController().list()).resolves.toEqual({
+      available: false,
+      apps: [],
+      reason: "APP_CLIENT_UNAVAILABLE",
+    });
   });
 
   it("exposes product model names without runtime routing details", async () => {
