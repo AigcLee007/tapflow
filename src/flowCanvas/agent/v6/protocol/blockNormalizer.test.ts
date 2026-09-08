@@ -32,6 +32,15 @@ describe("normalizeBlocks", () => {
     });
   });
 
+  it("keeps safe asset node references and rejects non-finite costs", () => {
+    const [block] = normalizeBlocks([{
+      type: "confirmation_card",
+      text: "确认",
+      plan: { costCredits: Number.POSITIVE_INFINITY, writesCanvas: true, provider: "x" },
+    }]);
+    expect(block).toEqual({ type: "confirmation_card", text: "确认", plan: { writesCanvas: true } });
+  });
+
   it("caps text, list items, and table dimensions", () => {
     const long = "x".repeat(10_000);
     const [paragraph, list, table] = normalizeBlocks([

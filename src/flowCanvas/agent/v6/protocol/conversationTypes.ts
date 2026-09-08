@@ -16,6 +16,7 @@ export type AgentV6Phase =
   | "failed";
 
 export type AgentExecutionMode = "auto" | "manual_confirmation";
+export type AgentExecutionState = "idle" | "running" | "verifying" | "completed" | "failed";
 
 export type AgentOption = { id: string; label: string; description?: string };
 export type BriefField = { label: string; value: string };
@@ -48,7 +49,7 @@ export type ConversationBlock =
   | { type: "result_group"; title?: string; results: ResultRef[] }
   | { type: "divider" };
 
-export type AgentContextAssetRef = { assetId: string; refId: string; label: string };
+export type AgentContextAssetRef = { assetId: string; refId: string; label: string; nodeId?: string };
 export type AgentContextSkillRef = { id: string; version: number };
 export type AgentContextSnapshot = {
   projectId: string | null;
@@ -62,16 +63,26 @@ export type AgentContextSnapshot = {
   graphRevision: number;
 };
 
-export type AgentDecision =
+export type AgentDecisionMetadata = {
+  sessionId: string;
+  turnId: string;
+  graphRevision: number;
+  payload: Record<string, unknown>;
+  idempotencyKey: string;
+};
+
+export type AgentDecision = AgentDecisionMetadata & (
   | { type: "execute"; decisionId?: string; costCredits?: number; batch?: boolean; writesCanvas?: boolean; skill?: boolean; app?: boolean; requiresConfirmation?: boolean }
   | { type: "confirm"; decisionId?: string }
   | { type: "cancel"; decisionId?: string; reason?: string }
   | { type: "select_choice"; questionId?: string; optionIds: string[] }
   | { type: "update_brief"; field: string; value: string }
-  | { type: "refine"; resultId?: string; prompt?: string };
+  | { type: "refine"; resultId?: string; prompt?: string }
+);
 
 export type ConversationState = {
   phase: AgentV6Phase;
+  executionState: AgentExecutionState;
   mode: AgentExecutionMode;
   prompt: string | null;
   pendingQuestionId: string | null;

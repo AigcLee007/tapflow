@@ -75,7 +75,7 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
       plan: {
         ...(label(plan.title) ? { title: label(plan.title) } : {}),
         ...(label(plan.summary) ? { summary: label(plan.summary) } : {}),
-        ...(typeof plan.costCredits === "number" ? { costCredits: Math.max(0, plan.costCredits) } : {}),
+        ...(typeof plan.costCredits === "number" && Number.isFinite(plan.costCredits) ? { costCredits: Math.max(0, plan.costCredits) } : {}),
         ...(plan.batch === true ? { batch: true } : {}),
         ...(plan.writesCanvas === true ? { writesCanvas: true } : {}),
         ...(plan.skill === true ? { skill: true } : {}),
