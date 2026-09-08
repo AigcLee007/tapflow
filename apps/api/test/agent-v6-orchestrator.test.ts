@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentV6Orchestrator } from "../src/modules/agent/v6/agent-v6-orchestrator.js";
+import { projectV6Response } from "../src/modules/agent/v6/agent-v6-replay.js";
 import { requiresV6Confirmation } from "../src/modules/agent/v6/agent-v6-policy.js";
 import { agentV6DecisionSchema, agentV6TurnSchema } from "../src/modules/agent/v6/agent-v6-schemas.js";
 import { AgentApiError } from "../src/modules/agent/agent.service.js";
@@ -77,6 +78,58 @@ describe("Agent V6 server orchestrator", () => {
       { app: true },
     ]) expect(requiresV6Confirmation(plan)).toBe(true);
     expect(requiresV6Confirmation({ costCredits: 0 })).toBe(false);
+  });
+
+  it("projects only allowlisted response fields and removes sensitive values recursively", () => {
+    const result = projectV6Response({
+      sessionId: ids.sessionId,
+      turnId: ids.turnId,
+      phase: "waiting_for_confirmation",
+      executionState: "idle",
+      graphRevision: 3,
+      provider: "provider-secret",
+      route: "internal-route",
+      credential: "credential-secret",
+      signedUrl: "https://temporary.example/file",
+      html: "<script>alert(1)</script>",
+      base64: "data:image/png;base64,secret",
+      blob: "blob:https://example/secret",
+      data: "data:text/plain,secret",
+      contextSnapshot: { projectId: ids.projectId, flowId: ids.flowId, provider: "nested-provider" },
+      plan: { costCredits: 12, provider: "nested-provider", route: "nested-route" },
+      pendingDecision: { type: "execute", decisionId: "d", sessionId: ids.sessionId, turnId: ids.turnId, graphRevision: 3, idempotencyKey: "i", payload: { prompt: "safe", credential: "nested-secret", html: "<b>" } },
+    }, { sessionId: ids.sessionId, turnId: ids.turnId, scope: input });
+
+    expect(Object.keys(result).sort()).toEqual(["blocks", "contextSnapshot", "executionState", "graphRevision", "pendingDecision", "phase", "plan", "sessionId", "turnId"]);
+    expect(JSON.stringify(result)).not.toMatch(/provider|route|credential|signedUrl|html|base64|blob|data:/i);
+    expect(result.pendingDecision).toMatchObject({ payload: { prompt: "safe" } });
+  });
+
+  it("holds risky plans for confirmation and only delegates after confirm", async () => {
+    const service = serviceStub();
+    service.createV5Turn.mockResolvedValueOnce({
+      blocks: [],
+      executionState: "running",
+      phase: "executing",
+      plan: { costCredits: 12, writesCanvas: true },
+      sessionId: ids.sessionId,
+      turnId: ids.turnId,
+    });
+    const orchestrator = new AgentV6Orchestrator(service);
+
+    const pending = await orchestrator.submitTurn(context, ids.sessionId, input);
+    expect(pending.phase).toBe("waiting_for_confirmation");
+    expect(pending.pendingDecision).toMatchObject({ type: "execute", graphRevision: 3 });
+    expect(service.recordV5Decision).not.toHaveBeenCalled();
+
+    await orchestrator.submitDecision(context, ids.sessionId, ids.turnId, {
+      flowId: ids.flowId,
+      graphRevision: 3,
+      idempotencyKey: "confirm-risk-1",
+      projectId: ids.projectId,
+      type: "confirm",
+    });
+    expect(service.recordV5Decision).toHaveBeenCalledTimes(1);
   });
 
   it("delegates confirmed decisions and deduplicates the same turn idempotency key", async () => {

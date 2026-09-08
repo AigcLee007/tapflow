@@ -1,7 +1,7 @@
 import type { AgentV6ContextSnapshotInput, AgentV6DecisionInput, AgentV6ScopeInput, AgentV6TurnInput } from "./agent-v6-schemas.js";
 import { decisionForV6 } from "./agent-v6-replay.js";
 import { buildV6Context, projectV6Response, type AgentV6Response } from "./agent-v6-replay.js";
-import type { AgentV6RiskPlan } from "./agent-v6-policy.js";
+import { requiresV6Confirmation } from "./agent-v6-policy.js";
 import { AgentApiError } from "../agent.service.js";
 
 type AgentContext = { tenantId: string; userId: string | null };
@@ -25,6 +25,15 @@ function defaultSnapshot(scope: AgentV6ScopeInput) {
 function defaultReferenceContext() { return { items: [] }; }
 
 function cacheKey(context: AgentContext, sessionId: string, idempotencyKey: string) { return `${context.tenantId}:${sessionId}:${idempotencyKey}`; }
+
+function applyConfirmationGate(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const source = value as Record<string, unknown>;
+  const plan = source.plan && typeof source.plan === "object" && !Array.isArray(source.plan) ? source.plan as Record<string, unknown> : null;
+  if (!requiresV6Confirmation(plan)) return value;
+  if (source.phase === "waiting_for_confirmation") return value;
+  return { ...source, phase: "waiting_for_confirmation", executionState: "idle", plan };
+}
 
 export class AgentV6Orchestrator {
   private readonly turnResults = new Map<string, Promise<AgentV6Response>>();
@@ -50,7 +59,7 @@ export class AgentV6Orchestrator {
         referenceContext: input.referenceContext ?? defaultReferenceContext(),
         snapshot: input.snapshot ?? defaultSnapshot(input),
       });
-      const response = projectV6Response(result, { sessionId, turnId: "", scope: input, contextSnapshot });
+      const response = projectV6Response(applyConfirmationGate(result), { sessionId, turnId: "", scope: input, contextSnapshot });
       if (response.pendingDecision) this.pendingByTurn.set(`${context.tenantId}:${sessionId}:${response.turnId}`, response.pendingDecision);
       return response;
     })();

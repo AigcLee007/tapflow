@@ -61,6 +61,26 @@ function safePlan(value: unknown): Record<string, unknown> {
   };
 }
 
+function safeContextSnapshot(value: unknown, fallback: AgentV6ContextSnapshotInput): AgentV6ContextSnapshotInput {
+  const raw = asRecord(value);
+  const safeRefs = Array.isArray(raw.assetRefs) ? raw.assetRefs.slice(0, 12).flatMap((item) => {
+    const ref = asRecord(item); const assetId = safeId(ref.assetId); const refId = safeId(ref.refId); const label = safeText(ref.label, 400);
+    return assetId && refId && label ? [{ assetId, refId, label, ...(safeId(ref.nodeId) ? { nodeId: safeId(ref.nodeId) } : {}) }] : [];
+  }) : fallback.assetRefs;
+  const safeSkills = Array.isArray(raw.skillRefs) ? raw.skillRefs.slice(0, 12).flatMap((item) => {
+    const ref = asRecord(item); const id = safeId(ref.id); return id && typeof ref.version === "number" && Number.isSafeInteger(ref.version) && ref.version >= 0 ? [{ id, version: ref.version }] : [];
+  }) : fallback.skillRefs;
+  const strings = (value: unknown) => Array.isArray(value) ? value.slice(0, 12).flatMap((item) => { const id = safeId(item); return id ? [id] : []; }) : [];
+  return {
+    appRefs: strings(raw.appRefs), assetRefs: safeRefs,
+    flowId: raw.flowId === null || typeof raw.flowId === "string" ? raw.flowId as string | null : fallback.flowId,
+    graphRevision: typeof raw.graphRevision === "number" && Number.isSafeInteger(raw.graphRevision) && raw.graphRevision >= 0 ? raw.graphRevision : fallback.graphRevision,
+    modelKey: raw.modelKey === null || typeof raw.modelKey === "string" ? raw.modelKey as string | null : fallback.modelKey,
+    projectId: raw.projectId === null || typeof raw.projectId === "string" ? raw.projectId as string | null : fallback.projectId,
+    selectedNodeIds: strings(raw.selectedNodeIds), skillRefs: safeSkills, uploadedAssetIds: strings(raw.uploadedAssetIds),
+  };
+}
+
 function safePendingDecision(value: unknown): Record<string, unknown> | null {
   const raw = asRecord(value);
   if (raw.type !== "execute") return null;
@@ -85,20 +105,23 @@ export function projectV6Response(raw: unknown, fallback: { sessionId: string; t
   const blocks = Array.isArray(source.blocks) ? source.blocks.slice(0, 12).flatMap((block) => { const safe = safeBlock(block); return safe ? [safe] : []; }) : [];
   const plan = source.plan && typeof source.plan === "object" ? safePlan(source.plan) : blocks.find((block) => block.type === "confirmation_card")?.plan;
   const pendingDecision = source.pendingDecision !== undefined ? safePendingDecision(source.pendingDecision) : fallback.pendingDecision ?? (phase === "waiting_for_confirmation" ? { type: "execute", decisionId: `v6-decision-${fallback.turnId}`, sessionId: fallback.sessionId, turnId: fallback.turnId, graphRevision, payload: {}, idempotencyKey: `v6-idempotency-${fallback.turnId}`, ...(plan ?? {}) } : null);
-  return {
-    ...source,
+  const fallbackContext = fallback.contextSnapshot ?? buildV6Context(fallback.scope);
+  const response: AgentV6Response = {
     blocks,
-    contextSnapshot: fallback.contextSnapshot ?? buildV6Context(fallback.scope),
+    contextSnapshot: safeContextSnapshot(source.contextSnapshot, fallbackContext),
     executionState,
     graphRevision,
     pendingDecision,
     phase,
     sessionId: safeId(source.sessionId) || fallback.sessionId,
     turnId: safeId(source.turnId) || fallback.turnId,
-    ...(plan ? { plan } : {}),
-    ...(typeof source.prompt === "string" ? { prompt: safeText(source.prompt, 8_000) } : {}),
-    ...(typeof source.error === "string" ? { error: safeText(source.error) } : {}),
   };
+  if (plan && Object.keys(plan).length > 0) response.plan = plan;
+  if (typeof source.prompt === "string") response.prompt = safeText(source.prompt, 8_000);
+  if (typeof source.error === "string") response.error = safeText(source.error);
+  if (source.progress !== undefined) response.progress = safeValue(source.progress);
+  if (source.results !== undefined) response.results = safeValue(source.results);
+  return response;
 }
 
 export function decisionForV6(input: AgentV6DecisionInput) {
