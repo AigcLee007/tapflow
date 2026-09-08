@@ -64,6 +64,7 @@ export type AgentContextSnapshot = {
 };
 
 export type AgentDecisionMetadata = {
+  decisionId: string;
   sessionId: string;
   turnId: string;
   graphRevision: number;
@@ -72,9 +73,9 @@ export type AgentDecisionMetadata = {
 };
 
 export type AgentDecision = AgentDecisionMetadata & (
-  | { type: "execute"; decisionId?: string; costCredits?: number; batch?: boolean; writesCanvas?: boolean; skill?: boolean; app?: boolean; requiresConfirmation?: boolean }
-  | { type: "confirm"; decisionId?: string }
-  | { type: "cancel"; decisionId?: string; reason?: string }
+  | { type: "execute"; costCredits?: number; batch?: boolean; writesCanvas?: boolean; skill?: boolean; app?: boolean; requiresConfirmation?: boolean }
+  | { type: "confirm" }
+  | { type: "cancel"; reason?: string }
   | { type: "select_choice"; questionId?: string; optionIds: string[] }
   | { type: "update_brief"; field: string; value: string }
   | { type: "refine"; resultId?: string; prompt?: string }

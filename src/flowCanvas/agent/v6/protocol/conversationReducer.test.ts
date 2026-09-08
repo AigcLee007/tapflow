@@ -21,10 +21,12 @@ describe("Agent V6 conversation reducer", () => {
     const state = reduceConversation(initialConversationState(), {
       type: "brief_ready",
       plan: { costCredits: 12, writesCanvas: true },
+      graphRevision: 0,
     });
     expect(state.phase).toBe("waiting_for_confirmation");
     expect(canExecuteDecision(state, {
       type: "execute",
+      decisionId: "decision-1",
       sessionId: "session-1",
       turnId: "turn-1",
       graphRevision: 0,
@@ -46,6 +48,19 @@ describe("Agent V6 conversation reducer", () => {
     expect(state.confirmed).toBe(true);
     expect(state.executionState).toBe("running");
     expect(reduceConversation(state, { type: "execution_started" }).executionState).toBe("running");
+    state = reduceConversation(state, { type: "verification_started" });
+    expect(state.executionState).toBe("verifying");
+  });
+
+  it("only permits execution decisions during executing, never during verification", () => {
+    let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 1 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 1 });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 1 });
+    const decision = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 1, payload: {}, idempotencyKey: "idem-1", costCredits: 0 };
+    expect(canExecuteDecision(state, decision)).toBe(true);
+    state = reduceConversation(state, { type: "verification_started" });
+    expect(state.phase).toBe("verifying");
+    expect(canExecuteDecision(state, decision)).toBe(false);
   });
 
   it("rejects execution decisions whose metadata or risk differs from the confirmed plan", () => {
@@ -63,13 +78,50 @@ describe("Agent V6 conversation reducer", () => {
   });
 
   it("returns failed conversations to explicit retry, revise, and recover phases", () => {
-    const failed = reduceConversation(
-      reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "失败" }),
-      { type: "turn_failed", error: "错误" },
-    );
-    expect(reduceConversation(failed, { type: "retry" }).phase).toBe("executing");
-    expect(reduceConversation(failed, { type: "revise" }).phase).toBe("drafting_brief");
-    expect(reduceConversation(failed, { type: "recover" }).phase).toBe("understanding");
+    let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 0 });
+    state = reduceConversation(state, { type: "brief_ready", plan: { costCredits: 0 }, graphRevision: 0 });
+    expect(state.pendingDecision?.decisionId).toBe("decision:session-1:turn-1:0");
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision:session-1:turn-1:0", graphRevision: 0 });
+    const failed = reduceConversation(state, { type: "turn_failed", error: "错误" });
+    const retried = reduceConversation(failed, { type: "retry" });
+    expect(retried.phase).toBe("executing");
+    expect(retried.pendingDecision?.decisionId).toBe("decision:session-1:turn-1:0");
+    expect(retried.confirmed).toBe(true);
+    expect(canExecuteDecision(retried, retried.pendingDecision!)).toBe(true);
+    const revised = reduceConversation(failed, { type: "revise" });
+    expect(revised.phase).toBe("drafting_brief");
+    expect(revised.pendingDecision).not.toBeNull();
+    expect(revised.confirmed).toBe(false);
+    const recovered = reduceConversation(failed, { type: "recover" });
+    expect(recovered.phase).toBe("understanding");
+    expect(recovered.pendingDecision).not.toBeNull();
+    expect(recovered.confirmed).toBe(false);
+  });
+
+  it("binds brief decisions and context to a finite non-negative event revision", () => {
+    let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 1 });
+    state = reduceConversation(state, { type: "brief_ready", plan: {}, graphRevision: 7 });
+    expect(state.graphRevision).toBe(7);
+    expect(state.contextSnapshot.graphRevision).toBe(7);
+    expect(state.pendingDecision?.graphRevision).toBe(7);
+    expect(reduceConversation(state, { type: "brief_ready", graphRevision: Number.NaN }).phase).toBe("waiting_for_confirmation");
+    expect(reduceConversation(state, { type: "brief_ready", graphRevision: Number.POSITIVE_INFINITY }).graphRevision).toBe(7);
+    expect(reduceConversation(state, { type: "brief_ready", graphRevision: -1 }).graphRevision).toBe(7);
+  });
+
+  it("generates the same required decision ID when brief_ready omits one", () => {
+    const first = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
+    const second = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
+    expect(first.pendingDecision?.decisionId).toBe("decision:s:t:3");
+    expect(second.pendingDecision?.decisionId).toBe(first.pendingDecision?.decisionId);
+    expect(first.pendingDecision?.sessionId).toBe("s");
+    expect(first.pendingDecision?.turnId).toBe("t");
+  });
+
+  it("normalizes invalid initial graph revisions", () => {
+    expect(initialConversationState({ graphRevision: -1 }).graphRevision).toBe(0);
+    expect(initialConversationState({ graphRevision: Number.NaN }).contextSnapshot.graphRevision).toBe(0);
+    expect(initialConversationState({ graphRevision: Number.POSITIVE_INFINITY }).graphRevision).toBe(0);
   });
 
   it("bounds prompts, errors, context references, and rejects non-finite cost", () => {
@@ -83,7 +135,7 @@ describe("Agent V6 conversation reducer", () => {
     expect(state.error?.length).toBeLessThanOrEqual(4_000);
     expect(state.contextSnapshot.projectId?.length).toBeLessThanOrEqual(200);
     expect(state.contextSnapshot.assetRefs[0].nodeId?.length).toBeLessThanOrEqual(200);
-    const planned = reduceConversation(initialConversationState(), { type: "brief_ready", plan: { costCredits: Number.NaN } });
+    const planned = reduceConversation(initialConversationState(), { type: "brief_ready", plan: { costCredits: Number.NaN }, graphRevision: 0 });
     expect(planned.plan?.costCredits).toBeUndefined();
   });
 
@@ -92,7 +144,7 @@ describe("Agent V6 conversation reducer", () => {
     state = reduceConversation(state, { type: "choice_requested", id: "direction" });
     state = reduceConversation(state, { type: "choice_submitted", id: "direction", optionIds: ["one"] });
     expect(state.phase).toBe("drafting_brief");
-    state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 } });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 0 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 0 });
     state = reduceConversation(state, { type: "execution_started" });
     state = reduceConversation(state, { type: "verification_started" });

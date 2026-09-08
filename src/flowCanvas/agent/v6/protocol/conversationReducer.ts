@@ -11,7 +11,7 @@ export type ConversationEvent =
   | { type: "choice_requested"; id: string }
   | { type: "choice_submitted"; id?: string; optionIds: string[] }
   | { type: "brief_started" }
-  | { type: "brief_ready"; plan?: ConfirmationPlan; decisionId?: string; graphRevision?: number }
+  | { type: "brief_ready"; plan?: ConfirmationPlan; decisionId?: string; graphRevision: number }
   | { type: "confirmation_granted"; decisionId: string; graphRevision: number; plan?: ConfirmationPlan }
   | { type: "execution_started" }
   | { type: "verification_started" }
@@ -37,7 +37,8 @@ const EMPTY_CONTEXT = {
 } as const;
 
 export function initialConversationState(overrides: Partial<ConversationState> = {}): ConversationState {
-  const context = normalizeContext(overrides.contextSnapshot);
+  const graphRevision = isValidGraphRevision(overrides.graphRevision) ? overrides.graphRevision : 0;
+  const context = { ...normalizeContext(overrides.contextSnapshot), graphRevision };
   return {
     phase: "idle",
     executionState: "idle",
@@ -50,9 +51,9 @@ export function initialConversationState(overrides: Partial<ConversationState> =
     progress: [],
     results: [],
     refiningResultId: null,
-    graphRevision: overrides.graphRevision ?? 0,
     error: null,
     ...overrides,
+    graphRevision,
     plan: normalizePlan(overrides.plan ?? undefined),
     contextSnapshot: context,
   };
@@ -64,6 +65,10 @@ function boundedText(value: unknown, max: number) {
 
 function boundedId(value: unknown) {
   return boundedText(value, 200);
+}
+
+function isValidGraphRevision(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function normalizeContext(context: ConversationState["contextSnapshot"] | undefined): ConversationState["contextSnapshot"] {
@@ -94,18 +99,30 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
   };
 }
 
-function pendingDecision(state: ConversationState, decisionId?: string): AgentDecision {
-  return { type: "execute", decisionId, sessionId: boundedId(state.sessionId), turnId: boundedId(state.turnId), graphRevision: state.graphRevision, payload: {}, idempotencyKey: boundedId(decisionId ?? "pending") };
+function decisionIdFor(state: ConversationState, decisionId?: string) {
+  const supplied = boundedId(decisionId).trim();
+  return supplied || boundedId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`);
+}
+
+function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision): AgentDecision {
+  const stableId = decisionIdFor(state, decisionId);
+  return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: {}, idempotencyKey: stableId };
 }
 
 function isSafeDecision(decision: AgentDecision) {
   const payload = JSON.stringify(decision.payload);
-  return decision.sessionId.length <= 200 && decision.turnId.length <= 200 && decision.idempotencyKey.length <= 200 && (!decision.decisionId || decision.decisionId.length <= 200) && typeof payload === "string" && payload.length <= 4_000 && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
+  return decision.sessionId.length <= 200 && decision.turnId.length <= 200 && decision.idempotencyKey.length <= 200 && decision.decisionId.length <= 200 && isValidGraphRevision(decision.graphRevision) && typeof payload === "string" && payload.length <= 4_000 && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
 }
 
 function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | undefined) {
   if (!right) return true;
   return JSON.stringify(normalizePlan(left ?? {})) === JSON.stringify(normalizePlan(right));
+}
+
+function briefReadyState(state: ConversationState, event: Extract<ConversationEvent, { type: "brief_ready" }>): ConversationState {
+  if (!isValidGraphRevision(event.graphRevision)) return state;
+  const next = { ...state, graphRevision: event.graphRevision, contextSnapshot: { ...state.contextSnapshot, graphRevision: event.graphRevision }, phase: "waiting_for_confirmation" as const, plan: normalizePlan(event.plan), confirmed: false };
+  return { ...next, pendingDecision: pendingDecision(next, event.decisionId, event.graphRevision) };
 }
 
 function isActive(phase: AgentV6Phase) {
@@ -117,32 +134,32 @@ export function reduceConversation(state: ConversationState, event: Conversation
   if (event.type === "reset") return initialConversationState({ mode: state.mode, contextSnapshot: state.contextSnapshot });
   if (event.type === "turn_failed") {
     return isActive(state.phase)
-      ? { ...state, phase: "failed", executionState: "failed", error: boundedText(event.error ?? "Agent 执行失败。", 4_000), pendingDecision: null }
+      ? { ...state, phase: "failed", executionState: "failed", error: boundedText(event.error ?? "Agent 执行失败。", 4_000), pendingDecision: state.pendingDecision, confirmed: Boolean(state.confirmed && state.pendingDecision) }
       : state;
   }
 
   switch (state.phase) {
     case "idle":
       if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], progress: [], plan: null, pendingDecision: null, confirmed: false };
-      if (event.type === "brief_ready") return { ...state, phase: "waiting_for_confirmation", plan: normalizePlan(event.plan), pendingDecision: pendingDecision(state, event.decisionId), confirmed: false };
+      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "understanding":
       if (event.type === "choice_requested") return { ...state, phase: "waiting_for_choice", pendingQuestionId: event.id };
       if (event.type === "brief_started") return { ...state, phase: "drafting_brief" };
-      if (event.type === "brief_ready") return { ...state, phase: "waiting_for_confirmation", plan: normalizePlan(event.plan), pendingDecision: pendingDecision(state, event.decisionId), confirmed: false };
+      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "waiting_for_choice":
       if (event.type === "choice_submitted" && (!event.id || event.id === state.pendingQuestionId) && event.optionIds.length > 0) return { ...state, phase: "drafting_brief", pendingQuestionId: null };
       return state;
     case "drafting_brief":
-      if (event.type === "brief_ready") return { ...state, phase: "waiting_for_confirmation", plan: normalizePlan(event.plan), pendingDecision: pendingDecision(state, event.decisionId), confirmed: false };
+      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "waiting_for_confirmation":
       if (event.type === "confirmation_granted" && state.pendingDecision?.type === "execute" && state.pendingDecision.decisionId === event.decisionId && state.pendingDecision.graphRevision === event.graphRevision && state.graphRevision === event.graphRevision && state.plan !== null && planMatches(state.plan, event.plan)) return { ...state, phase: "executing", executionState: "running", confirmed: true, pendingDecision: { ...state.pendingDecision, decisionId: event.decisionId } };
       return state;
     case "executing":
       if (event.type === "execution_started") return { ...state, executionState: "running" };
-      if (event.type === "verification_started") return { ...state, phase: "verifying" };
+      if (event.type === "verification_started") return { ...state, phase: "verifying", executionState: "verifying" };
       return state;
     case "verifying":
       if (event.type === "results_presented") return { ...state, phase: "presenting_results", executionState: "completed", confirmed: false, pendingDecision: null };
@@ -155,7 +172,12 @@ export function reduceConversation(state: ConversationState, event: Conversation
       if (event.type === "brief_ready") return { ...state, phase: "waiting_for_confirmation", plan: normalizePlan(event.plan), pendingDecision: pendingDecision(state, event.decisionId), confirmed: false };
       return state;
     case "failed":
-      if (event.type === "retry") return { ...state, phase: "executing", executionState: "running", error: null };
+      if (event.type === "retry") {
+        const decision = state.pendingDecision ?? (state.plan ? pendingDecision(state) : null);
+        return decision
+          ? { ...state, phase: "executing", executionState: "running", error: null, pendingDecision: decision, confirmed: Boolean(state.confirmed && decision) }
+          : { ...state, phase: "understanding", executionState: "idle", error: null, confirmed: false };
+      }
       if (event.type === "revise") return { ...state, phase: "drafting_brief", executionState: "idle", error: null, confirmed: false };
       if (event.type === "recover") return { ...state, phase: "understanding", executionState: "idle", error: null, confirmed: false };
     default:
@@ -168,7 +190,7 @@ function isExecutionDecision(decision: AgentDecision) {
 }
 
 export function canExecuteDecision(state: ConversationState, decision: AgentDecision): boolean {
-  if (!isExecutionDecision(decision) || state.phase === "failed" || state.phase === "idle" || state.phase === "understanding" || state.phase === "waiting_for_choice" || state.phase === "drafting_brief") return false;
+  if (!isExecutionDecision(decision) || state.phase !== "executing") return false;
   if (!isSafeDecision(decision) || decision.sessionId !== boundedId(state.sessionId) || decision.turnId !== boundedId(state.turnId) || decision.graphRevision !== state.graphRevision || !decision.idempotencyKey || typeof decision.payload !== "object" || decision.payload === null) return false;
   const plan = state.plan ?? {};
   const fieldsMatch = (decision.costCredits ?? 0) === (plan.costCredits ?? 0) && Boolean(decision.batch) === Boolean(plan.batch) && Boolean(decision.writesCanvas) === Boolean(plan.writesCanvas) && Boolean(decision.skill) === Boolean(plan.skill) && Boolean(decision.app) === Boolean(plan.app);
