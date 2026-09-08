@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Edit3, History, Minimize2, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 
 export type AgentHeaderProps = {
   title: string;
@@ -7,10 +7,11 @@ export type AgentHeaderProps = {
   onNewConversation: () => void;
   onRename: (title: string) => void;
   onHistoryToggle: () => void;
+  historyTriggerRef?: RefObject<HTMLButtonElement>;
   onCollapse?: () => void;
 };
 
-export function AgentHeader({ title, phase, onNewConversation, onRename, onHistoryToggle, onCollapse }: AgentHeaderProps) {
+export function AgentHeader({ title, phase, onNewConversation, onRename, onHistoryToggle, historyTriggerRef, onCollapse }: AgentHeaderProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
 
@@ -39,7 +40,7 @@ export function AgentHeader({ title, phase, onNewConversation, onRename, onHisto
       </div>
       <div className="agent-v6-header-actions">
         <button aria-label="新建对话" className="agent-v6-icon-button" type="button" onClick={onNewConversation}><Plus size={16} /></button>
-        <button aria-label="历史" className="agent-v6-icon-button" type="button" onClick={onHistoryToggle}><History size={16} /></button>
+        <button ref={historyTriggerRef} aria-label="历史" className="agent-v6-icon-button" type="button" onClick={onHistoryToggle}><History size={16} /></button>
         {onCollapse ? <button aria-label="收起 Agent" className="agent-v6-icon-button" type="button" onClick={onCollapse}><Minimize2 size={16} /></button> : null}
       </div>
     </header>

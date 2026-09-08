@@ -13,16 +13,16 @@ const capabilities: Array<{ id: AgentCapability; label: string; description: str
   { id: "app", label: "App", description: "连接外部应用能力", Icon: AppWindow },
 ];
 
-export function AgentCapabilityMenu({ onSelect }: { onSelect: (capability: AgentCapability) => void }) {
-  const layer = useDismissibleLayer("agent-v6-capabilities");
+export function AgentCapabilityMenu({ onOpenChange, onSelect }: { onOpenChange?: (open: boolean) => void; onSelect: (capability: AgentCapability) => void }) {
+  const layer = useDismissibleLayer("agent-v6-capabilities", { onDismiss: () => onOpenChange?.(false) });
   return (
     <div className="agent-v6-capability-layer" data-composer-slot="capability">
-      <button ref={layer.triggerRef as RefObject<HTMLButtonElement>} aria-expanded={layer.open} aria-haspopup="menu" aria-label="添加能力" className="agent-v6-composer-icon" type="button" onClick={layer.toggle}><Plus size={17} /></button>
+      <button ref={layer.triggerRef as RefObject<HTMLButtonElement>} aria-expanded={layer.open} aria-haspopup="menu" aria-label="添加能力" className="agent-v6-composer-icon" type="button" onClick={() => { const nextOpen = !layer.open; layer.toggle(); onOpenChange?.(nextOpen); }}><Plus size={17} /></button>
       {layer.open ? (
         <MenuSurface ref={layer.ref as RefObject<HTMLDivElement>} aria-label="Agent 能力" className="agent-v6-capability-menu" role="menu">
           <div className="agent-v6-menu-heading"><Boxes size={15} /><span>添加能力</span></div>
           {capabilities.map(({ id, label, description, Icon }) => (
-            <button key={id} className={`${MENU_ITEM_CLASS} agent-v6-menu-item`} role="menuitem" type="button" onClick={() => { onSelect(id); layer.closeLayer(); }}>
+            <button key={id} className={`${MENU_ITEM_CLASS} agent-v6-menu-item`} role="menuitem" type="button" onClick={() => { onSelect(id); layer.closeLayer(); onOpenChange?.(false); }}>
               <span className="agent-v6-menu-icon"><Icon size={15} /></span>
               <span><span className={MENU_ITEM_PRIMARY_CLASS}>{label}</span><span className={MENU_ITEM_SECONDARY_CLASS}>{description}</span></span>
             </button>

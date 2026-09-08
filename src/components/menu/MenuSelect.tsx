@@ -15,6 +15,7 @@ type MenuSelectProps = {
   fullWidth?: boolean;
   label: string;
   onChange: (value: string) => void;
+  onOpenChange?: (open: boolean) => void;
   options: MenuSelectOption[];
   size?: "default" | "compact";
   value: string;
@@ -25,11 +26,12 @@ export function MenuSelect({
   fullWidth = false,
   label,
   onChange,
+  onOpenChange,
   options,
   size = "default",
   value,
 }: MenuSelectProps) {
-  const layer = useDismissibleLayer(`select-${label}`);
+  const layer = useDismissibleLayer(`select-${label}`, { onDismiss: () => onOpenChange?.(false) });
   const current = options.find((option) => option.value === value) ?? options[0];
   const triggerClassName =
     size === "compact"
@@ -45,7 +47,11 @@ export function MenuSelect({
         aria-label={`${label} ${current?.label ?? ""}`.trim()}
         className={`${triggerClassName} ${fullWidth ? "w-full" : ""}`.trim()}
         disabled={disabled}
-        onClick={layer.toggle}
+        onClick={() => {
+          const nextOpen = !layer.open;
+          layer.toggle();
+          onOpenChange?.(nextOpen);
+        }}
         type="button"
       >
         <span className={size === "compact" ? "truncate" : undefined}>{current?.label}</span>
@@ -67,6 +73,7 @@ export function MenuSelect({
               onClick={() => {
                 onChange(option.value);
                 layer.closeLayer();
+                onOpenChange?.(false);
               }}
               role="menuitem"
               type="button"

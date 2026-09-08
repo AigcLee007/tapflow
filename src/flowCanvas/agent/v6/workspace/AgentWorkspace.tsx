@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ConversationStream } from "../protocol/ConversationStream";
 import type { AgentExecutionMode, AgentV6Phase, ConversationBlock } from "../protocol/conversationTypes";
 import { AgentCapabilityMenu, type AgentCapability } from "./AgentCapabilityMenu";
@@ -18,6 +18,7 @@ export type AgentWorkspaceProps = {
   references: readonly AgentWorkspaceReference[];
   history: readonly AgentWorkspaceHistoryItem[];
   historyLoading?: boolean;
+  historyNow?: Date;
   model: string;
   modelOptions: readonly { label: string; value: string }[];
   mode?: AgentExecutionMode;
@@ -36,17 +37,25 @@ export type AgentWorkspaceProps = {
   onBlockAction?: ComponentProps<typeof ConversationStream>["onAction"];
 };
 
+type AgentWorkspaceLayer = "history" | "capability" | "mode" | "model" | null;
+
 const phaseLabels: Record<AgentV6Phase, string> = { idle: "准备中", understanding: "理解中", waiting_for_choice: "等待选择", drafting_brief: "整理 Brief", waiting_for_confirmation: "等待确认", executing: "执行中", verifying: "校验中", presenting_results: "展示结果", refining: "优化中", failed: "需要处理" };
 
-export function AgentWorkspace({ blocks, title, phase, prompt, references, history, historyLoading, model, modelOptions, mode = "auto", busy = false, onNewConversation, onRename, onHistorySelect, onPromptChange, onRemoveReference, onSend, onCancel, onCapability, onModeChange, onModelChange, onCollapse, onBlockAction = () => undefined }: AgentWorkspaceProps) {
-  const [historyOpen, setHistoryOpen] = useState(false);
+export function AgentWorkspace({ blocks, title, phase, prompt, references, history, historyLoading, historyNow, model, modelOptions, mode = "auto", busy = false, onNewConversation, onRename, onHistorySelect, onPromptChange, onRemoveReference, onSend, onCancel, onCapability, onModeChange, onModelChange, onCollapse, onBlockAction = () => undefined }: AgentWorkspaceProps) {
+  const [activeLayer, setActiveLayer] = useState<AgentWorkspaceLayer>(null);
+  const historyTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const setLayer = (layer: Exclude<AgentWorkspaceLayer, "history" | null> | null) => {
+    setActiveLayer(layer);
+  };
+
   return (
     <section className="agent-v6-workspace agent-v6-workspace-responsive" data-testid="agent-v6-workspace">
-      <AgentHeader title={title} phase={phaseLabels[phase]} onNewConversation={onNewConversation} onRename={onRename} onHistoryToggle={() => setHistoryOpen((open) => !open)} onCollapse={onCollapse} />
+      <AgentHeader historyTriggerRef={historyTriggerRef} title={title} phase={phaseLabels[phase]} onNewConversation={onNewConversation} onRename={onRename} onHistoryToggle={() => setActiveLayer((layer) => layer === "history" ? null : "history")} onCollapse={onCollapse} />
       <div className="agent-v6-workspace-body">
         <main className="agent-v6-message-stream" data-testid="agent-v6-message-stream" aria-label="Agent 消息流"><ConversationStream blocks={blocks} onAction={onBlockAction} /></main>
-        <AgentComposer prompt={prompt} references={references} mode={mode} model={model} modelOptions={modelOptions} busy={busy} onPromptChange={onPromptChange} onModeChange={onModeChange} onModelChange={onModelChange} onSend={onSend} onCancel={onCancel} onCapability={onCapability} onRemoveReference={onRemoveReference} />
-        {historyOpen ? <AgentHistory items={history} loading={historyLoading} onSelect={onHistorySelect} onClose={() => setHistoryOpen(false)} /> : null}
+        <AgentComposer prompt={prompt} references={references} mode={mode} model={model} modelOptions={modelOptions} busy={busy} onPromptChange={onPromptChange} onModeChange={onModeChange} onModelChange={onModelChange} onLayerChange={setLayer} onSend={onSend} onCancel={onCancel} onCapability={onCapability} onRemoveReference={onRemoveReference} />
+        {activeLayer === "history" ? <AgentHistory items={history} loading={historyLoading} now={historyNow} onSelect={onHistorySelect} onClose={() => setActiveLayer((layer) => layer === "history" ? null : layer)} triggerRef={historyTriggerRef} /> : null}
       </div>
     </section>
   );

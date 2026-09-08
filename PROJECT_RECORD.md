@@ -6837,3 +6837,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added migration `000078_agent_v5_conversation.sql` plus API persistence for normalized blocks, conversation phase, execution state, and confirmation decisions; the API package build remains blocked by pre-existing workflow-core/redis export errors unrelated to this migration.
 - History drawer session selection is now wired to the current Agent session adapter. Focused V5 tests remain 5 files / 17 tests passing.
 - Added real upload handling through the existing asset API, a Skill capability chooser, App management placeholder entry, and assetId-backed result previews with refine/variant/place actions. Focused V5 tests now pass 5 files / 18 tests; frontend build passes.
+
+## 2026-09-09 - Agent V6 Task 3 Workspace Fix
+
+- Added shared dismissible-layer behavior to the V6 Agent History surface, including Escape, outside click, and mutual exclusion with capability, mode, and model menus. Workspace overlay ownership is now represented by one active-layer state; `CanvasAgentPanel` was not changed.
+- Made history date labels testable with an injected clock and fixed workspace fixtures to `2026-09-09`, removing dependence on the machine's current date.
+- Focused validation passed: V6 workspace 2 files / 9 tests, V6 protocol 4 files / 79 tests, `npm run build`, and `git diff --check`. Build warnings are existing Browserslist, CSS utility, mixed-import, and chunk-size warnings.

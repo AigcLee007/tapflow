@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentWorkspace, type AgentWorkspaceHistoryItem, type AgentWorkspaceReference } from "./AgentWorkspace";
 
 const history: AgentWorkspaceHistoryItem[] = [
-  { id: "today-1", title: "今日方案", summary: "整理首页视觉方向", date: "2026-09-08", selected: true },
-  { id: "yesterday-1", title: "昨日草稿", summary: "补充素材引用", date: "2026-09-07" },
+  { id: "today-1", title: "今日方案", summary: "整理首页视觉方向", date: "2026-09-09", selected: true },
+  { id: "yesterday-1", title: "昨日草稿", summary: "补充素材引用", date: "2026-09-08" },
 ];
 
 const references: AgentWorkspaceReference[] = [
@@ -18,6 +18,7 @@ function renderWorkspace(overrides: Partial<React.ComponentProps<typeof AgentWor
     <AgentWorkspace
       blocks={[{ type: "paragraph", text: "先确认视觉方向。" }]}
       history={history}
+      historyNow={new Date("2026-09-09T12:00:00")}
       model="tapflow-fast"
       modelOptions={[{ label: "TapFlow Fast", value: "tapflow-fast" }, { label: "TapFlow Pro", value: "tapflow-pro" }]}
       onCancel={vi.fn()}
@@ -142,5 +143,24 @@ describe("AgentWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加能力" }));
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("menu", { name: "Agent 能力" })).toBeNull();
+  });
+
+  it("keeps history, capability, mode, and model layers mutually exclusive", () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole("button", { name: "历史" }));
+    expect(screen.getByRole("complementary", { name: "对话历史" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "执行模式 Agent 自动执行" }));
+    expect(screen.queryByRole("complementary", { name: "对话历史" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "用户确认" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "模型 TapFlow Fast" }));
+    expect(screen.queryByRole("menuitem", { name: "用户确认" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "TapFlow Pro" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "添加能力" }));
+    expect(screen.queryByRole("menuitem", { name: "TapFlow Pro" })).toBeNull();
+    expect(screen.getByRole("menu", { name: "Agent 能力" })).toBeTruthy();
   });
 });
