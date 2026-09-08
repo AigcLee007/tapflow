@@ -35,13 +35,16 @@ export type ConfirmationPlan = {
   app?: boolean;
 };
 
+export type ChoiceSubmission = { pendingQuestionId: string; payload: Record<string, unknown>; optionIds: string[] };
+export type PendingChoice = { pendingQuestionId: string; sessionId: string; turnId: string; graphRevision: number; idempotencyKey: string };
+
 export type ConversationBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; level: 1 | 2 | 3; text: string }
   | { type: "quote"; text: string }
   | { type: "bullet_list"; items: string[] }
   | { type: "numbered_list"; items: string[] }
-  | { type: "choice_grid"; id?: string; title?: string; options: AgentOption[]; selectionMode: "single" | "multiple" }
+  | { type: "choice_grid"; id?: string; title?: string; options: AgentOption[]; selectionMode: "single" | "multiple"; selectedOptionIds?: string[] }
   | { type: "comparison_table"; title?: string; columns: string[]; rows: string[][] }
   | { type: "brief_card"; title?: string; fields: BriefField[]; editable: boolean }
   | { type: "confirmation_card"; title?: string; text: string; plan: ConfirmationPlan }
@@ -95,6 +98,8 @@ export type ConversationState = {
   progress: ProgressStep[];
   results: ResultRef[];
   refiningResultId: string | null;
+  pendingChoice: PendingChoice | null;
+  choiceSubmission: ChoiceSubmission | null;
   graphRevision: number;
   error: string | null;
   sessionId?: string;

@@ -63,7 +63,9 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
   if (type === "choice_grid") {
     const options = array(raw.options).map(option).filter((item): item is AgentOption => Boolean(item));
     if (!options.length) return undefined;
-    return { type, ...(id(raw.id) ? { id: id(raw.id) } : {}), ...(label(raw.title) ? { title: label(raw.title) } : {}), options, selectionMode: raw.selectionMode === "multiple" ? "multiple" : "single" };
+    const optionIds = new Set(options.map((item) => item.id));
+    const selectedOptionIds = array(raw.selectedOptionIds).map(id).filter((item) => optionIds.has(item));
+    return { type, ...(id(raw.id) ? { id: id(raw.id) } : {}), ...(label(raw.title) ? { title: label(raw.title) } : {}), options, selectionMode: raw.selectionMode === "multiple" ? "multiple" : "single", ...(selectedOptionIds.length ? { selectedOptionIds } : {}) };
   }
   if (type === "comparison_table") {
     const columns = array(raw.columns).map(label).filter(Boolean);

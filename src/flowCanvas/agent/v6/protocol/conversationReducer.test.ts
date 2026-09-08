@@ -59,6 +59,44 @@ describe("Agent V6 conversation reducer", () => {
     })).toBe(false);
   });
 
+  it("uses the stored plan risk and never lets an execution request lower it", () => {
+    let state = initialConversationState({ mode: "auto", sessionId: "session-1", turnId: "turn-1" });
+    state = applyBrief(state, {
+      type: "brief_ready",
+      decisionId: "decision-1",
+      plan: { costCredits: 12, batch: true, writesCanvas: true, skill: true, app: true },
+      graphRevision: 0,
+    });
+    const request = {
+      ...state.pendingDecision!,
+      type: "execute" as const,
+      costCredits: 0,
+      batch: false,
+      writesCanvas: false,
+      skill: false,
+      app: false,
+    };
+
+    expect(canExecuteDecision({ ...state, phase: "executing" }, request)).toBe(false);
+  });
+
+  it("does not require execution requests to repeat or override stored risk fields", () => {
+    let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1" });
+    state = applyBrief(state, {
+      type: "brief_ready",
+      decisionId: "decision-1",
+      plan: { costCredits: 12, writesCanvas: true },
+      graphRevision: 0,
+    });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 0 });
+
+    expect(canExecuteDecision({ ...state, phase: "executing" }, {
+      ...state.pendingDecision!,
+      costCredits: 0,
+      writesCanvas: false,
+    })).toBe(true);
+  });
+
   it("generates distinct injected IDs for missing session and turn IDs", () => {
     const ids = ["generated-session", "generated-turn", "generated-decision", "generated-idempotency"];
     const createId = vi.fn(() => ids.shift() ?? "fallback-id");
@@ -152,12 +190,12 @@ describe("Agent V6 conversation reducer", () => {
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 2 });
     const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 12, writesCanvas: true };
     expect(canExecuteDecision(state, { ...base, graphRevision: 3 })).toBe(false);
-    expect(canExecuteDecision(state, { ...base, writesCanvas: false })).toBe(false);
-    expect(canExecuteDecision(state, { ...base, costCredits: 11 })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, writesCanvas: false })).toBe(true);
+    expect(canExecuteDecision(state, { ...base, costCredits: 11 })).toBe(true);
     expect(canExecuteDecision(state, base)).toBe(true);
     expect(canExecuteDecision(state, { ...base, idempotencyKey: "x".repeat(201) })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "x".repeat(4_001) } })).toBe(false);
-    expect(canExecuteDecision(state, { ...base, costCredits: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, costCredits: Number.POSITIVE_INFINITY })).toBe(true);
     expect(canExecuteDecision(state, { ...base, idempotencyKey: "different-idempotency" })).toBe(false);
   });
 
@@ -547,9 +585,21 @@ describe("Agent V6 conversation reducer", () => {
     );
     expect(understanding.phase).toBe("understanding");
 
-    const waiting = reduceConversation(understanding, { type: "choice_requested", id: "direction" });
-    const optionIds = Array.from({ length: 100 }, (_, index) => `option-${index}`);
-    const drafted = reduceConversation(waiting, { type: "choice_submitted", id: "direction", optionIds });
+    const waiting = reduceConversation({
+      ...understanding,
+      blocks: [{ type: "choice_grid", id: "direction", options: [{ id: "one", label: "One" }], selectionMode: "single" }],
+    }, { type: "choice_requested", id: "direction" });
+    const optionIds = ["one"];
+    const drafted = reduceConversation(waiting, {
+      type: "choice_submitted",
+      sessionId: waiting.sessionId!,
+      turnId: waiting.turnId!,
+      graphRevision: waiting.graphRevision,
+      idempotencyKey: waiting.pendingChoice!.idempotencyKey,
+      pendingQuestionId: "direction",
+      payload: {},
+      optionIds,
+    });
     expect(drafted.phase).toBe("drafting_brief");
 
     const presented = { ...drafted, phase: "presenting_results" as const };
@@ -558,18 +608,60 @@ describe("Agent V6 conversation reducer", () => {
 
   it("requires the current question ID for choice submissions and ignores replay or out-of-order events", () => {
     let state = reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "test" });
-    state = reduceConversation(state, { type: "choice_requested", id: "first-question" });
-    expect(reduceConversation(state, { type: "choice_submitted", optionIds: ["one"] } as never)).toBe(state);
-    expect(reduceConversation(state, { type: "choice_submitted", id: "old-question", optionIds: ["one"] })).toBe(state);
+    state = reduceConversation({
+      ...state,
+      blocks: [{ type: "choice_grid", id: "first-question", options: [{ id: "one", label: "One" }], selectionMode: "single" }],
+    }, { type: "choice_requested", id: "first-question" });
+    const choiceEvent = (current: typeof state, overrides: Partial<Extract<Parameters<typeof reduceConversation>[1], { type: "choice_submitted" }>> = {}) => ({
+      type: "choice_submitted" as const,
+      sessionId: current.sessionId!,
+      turnId: current.turnId!,
+      graphRevision: current.graphRevision,
+      idempotencyKey: current.pendingChoice!.idempotencyKey,
+      pendingQuestionId: current.pendingQuestionId!,
+      payload: {},
+      optionIds: ["one"],
+      ...overrides,
+    });
+    expect(reduceConversation(state, choiceEvent(state, { pendingQuestionId: "old-question" }))).toBe(state);
+    expect(reduceConversation(state, choiceEvent(state, { optionIds: ["unknown"] }))).toBe(state);
 
     state = reduceConversation(
-      reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "new question" }),
+      {
+        ...reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "new question" }),
+        blocks: [{ type: "choice_grid", id: "second-question", options: [{ id: "one", label: "One" }], selectionMode: "single" }],
+      },
       { type: "choice_requested", id: "second-question" },
     );
-    expect(reduceConversation(state, { type: "choice_submitted", id: "first-question", optionIds: ["one"] })).toBe(state);
-    const submitted = reduceConversation(state, { type: "choice_submitted", id: "second-question", optionIds: ["one"] });
+    expect(reduceConversation(state, choiceEvent(state, { pendingQuestionId: "first-question" }))).toBe(state);
+    const submitted = reduceConversation(state, choiceEvent(state));
     expect(submitted.phase).toBe("drafting_brief");
-    expect(reduceConversation(submitted, { type: "choice_submitted", id: "second-question", optionIds: ["one"] })).toBe(submitted);
+    expect(submitted.blocks).toEqual([{ type: "choice_grid", id: "second-question", options: [{ id: "one", label: "One" }], selectionMode: "single", selectedOptionIds: ["one"] }]);
+    expect(reduceConversation(submitted, choiceEvent(state))).toBe(submitted);
+  });
+
+  it("requires choice submission metadata to match the current turn and is replayable", () => {
+    let state = reduceConversation(initialConversationState({ sessionId: "session-1", turnId: "turn-1" }), { type: "turn_submitted", prompt: "test" });
+    state = reduceConversation({
+      ...state,
+      blocks: [{ type: "choice_grid", id: "direction", options: [{ id: "one", label: "One" }, { id: "two", label: "Two" }], selectionMode: "multiple" }],
+    }, { type: "choice_requested", id: "direction" });
+    const event = {
+      type: "choice_submitted" as const,
+      sessionId: "session-1",
+      turnId: "turn-1",
+      graphRevision: 0,
+      idempotencyKey: state.pendingChoice!.idempotencyKey,
+      pendingQuestionId: "direction",
+      payload: { value: "replay" },
+      optionIds: ["one", "two"],
+    };
+
+    expect(reduceConversation(state, { ...event, sessionId: "other-session" })).toBe(state);
+    expect(reduceConversation(state, { ...event, graphRevision: 1 })).toBe(state);
+    expect(reduceConversation(state, { ...event, idempotencyKey: "other-idempotency" })).toBe(state);
+    const submitted = reduceConversation(state, event);
+    expect(submitted.choiceSubmission).toEqual({ pendingQuestionId: "direction", payload: { value: "replay" }, optionIds: ["one", "two"] });
   });
 
   it("safely degrades malformed context arrays and nested references", () => {
@@ -634,7 +726,20 @@ describe("Agent V6 conversation reducer", () => {
   it("walks the main conversation loop and allows active failures", () => {
     let state = reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "做一个方案" });
     state = reduceConversation(state, { type: "choice_requested", id: "direction" });
-    state = reduceConversation(state, { type: "choice_submitted", id: "direction", optionIds: ["one"] });
+    state = reduceConversation({
+      ...state,
+      blocks: [{ type: "choice_grid", id: "direction", options: [{ id: "one", label: "One" }], selectionMode: "single" }],
+    }, { type: "choice_requested", id: "direction" });
+    state = reduceConversation(state, {
+      type: "choice_submitted",
+      sessionId: state.sessionId!,
+      turnId: state.turnId!,
+      graphRevision: state.graphRevision,
+      idempotencyKey: state.pendingChoice!.idempotencyKey,
+      pendingQuestionId: "direction",
+      payload: {},
+      optionIds: ["one"],
+    });
     expect(state.phase).toBe("drafting_brief");
     state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 0 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 0 });
@@ -651,5 +756,15 @@ describe("Agent V6 conversation reducer", () => {
     );
     expect(failed.phase).toBe("failed");
     expect(failed.error).toBe("执行失败");
+  });
+
+  it("creates a new turn ID after refining while preserving the session ID", () => {
+    const state = initialConversationState({ sessionId: "session-1", turnId: "turn-1" });
+    const refining = reduceConversation({ ...state, phase: "refining", refiningResultId: "result-1" }, { type: "refinement_requested", resultId: "result-1" });
+    const submitted = reduceConversation(refining, { type: "turn_submitted", prompt: "refine" }, { createId: () => "turn-2" });
+
+    expect(submitted.sessionId).toBe("session-1");
+    expect(submitted.turnId).toBe("turn-2");
+    expect(submitted.phase).toBe("understanding");
   });
 });

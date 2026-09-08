@@ -4,6 +4,7 @@ import type {
   AgentV6Phase,
   ConfirmationPlan,
   ConversationState,
+  ChoiceSubmission,
 } from "./conversationTypes";
 import {
   AGENT_V6_LABEL_MAX_LENGTH,
@@ -17,7 +18,7 @@ import { normalizeStableId } from "./stableId";
 export type ConversationEvent =
   | { type: "turn_submitted"; prompt: string }
   | { type: "choice_requested"; id: string }
-  | { type: "choice_submitted"; id: string; optionIds: string[] }
+  | { type: "choice_submitted"; sessionId: string; turnId: string; graphRevision: number; idempotencyKey: string; pendingQuestionId: string; payload: Record<string, unknown>; optionIds: string[] }
   | { type: "brief_started" }
   | { type: "brief_ready"; plan?: ConfirmationPlan; payload?: Record<string, unknown>; decisionId?: string; graphRevision: number }
   | { type: "confirmation_granted"; decisionId: string; graphRevision: number; plan?: ConfirmationPlan }
@@ -50,24 +51,33 @@ const EMPTY_CONTEXT = {
 export function initialConversationState(overrides: Partial<ConversationState> = {}, options: ConversationReducerOptions = {}): ConversationState {
   const graphRevision = isValidGraphRevision(overrides.graphRevision) ? overrides.graphRevision : 0;
   const context = { ...normalizeContext(overrides.contextSnapshot), graphRevision };
-  return {
+  const sessionId = normalizeStableId(overrides.sessionId) ?? generatedId("session", options.createId);
+  const turnId = normalizeStableId(overrides.turnId) ?? generatedId("turn", options.createId);
+  const baseState = {
     phase: "idle",
     executionState: "idle",
     pendingDecision: null,
     confirmed: false,
     refiningResultId: null,
+    pendingChoice: null,
+    choiceSubmission: null,
     mode: overrides.mode === "auto" ? "auto" : "manual_confirmation",
     prompt: typeof overrides.prompt === "string" ? boundedText(overrides.prompt, AGENT_V6_TEXT_MAX_LENGTH) : null,
     pendingQuestionId: normalizeStableId(overrides.pendingQuestionId) ?? null,
     blocks: normalizeBlocks(overrides.blocks),
     progress: [],
     results: [],
-    sessionId: normalizeStableId(overrides.sessionId) ?? generatedId("session", options.createId),
-    turnId: normalizeStableId(overrides.turnId) ?? generatedId("turn", options.createId),
+    sessionId,
+    turnId,
     error: typeof overrides.error === "string" ? boundedText(overrides.error, AGENT_V6_TEXT_MAX_LENGTH) : null,
     graphRevision,
     plan: normalizePlan(overrides.plan ?? undefined),
     contextSnapshot: context,
+  };
+  return {
+    ...baseState,
+    pendingChoice: normalizePendingChoice(overrides.pendingChoice, baseState),
+    choiceSubmission: normalizeChoiceSubmissionValue(overrides.choiceSubmission),
   };
 }
 
@@ -164,6 +174,19 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
     ...(plan.skill === true ? { skill: true } : {}),
     ...(plan.app === true ? { app: true } : {}),
   };
+}
+
+function normalizePendingChoice(value: ConversationState["pendingChoice"] | undefined, state: Pick<ConversationState, "sessionId" | "turnId" | "graphRevision">): ConversationState["pendingChoice"] {
+  if (!value || normalizeStableId(value.pendingQuestionId) !== value.pendingQuestionId || normalizeStableId(value.sessionId) !== value.sessionId || normalizeStableId(value.turnId) !== value.turnId || normalizeStableId(value.idempotencyKey) !== value.idempotencyKey || value.graphRevision !== state.graphRevision || value.sessionId !== state.sessionId || value.turnId !== state.turnId) return null;
+  return value;
+}
+
+function normalizeChoiceSubmissionValue(value: ChoiceSubmission | null | undefined): ChoiceSubmission | null {
+  if (!value) return null;
+  const pendingQuestionId = boundedId(value.pendingQuestionId);
+  const payload = normalizeApprovedPayload(value.payload);
+  const optionIds = normalizeStableIds(value.optionIds);
+  return pendingQuestionId && payload && optionIds.length ? { pendingQuestionId, payload, optionIds } : null;
 }
 
 const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "refId", "refIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds", "uploadedAssetIds"]);
@@ -339,7 +362,17 @@ function pendingDecision(state: ConversationState, decisionId?: string, graphRev
 }
 
 function isSafeDecision(decision: AgentDecision) {
-  return decision.sessionId.length <= AGENT_V6_ID_MAX_LENGTH && decision.turnId.length <= AGENT_V6_ID_MAX_LENGTH && decision.idempotencyKey.length <= AGENT_V6_ID_MAX_LENGTH && decision.decisionId.length <= AGENT_V6_ID_MAX_LENGTH && isValidGraphRevision(decision.graphRevision) && stableSerialize(decision.payload) !== null && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
+  return decision.sessionId.length <= AGENT_V6_ID_MAX_LENGTH && decision.turnId.length <= AGENT_V6_ID_MAX_LENGTH && decision.idempotencyKey.length <= AGENT_V6_ID_MAX_LENGTH && decision.decisionId.length <= AGENT_V6_ID_MAX_LENGTH && isValidGraphRevision(decision.graphRevision) && stableSerialize(decision.payload) !== null;
+}
+
+function currentChoiceBlock(state: ConversationState) {
+  return state.blocks.find((block) => block.type === "choice_grid" && block.id === state.pendingQuestionId);
+}
+
+function normalizeChoiceSubmission(event: Extract<ConversationEvent, { type: "choice_submitted" }>): ChoiceSubmission | null {
+  const payload = normalizeApprovedPayload(event.payload);
+  const optionIds = normalizeStableIds(event.optionIds);
+  return payload && optionIds.length ? { pendingQuestionId: boundedId(event.pendingQuestionId), payload, optionIds } : null;
 }
 
 function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | undefined) {
@@ -395,12 +428,24 @@ export function reduceConversation(state: ConversationState, event: Conversation
     case "understanding":
       if (event.type === "choice_requested") {
         const questionId = normalizeStableId(event.id);
-        return questionId ? { ...state, phase: "waiting_for_choice", pendingQuestionId: questionId } : state;
+        const idempotencyKey = questionId ? generatedId("choice", options.createId) : "";
+        return questionId && idempotencyKey
+          ? { ...state, phase: "waiting_for_choice", pendingQuestionId: questionId, pendingChoice: { pendingQuestionId: questionId, sessionId: state.sessionId!, turnId: state.turnId!, graphRevision: state.graphRevision, idempotencyKey }, choiceSubmission: null }
+          : state;
       }
       if (event.type === "brief_started") return { ...state, phase: "drafting_brief" };
       return state;
     case "waiting_for_choice":
-      if (event.type === "choice_submitted" && event.id === state.pendingQuestionId && normalizeStableIds(event.optionIds).length > 0) return { ...state, phase: "drafting_brief", pendingQuestionId: null };
+      if (event.type === "choice_submitted") {
+        const choice = state.pendingChoice;
+        const block = currentChoiceBlock(state);
+        const submission = normalizeChoiceSubmission(event);
+        const validOptions = submission?.optionIds.every((optionId) => block?.options.some((option) => option.id === optionId)) ?? false;
+        if (choice && block && submission && event.sessionId === choice.sessionId && event.turnId === choice.turnId && event.graphRevision === choice.graphRevision && event.idempotencyKey === choice.idempotencyKey && submission.pendingQuestionId === choice.pendingQuestionId && validOptions) {
+          const blocks = state.blocks.map((item) => item.type === "choice_grid" && item.id === choice.pendingQuestionId ? { ...item, selectedOptionIds: submission.optionIds } : item);
+          return { ...state, phase: "drafting_brief", pendingQuestionId: null, pendingChoice: null, choiceSubmission: submission, blocks };
+        }
+      }
       return state;
     case "drafting_brief":
       if (event.type === "brief_ready") return briefReadyState(state, event, options.createId);
@@ -422,7 +467,7 @@ export function reduceConversation(state: ConversationState, event: Conversation
       }
       return state;
     case "refining":
-      if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null };
+      if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", turnId: generatedId("turn", options.createId), prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null, pendingDecision: null, pendingQuestionId: null, pendingChoice: null, choiceSubmission: null, confirmed: false };
       return state;
     case "failed":
       if (event.type === "retry" || event.type === "revise" || event.type === "recover") return recoverFromFailure(state, event, options.createId);
@@ -439,10 +484,15 @@ export function canExecuteDecision(state: ConversationState, decision: AgentDeci
   if (!isExecutionDecision(decision) || state.phase !== "executing") return false;
   if (!isSafeDecision(decision) || decision.sessionId !== state.sessionId || decision.turnId !== state.turnId || decision.graphRevision !== state.graphRevision || !decision.idempotencyKey || decision.idempotencyKey !== state.pendingDecision?.idempotencyKey || decision.decisionId !== state.pendingDecision?.decisionId || typeof decision.payload !== "object" || decision.payload === null) return false;
   if (stableSerialize(decision.payload) !== stableSerialize(state.pendingDecision?.payload)) return false;
-  const plan = state.plan ?? {};
-  const fieldsMatch = (decision.costCredits ?? 0) === (plan.costCredits ?? 0) && Boolean(decision.batch) === Boolean(plan.batch) && Boolean(decision.writesCanvas) === Boolean(plan.writesCanvas) && Boolean(decision.skill) === Boolean(plan.skill) && Boolean(decision.app) === Boolean(plan.app);
-  if (state.confirmed) return fieldsMatch && decision.decisionId === state.pendingDecision?.decisionId;
-  const paid = (decision.costCredits ?? plan.costCredits ?? 0) > 0;
-  const risky = paid || Boolean(decision.batch ?? plan.batch) || Boolean(decision.writesCanvas ?? plan.writesCanvas) || Boolean(decision.skill ?? plan.skill) || Boolean(decision.app ?? plan.app);
+  if (state.confirmed) return decision.decisionId === state.pendingDecision?.decisionId;
+  const storedDecision = state.pendingDecision;
+  const storedPlan = state.plan ?? (storedDecision?.type === "execute" ? {
+    costCredits: storedDecision.costCredits,
+    batch: storedDecision.batch,
+    writesCanvas: storedDecision.writesCanvas,
+    skill: storedDecision.skill,
+    app: storedDecision.app,
+  } : null);
+  const risky = isHighRiskPlan(storedPlan);
   return state.mode === "auto" && !risky && decision.requiresConfirmation !== true;
 }
