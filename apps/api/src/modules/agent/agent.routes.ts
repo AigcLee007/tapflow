@@ -43,6 +43,8 @@ import {
 import { AgentApiError } from "./agent.service.js";
 import { formatAgentToolEvent } from "./agent-tool-events.js";
 import { projectAgentRuntimeCapabilities } from "./agent-runtime-identity.js";
+import { AgentV6Orchestrator, type AgentV6ServicePort } from "./v6/agent-v6-orchestrator.js";
+import { agentV6DecisionSchema, agentV6TurnSchema, type AgentV6DecisionInput, type AgentV6TurnInput } from "./v6/agent-v6-schemas.js";
 
 function sendError(
   request: FastifyRequest,
@@ -159,6 +161,7 @@ function writeAgentSseFailure(error: unknown, request: FastifyRequest, reply: Fa
 
 export function registerAgentRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
+  const agentV6Orchestrator = new AgentV6Orchestrator(app.agentService as unknown as AgentV6ServicePort);
 
   app.get(
     "/api/v2/agent/capabilities",
@@ -358,6 +361,30 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<CreateAgentV5TurnInput>(request, createAgentV5TurnSchema);
         return reply.code(201).send(await app.agentService.createV5Turn(getAgentContext(request), params.sessionId, body));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/v6-turns",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = parseBody<AgentV6TurnInput>(request, agentV6TurnSchema);
+        return reply.code(201).send(await agentV6Orchestrator.submitTurn(getAgentContext(request), params.sessionId, body));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/v6-turns/:turnId/decisions",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
+        const body = parseBody<AgentV6DecisionInput>(request, agentV6DecisionSchema);
+        return reply.send(await agentV6Orchestrator.submitDecision(getAgentContext(request), params.sessionId, params.turnId, body));
       } catch (error) { return handleRouteError(error, request, reply); }
     },
   );

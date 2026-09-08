@@ -6857,3 +6857,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Durable replay now consumes unknown events when session/project/flow scope is valid, advances the cursor so later valid events continue, and marks scope mismatches as `resync-required` instead of silently blocking.
 - Mode, history, event, decision, and cancel requests now carry supported project/flow scope. Server routes validate session scope, and cancellation requires an explicit `turnId` and returns the actual canceled turn response for normal replay projection.
 - Focused validation passed: all V6 tests (10 files / 119 tests), API V6 contract tests (2 tests), API build, frontend build, and `git diff --check`. The existing API integration suite remains blocked by unrelated duplicate `agentV2Enabled` declarations in the pre-existing modified `apps/api/src/config/env.ts`.
+
+## 2026-09-09 - Agent V6 Task 6 Server Orchestration
+
+- Added the V6 server schema, confirmation policy, safe response/replay projection, and orchestration adapter under `apps/api/src/modules/agent/v6`. New V6 turn and decision routes are authenticated and tenant-scoped, validate session project/flow ownership, preserve the required response shape, and delegate turn/decision work to the existing V5 Agent service rather than duplicating billing or provider execution.
+- Added focused coverage for ambiguous prompt state, scope rejection, confirmation requirements, safe response fields, stale graph conflict propagation, and duplicate turn idempotency. Focused Task 6 tests pass: 6 tests.
+- API build remains blocked by the pre-existing workflow-core/Redis export/type errors in `src/app.ts`, official skill modules, asset service, and workflow-runs service. The frontend build was not completed in this task run after the API-focused implementation; no V6 default entry was changed.
