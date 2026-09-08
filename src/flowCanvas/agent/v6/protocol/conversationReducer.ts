@@ -115,7 +115,6 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
 }
 
 const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds"]);
-const SENSITIVE_PAYLOAD_KEYS = new Set(["provider", "route", "credential", "credentialid", "apikey", "baseurl", "signedurl", "authorization", "token", "secret", "password", "nonce", "authtag", "data", "blob", "html", "base64"]);
 const MAX_PAYLOAD_DEPTH = 32;
 const MAX_PAYLOAD_NODES = 256;
 const MAX_PAYLOAD_ARRAY_LENGTH = 32;
@@ -125,6 +124,31 @@ const MAX_PAYLOAD_STRING_LENGTH = 4_000;
 function normalizePayloadKey(key: string) {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+
+const SENSITIVE_PAYLOAD_KEYS = new Set([
+  "provider",
+  "route",
+  "credential",
+  "credentialId",
+  "apiKey",
+  "apiSecret",
+  "clientSecret",
+  "privateKey",
+  "refreshToken",
+  "accessToken",
+  "authTag",
+  "nonce",
+  "baseUrl",
+  "signedUrl",
+  "authorization",
+  "token",
+  "secret",
+  "password",
+  "html",
+  "data",
+  "blob",
+  "base64",
+].map(normalizePayloadKey));
 
 function isSensitiveString(value: string) {
   if (/^(?:data:|blob:)/i.test(value)) return true;

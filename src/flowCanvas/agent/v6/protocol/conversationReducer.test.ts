@@ -106,6 +106,35 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "base-url": "internal" } } })).toBe(false);
   });
 
+  const expectSensitiveKeysToBeRemoved = (sensitiveKeyVariants: string[]) => {
+    for (const key of sensitiveKeyVariants) {
+      const state = reduceConversation(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 }), {
+        type: "brief_ready",
+        decisionId: "d",
+        graphRevision: 0,
+        payload: { prompt: "approved", parameters: { safe: "ok", [key]: "sensitive" } },
+      });
+      expect(state.pendingDecision?.payload, key).toEqual({ prompt: "approved", parameters: { safe: "ok" } });
+      expect(state.phase, key).toBe("waiting_for_confirmation");
+    }
+  };
+
+  it("rejects provider, route, and credential key variants recursively", () => {
+    expectSensitiveKeysToBeRemoved(["provider", "route", "credential", "credentialId", "credential_id", "credential-id"]);
+  });
+
+  it("rejects API and client secret key variants recursively", () => {
+    expectSensitiveKeysToBeRemoved(["apiKey", "api_key", "api-key", "apiSecret", "api_secret", "api-secret", "clientSecret", "client_secret", "client-secret"]);
+  });
+
+  it("rejects private and token key variants recursively", () => {
+    expectSensitiveKeysToBeRemoved(["privateKey", "private_key", "private-key", "refreshToken", "refresh_token", "refresh-token", "accessToken", "access_token", "access-token"]);
+  });
+
+  it("rejects auth, URL, and content secret key variants recursively", () => {
+    expectSensitiveKeysToBeRemoved(["authTag", "auth_tag", "auth-tag", "nonce", "baseUrl", "base_url", "base-url", "signedUrl", "signed_url", "signed-url", "authorization", "token", "secret", "password", "html", "data", "blob", "base64"]);
+  });
+
   it("rejects token-like and encoded sensitive string values", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = reduceConversation(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: {} });
