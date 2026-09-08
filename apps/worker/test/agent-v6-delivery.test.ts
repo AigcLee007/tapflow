@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { verifyAgentV6Delivery } from "../src/workflow-runtime/agent-v6-delivery.js";
+import { verifyAgentV6DeliveryBeforeSuccess, WorkflowNodeExecutionService } from "../src/workflow-runtime/service.js";
 
 describe("Agent V6 delivery verification", () => {
   it("accepts non-empty text output", () => {
@@ -71,5 +72,70 @@ describe("Agent V6 delivery verification", () => {
       retryable: true,
       status: "failed",
     });
+  });
+
+  it("calls the injected verifier for an Agent V6 workflow before success/settle", () => {
+    const verifier = vi.fn(() => ({
+      code: "DELIVERY_NOT_VERIFIED" as const,
+      retryable: true as const,
+      status: "failed" as const,
+    }));
+
+    const result = verifyAgentV6DeliveryBeforeSuccess(
+      { input_json: { agentV6: true } },
+      {},
+      verifier,
+    );
+
+    expect(verifier).toHaveBeenCalledWith({});
+    expect(result).toEqual({
+      code: "DELIVERY_NOT_VERIFIED",
+      retryable: true,
+      status: "failed",
+    });
+  });
+
+  it("does not gate ordinary workflows with the Agent V6 verifier", () => {
+    const verifier = vi.fn(() => verifyAgentV6Delivery(null));
+
+    expect(verifyAgentV6DeliveryBeforeSuccess({ input_json: {} }, {}, verifier)).toEqual({
+      status: "not_applicable",
+    });
+    expect(verifier).not.toHaveBeenCalled();
+  });
+
+  it("stops the real success path before settle or succeeded writes", async () => {
+    const verifier = vi.fn(() => ({
+      code: "DELIVERY_NOT_VERIFIED" as const,
+      retryable: true as const,
+      status: "failed" as const,
+    }));
+    const service = new WorkflowNodeExecutionService({
+      agentV6DeliveryVerifier: verifier,
+      assetBucket: "test-bucket",
+      mediaGenerationRuntime: {} as never,
+      nodeExecuteQueue: {} as never,
+      personalWalletService: {} as never,
+      pool: {} as never,
+      providerPollQueue: {} as never,
+      storageProvider: {} as never,
+      textGenerationRuntime: {} as never,
+    });
+    const client = { query: vi.fn() };
+
+    await expect((service as unknown as {
+      markNodeSucceededAndUnlockDependents: (...args: unknown[]) => Promise<unknown>;
+    }).markNodeSucceededAndUnlockDependents(
+      client,
+      {},
+      {},
+      { input_json: { agentV6: true } },
+      {},
+      {},
+      {},
+    )).rejects.toMatchObject({ code: "DELIVERY_NOT_VERIFIED" });
+
+    expect(verifier).toHaveBeenCalledTimes(1);
+    expect(client.query).not.toHaveBeenCalled();
   });
 });

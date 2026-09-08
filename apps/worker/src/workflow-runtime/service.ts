@@ -60,6 +60,10 @@ import {
   createRecoverableSavepoint,
   rollbackToRecoverableSavepoint,
 } from "./recoverable-savepoint.js";
+import {
+  verifyAgentV6Delivery,
+  type AgentV6DeliveryVerification,
+} from "./agent-v6-delivery.js";
 import { compressTextImageForModel, MAX_TEXT_IMAGE_BYTES } from "./text-image-compression.js";
 import { isReferenceVideoSizeCompliant } from "./video-reference-variant.js";
 
@@ -93,6 +97,27 @@ export function extractAgentSkillMetadata(input: Record<string, unknown> | null 
     agentSkillStepId: readId("agentSkillStepId"),
     agentSkillVersionId: readId("agentSkillVersionId"),
   };
+}
+
+export type AgentV6DeliveryVerifier = (output: Record<string, unknown>) => AgentV6DeliveryVerification;
+
+type AgentV6WorkflowInput = { input_json: Record<string, unknown> };
+
+function isAgentV6Workflow(input: Record<string, unknown>): boolean {
+  const skill = extractAgentSkillMetadata(input);
+  return input.agentV6 === true
+    || input.agentV6Version === 6
+    || Boolean(skill.agentSkillRunId && skill.agentSkillStepId);
+}
+
+/** Run delivery verification only for explicitly marked Agent V6/Skill executions. */
+export function verifyAgentV6DeliveryBeforeSuccess(
+  workflowRun: AgentV6WorkflowInput,
+  output: Record<string, unknown>,
+  verifier: AgentV6DeliveryVerifier = verifyAgentV6Delivery,
+): AgentV6DeliveryVerification | { status: "not_applicable" } {
+  if (!isAgentV6Workflow(workflowRun.input_json)) return { status: "not_applicable" };
+  return verifier(output);
 }
 
 type NodeRunRecord = {
@@ -1685,6 +1710,7 @@ export class WorkflowNodeExecutionService {
   readonly providerPollQueue: ProviderPollQueueLike;
   readonly textGenerationRuntime: TextGenerationRuntimeLike;
   readonly videoEditorLocalRenderService: Pick<VideoEditorLocalRenderService, "render">;
+  readonly agentV6DeliveryVerifier: AgentV6DeliveryVerifier;
 
   constructor(options: {
     assetBucket: string;
@@ -1703,6 +1729,7 @@ export class WorkflowNodeExecutionService {
     storageProvider: StorageProvider;
     textGenerationRuntime: TextGenerationRuntimeLike;
     videoEditorLocalRenderService?: Pick<VideoEditorLocalRenderService, "render">;
+    agentV6DeliveryVerifier?: AgentV6DeliveryVerifier;
   }) {
     this.assetStore = new MediaAssetStore({
       assetBucket: options.assetBucket,
@@ -1727,6 +1754,7 @@ export class WorkflowNodeExecutionService {
     this.pool = options.pool ?? createPgPool();
     this.providerPollQueue = options.providerPollQueue;
     this.textGenerationRuntime = options.textGenerationRuntime;
+    this.agentV6DeliveryVerifier = options.agentV6DeliveryVerifier ?? verifyAgentV6Delivery;
     this.videoEditorLocalRenderService = options.videoEditorLocalRenderService ?? new VideoEditorLocalRenderService({
       storageProvider: options.storageProvider,
     });
@@ -4067,6 +4095,14 @@ export class WorkflowNodeExecutionService {
     deferredVariantJobs: DeferredVariantJob[];
     nodeEnqueuePayloads: NodeExecuteJobPayload[];
   }> {
+    const delivery = verifyAgentV6DeliveryBeforeSuccess(workflowRun, outputJson, this.agentV6DeliveryVerifier);
+    if (delivery.status === "failed") {
+      throw { code: delivery.code, message: "Agent V6 delivery could not be verified.", details: delivery };
+    }
+    if (delivery.status === "canceled") {
+      throw { code: delivery.code, message: "Agent V6 delivery was canceled.", details: delivery };
+    }
+
     let auditLogs: AuditLogInput[] = [];
     if (usageRecord) {
       auditLogs = await this.recordUsageForNode(
