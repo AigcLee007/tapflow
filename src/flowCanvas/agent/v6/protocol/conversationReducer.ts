@@ -11,7 +11,7 @@ export type ConversationEvent =
   | { type: "choice_requested"; id: string }
   | { type: "choice_submitted"; id?: string; optionIds: string[] }
   | { type: "brief_started" }
-  | { type: "brief_ready"; plan?: ConfirmationPlan; decisionId?: string; graphRevision: number }
+  | { type: "brief_ready"; plan?: ConfirmationPlan; payload?: Record<string, unknown>; decisionId?: string; graphRevision: number }
   | { type: "confirmation_granted"; decisionId: string; graphRevision: number; plan?: ConfirmationPlan }
   | { type: "execution_started" }
   | { type: "verification_started" }
@@ -67,22 +67,37 @@ function boundedId(value: unknown) {
   return boundedText(value, 200);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function isValidGraphRevision(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function normalizeContext(context: ConversationState["contextSnapshot"] | undefined): ConversationState["contextSnapshot"] {
-  const source = context ?? EMPTY_CONTEXT;
+  const source = isPlainObject(context) ? context : EMPTY_CONTEXT;
+  const strings = (value: unknown, limit: number) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, limit).map((item) => boundedText(item, 200)) : [];
+  const assetRefs = Array.isArray(source.assetRefs) ? source.assetRefs.flatMap((value) => {
+    if (!isPlainObject(value) || typeof value.assetId !== "string" || typeof value.refId !== "string" || typeof value.label !== "string") return [];
+    return [{ assetId: boundedId(value.assetId), refId: boundedId(value.refId), label: boundedText(value.label, 400), ...(typeof value.nodeId === "string" ? { nodeId: boundedId(value.nodeId) } : {}) }];
+  }).slice(0, 12) : [];
+  const skillRefs = Array.isArray(source.skillRefs) ? source.skillRefs.flatMap((value) => {
+    if (!isPlainObject(value) || typeof value.id !== "string") return [];
+    return [{ id: boundedId(value.id), version: typeof value.version === "number" && Number.isFinite(value.version) && value.version >= 0 ? value.version : 0 }];
+  }).slice(0, 12) : [];
   return {
-    projectId: source.projectId === null ? null : boundedId(source.projectId),
-    flowId: source.flowId === null ? null : boundedId(source.flowId),
-    selectedNodeIds: source.selectedNodeIds.slice(0, 12).map(boundedId),
-    assetRefs: source.assetRefs.slice(0, 12).map((ref) => ({ assetId: boundedId(ref.assetId), refId: boundedId(ref.refId), label: boundedText(ref.label, 400), ...(ref.nodeId ? { nodeId: boundedId(ref.nodeId) } : {}) })),
-    uploadedAssetIds: source.uploadedAssetIds.slice(0, 12).map(boundedId),
-    skillRefs: source.skillRefs.slice(0, 12).map((ref) => ({ id: boundedId(ref.id), version: Number.isFinite(ref.version) ? ref.version : 0 })),
-    appRefs: source.appRefs.slice(0, 12).map(boundedId),
-    modelKey: source.modelKey === null ? null : boundedId(source.modelKey),
-    graphRevision: Number.isFinite(source.graphRevision) ? source.graphRevision : 0,
+    projectId: typeof source.projectId === "string" ? boundedId(source.projectId) : null,
+    flowId: typeof source.flowId === "string" ? boundedId(source.flowId) : null,
+    selectedNodeIds: strings(source.selectedNodeIds, 12),
+    assetRefs,
+    uploadedAssetIds: strings(source.uploadedAssetIds, 12),
+    skillRefs,
+    appRefs: strings(source.appRefs, 12),
+    modelKey: typeof source.modelKey === "string" ? boundedId(source.modelKey) : null,
+    graphRevision: isValidGraphRevision(source.graphRevision) ? source.graphRevision : 0,
   };
 }
 
@@ -99,45 +114,73 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
   };
 }
 
-function decisionIdFor(state: ConversationState, decisionId?: string) {
-  const supplied = boundedId(decisionId).trim();
-  return supplied || boundedId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`);
-}
+const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds"]);
+const SENSITIVE_PAYLOAD_KEY = /(?:provider|route|credential|signedurl|authorization|secret|password|html|base64)/i;
 
-function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision): AgentDecision {
-  const stableId = decisionIdFor(state, decisionId);
-  return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: {}, idempotencyKey: stableId };
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function isJsonSafeValue(value: unknown, seen: Set<object>): boolean {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object") return false;
-  if (seen.has(value)) return false;
+function sanitizePayloadValue(value: unknown, strict: boolean, root: boolean, seen: Set<object>): unknown | null {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    if (typeof value === "string" && /^(?:data:|blob:)/i.test(value)) return null;
+    return value;
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "object" || seen.has(value)) return null;
   seen.add(value);
-  if (Array.isArray(value)) return value.every((item) => isJsonSafeValue(item, seen));
-  if (!isPlainObject(value)) return false;
-  return Object.values(value).every((item) => isJsonSafeValue(item, seen));
+  if (Array.isArray(value)) {
+    const result = value.map((item) => sanitizePayloadValue(item, strict, false, seen));
+    return result.every((item) => item !== null) ? result : null;
+  }
+  if (!isPlainObject(value)) return null;
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const allowed = !SENSITIVE_PAYLOAD_KEY.test(key) && (!root || SAFE_PAYLOAD_KEYS.has(key));
+    if (!allowed) {
+      if (strict) return null;
+      continue;
+    }
+    const sanitized = sanitizePayloadValue(item, strict, false, seen);
+    if (sanitized === null) {
+      if (strict) return null;
+      continue;
+    }
+    result[key] = sanitized;
+  }
+  return result;
 }
 
-function serializePayload(payload: unknown): string | null {
+function stableSerialize(value: unknown): string | null {
   try {
-    if (!isPlainObject(payload) || !isJsonSafeValue(payload, new Set())) return null;
-    const serialized = JSON.stringify(payload);
+    if (!isPlainObject(value)) return null;
+    const normalized = sanitizePayloadValue(value, true, true, new Set());
+    if (!normalized || !isPlainObject(normalized)) return null;
+    const sort = (item: unknown): unknown => {
+      if (Array.isArray(item)) return item.map(sort);
+      if (isPlainObject(item)) return Object.fromEntries(Object.keys(item).sort().map((key) => [key, sort(item[key])]));
+      return item;
+    };
+    const serialized = JSON.stringify(sort(normalized));
     return typeof serialized === "string" && serialized.length <= 4_000 ? serialized : null;
   } catch {
     return null;
   }
 }
 
+function normalizeApprovedPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> {
+  const normalized = sanitizePayloadValue(payload ?? {}, false, true, new Set());
+  return isPlainObject(normalized) ? normalized : {};
+}
+
+function decisionIdFor(state: ConversationState, decisionId?: string) {
+  const supplied = boundedId(decisionId).trim();
+  return supplied || boundedId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`);
+}
+
+function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision, payload?: Record<string, unknown>): AgentDecision {
+  const stableId = decisionIdFor(state, decisionId);
+  return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: normalizeApprovedPayload(payload), idempotencyKey: stableId };
+}
+
 function isSafeDecision(decision: AgentDecision) {
-  return decision.sessionId.length <= 200 && decision.turnId.length <= 200 && decision.idempotencyKey.length <= 200 && decision.decisionId.length <= 200 && isValidGraphRevision(decision.graphRevision) && serializePayload(decision.payload) !== null && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
+  return decision.sessionId.length <= 200 && decision.turnId.length <= 200 && decision.idempotencyKey.length <= 200 && decision.decisionId.length <= 200 && isValidGraphRevision(decision.graphRevision) && stableSerialize(decision.payload) !== null && (decision.costCredits === undefined || (Number.isFinite(decision.costCredits) && decision.costCredits >= 0));
 }
 
 function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | undefined) {
@@ -148,7 +191,7 @@ function planMatches(left: ConfirmationPlan | null, right: ConfirmationPlan | un
 function briefReadyState(state: ConversationState, event: Extract<ConversationEvent, { type: "brief_ready" }>): ConversationState {
   if (!isValidGraphRevision(event.graphRevision)) return state;
   const next = { ...state, graphRevision: event.graphRevision, contextSnapshot: { ...state.contextSnapshot, graphRevision: event.graphRevision }, phase: "waiting_for_confirmation" as const, plan: normalizePlan(event.plan), confirmed: false };
-  return { ...next, pendingDecision: pendingDecision(next, event.decisionId, event.graphRevision) };
+  return { ...next, pendingDecision: pendingDecision(next, event.decisionId, event.graphRevision, event.payload) };
 }
 
 function isHighRiskPlan(plan: ConfirmationPlan | null) {
@@ -225,7 +268,8 @@ function isExecutionDecision(decision: AgentDecision) {
 
 export function canExecuteDecision(state: ConversationState, decision: AgentDecision): boolean {
   if (!isExecutionDecision(decision) || state.phase !== "executing") return false;
-  if (!isSafeDecision(decision) || decision.sessionId !== boundedId(state.sessionId) || decision.turnId !== boundedId(state.turnId) || decision.graphRevision !== state.graphRevision || !decision.idempotencyKey || typeof decision.payload !== "object" || decision.payload === null) return false;
+  if (!isSafeDecision(decision) || decision.sessionId !== boundedId(state.sessionId) || decision.turnId !== boundedId(state.turnId) || decision.graphRevision !== state.graphRevision || !decision.idempotencyKey || decision.idempotencyKey !== state.pendingDecision?.idempotencyKey || decision.decisionId !== state.pendingDecision?.decisionId || typeof decision.payload !== "object" || decision.payload === null) return false;
+  if (stableSerialize(decision.payload) !== stableSerialize(state.pendingDecision?.payload)) return false;
   const plan = state.plan ?? {};
   const fieldsMatch = (decision.costCredits ?? 0) === (plan.costCredits ?? 0) && Boolean(decision.batch) === Boolean(plan.batch) && Boolean(decision.writesCanvas) === Boolean(plan.writesCanvas) && Boolean(decision.skill) === Boolean(plan.skill) && Boolean(decision.app) === Boolean(plan.app);
   if (state.confirmed) return fieldsMatch && decision.decisionId === state.pendingDecision?.decisionId;

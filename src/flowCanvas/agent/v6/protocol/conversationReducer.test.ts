@@ -56,7 +56,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 1 });
     state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 1 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 1 });
-    const decision = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 1, payload: {}, idempotencyKey: "idem-1", costCredits: 0 };
+    const decision = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 1, payload: {}, idempotencyKey: "decision-1", costCredits: 0 };
     expect(canExecuteDecision(state, decision)).toBe(true);
     state = reduceConversation(state, { type: "verification_started" });
     expect(state.phase).toBe("verifying");
@@ -67,7 +67,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 2 });
     state = reduceConversation(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12, writesCanvas: true }, graphRevision: 2 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 2 });
-    const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: "idem-1", costCredits: 12, writesCanvas: true };
+    const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: "decision-1", costCredits: 12, writesCanvas: true };
     expect(canExecuteDecision(state, { ...base, graphRevision: 3 })).toBe(false);
     expect(canExecuteDecision(state, { ...base, writesCanvas: false })).toBe(false);
     expect(canExecuteDecision(state, { ...base, costCredits: 11 })).toBe(false);
@@ -75,6 +75,19 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, { ...base, idempotencyKey: "x".repeat(201) })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "x".repeat(4_001) } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, costCredits: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, idempotencyKey: "different-idempotency" })).toBe(false);
+  });
+
+  it("requires execution payload to match the approved payload exactly", () => {
+    let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
+    state = reduceConversation(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: { prompt: "approved", fields: { tone: "calm" } } });
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm" } } })).toBe(true);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "replaced", fields: { tone: "calm" } } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm", route: "internal" } } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", asset: "data:image/png;base64,secret" } })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", credential: "secret" } })).toBe(false);
   });
 
   it("returns failed conversations to explicit retry, revise, and recover phases", () => {
@@ -185,6 +198,30 @@ describe("Agent V6 conversation reducer", () => {
     expect(initialConversationState({ graphRevision: -1 }).graphRevision).toBe(0);
     expect(initialConversationState({ graphRevision: Number.NaN }).contextSnapshot.graphRevision).toBe(0);
     expect(initialConversationState({ graphRevision: Number.POSITIVE_INFINITY }).graphRevision).toBe(0);
+  });
+
+  it("safely degrades malformed context arrays and nested references", () => {
+    expect(() => initialConversationState({
+      contextSnapshot: {
+        projectId: { nested: true },
+        flowId: ["flow"],
+        selectedNodeIds: { slice: "not a function" },
+        assetRefs: [{ assetId: { bad: true }, refId: null, label: { bad: true }, nodeId: { bad: true } }, "invalid"],
+        uploadedAssetIds: "not-an-array",
+        skillRefs: [{ id: { bad: true }, version: "bad" }, null],
+        appRefs: null,
+        modelKey: { bad: true },
+        graphRevision: Number.NaN,
+      } as never,
+    })).not.toThrow();
+    const state = initialConversationState({
+      contextSnapshot: { selectedNodeIds: {}, assetRefs: {}, uploadedAssetIds: null, skillRefs: {}, appRefs: "bad", graphRevision: 2 } as never,
+    });
+    expect(state.contextSnapshot.selectedNodeIds).toEqual([]);
+    expect(state.contextSnapshot.assetRefs).toEqual([]);
+    expect(state.contextSnapshot.uploadedAssetIds).toEqual([]);
+    expect(state.contextSnapshot.skillRefs).toEqual([]);
+    expect(state.contextSnapshot.appRefs).toEqual([]);
   });
 
   it("bounds prompts, errors, context references, and rejects non-finite cost", () => {
