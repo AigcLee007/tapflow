@@ -86,4 +86,41 @@ describe("normalizeBlocks", () => {
       results: [{ id: "result-1", label: "结果", uploadedAssetIds: values.slice(0, 12) }],
     });
   });
+
+  it("normalizes understanding and question blocks with stable IDs and boolean locked state", () => {
+    expect(normalizeBlocks([
+      {
+        type: "understanding",
+        id: "understanding-1",
+        title: "理解",
+        text: "先梳理需求",
+        locked: true,
+        provider: "hidden",
+      },
+      {
+        type: "question",
+        id: "question-1",
+        title: "目标",
+        prompt: "请选择",
+        options: ["儿童", 42, "成人"],
+        locked: false,
+        html: "<script>",
+      },
+    ])).toEqual([
+      { type: "understanding", id: "understanding-1", title: "理解", text: "先梳理需求", locked: true },
+      { type: "question", id: "question-1", title: "目标", prompt: "请选择", options: ["儿童", "成人"], locked: false },
+    ]);
+  });
+
+  it("drops invalid runtime values instead of throwing while normalizing interactive blocks", () => {
+    expect(() => normalizeBlocks([
+      42,
+      { type: "understanding", id: { bad: true }, text: 42, locked: "yes" },
+      { type: "question", id: "https://signed.example/question", prompt: 42, options: "bad" },
+    ] as unknown[])).not.toThrow();
+    expect(normalizeBlocks([
+      { type: "understanding", id: { bad: true }, text: 42, locked: "yes" },
+      { type: "question", id: "https://signed.example/question", prompt: 42, options: "bad" },
+    ] as unknown[])).toEqual([{ type: "understanding", text: "" }]);
+  });
 });

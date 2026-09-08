@@ -15,6 +15,11 @@ const label = (value: unknown) => text(value, AGENT_V6_LABEL_MAX_LENGTH);
 const id = (value: unknown) => normalizeStableId(value) ?? "";
 const bounded = <T>(items: T[]) => items.slice(0, AGENT_V6_MAX_ITEMS);
 const array = <T>(value: unknown) => Array.isArray(value) ? bounded(value) : [];
+const optionalId = (raw: Record<string, unknown>) => {
+  const normalized = id(raw.id);
+  return normalized ? { id: normalized } : {};
+};
+const optionalLocked = (raw: Record<string, unknown>) => typeof raw.locked === "boolean" ? { locked: raw.locked } : {};
 
 function option(value: unknown): AgentOption | undefined {
   const raw = asRecord(value);
@@ -57,24 +62,29 @@ function result(value: unknown): ResultRef | undefined {
 function normalizeOne(value: unknown): ConversationBlock | undefined {
   const raw = asRecord(value);
   const type = raw.type;
-  if (type === "paragraph" || type === "quote") return { type, text: text(raw.text) };
-  if (type === "heading") return { type, level: raw.level === 1 || raw.level === 3 ? raw.level : 2, text: text(raw.text) };
-  if (type === "bullet_list" || type === "numbered_list") return { type, items: array(raw.items).map((item) => label(item)).filter(Boolean) };
+  if (type === "understanding") return { type, ...optionalId(raw), ...(label(raw.title) ? { title: label(raw.title) } : {}), text: text(raw.text), ...optionalLocked(raw) };
+  if (type === "question") {
+    const questionId = id(raw.id);
+    return questionId ? { type, id: questionId, ...(label(raw.title) ? { title: label(raw.title) } : {}), prompt: text(raw.prompt), options: array(raw.options).map(label).filter(Boolean), ...optionalLocked(raw) } : undefined;
+  }
+  if (type === "paragraph" || type === "quote") return { type, text: text(raw.text), ...optionalLocked(raw) };
+  if (type === "heading") return { type, level: raw.level === 1 || raw.level === 3 ? raw.level : 2, text: text(raw.text), ...optionalLocked(raw) };
+  if (type === "bullet_list" || type === "numbered_list") return { type, items: array(raw.items).map((item) => label(item)).filter(Boolean), ...optionalLocked(raw) };
   if (type === "choice_grid") {
     const options = array(raw.options).map(option).filter((item): item is AgentOption => Boolean(item));
     if (!options.length) return undefined;
     const optionIds = new Set(options.map((item) => item.id));
     const selectedOptionIds = array(raw.selectedOptionIds).map(id).filter((item) => optionIds.has(item));
-    return { type, ...(id(raw.id) ? { id: id(raw.id) } : {}), ...(label(raw.title) ? { title: label(raw.title) } : {}), options, selectionMode: raw.selectionMode === "multiple" ? "multiple" : "single", ...(selectedOptionIds.length ? { selectedOptionIds } : {}) };
+    return { type, ...optionalId(raw), ...(label(raw.title) ? { title: label(raw.title) } : {}), options, selectionMode: raw.selectionMode === "multiple" ? "multiple" : "single", ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...optionalLocked(raw) };
   }
   if (type === "comparison_table") {
     const columns = array(raw.columns).map(label).filter(Boolean);
     const rows = array(raw.rows).map((row) => array(row).map(label)).filter((row) => row.length > 0);
-    return columns.length ? { type, ...(label(raw.title) ? { title: label(raw.title) } : {}), columns, rows } : undefined;
+    return columns.length ? { type, ...(label(raw.title) ? { title: label(raw.title) } : {}), columns, rows, ...optionalLocked(raw) } : undefined;
   }
   if (type === "brief_card") {
     const fields = array(raw.fields).map((field) => { const item = asRecord(field); return label(item.label) && text(item.value) ? { label: label(item.label), value: text(item.value) } : undefined; }).filter((field): field is { label: string; value: string } => Boolean(field));
-    return { type, ...(label(raw.title) ? { title: label(raw.title) } : {}), fields, editable: raw.editable === true };
+    return { type, ...optionalId(raw), ...(label(raw.title) ? { title: label(raw.title) } : {}), fields, editable: raw.editable === true, ...optionalLocked(raw) };
   }
   if (type === "confirmation_card") {
     const plan = asRecord(raw.plan);
@@ -82,6 +92,7 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
     const policyHash = id(policy.policyHash);
     return {
       type,
+      ...optionalId(raw),
       ...(label(raw.title) ? { title: label(raw.title) } : {}),
       text: text(raw.text),
       plan: {
@@ -94,11 +105,12 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
         ...(plan.skill === true ? { skill: true } : {}),
         ...(plan.app === true ? { app: true } : {}),
       },
+      ...optionalLocked(raw),
     };
   }
-  if (type === "progress_card") return { type, ...(label(raw.title) ? { title: label(raw.title) } : {}), steps: array(raw.steps).map(progress).filter((step): step is ProgressStep => Boolean(step)) };
-  if (type === "result_group") return { type, ...(label(raw.title) ? { title: label(raw.title) } : {}), results: array(raw.results).map(result).filter((item): item is ResultRef => Boolean(item)) };
-  if (type === "divider") return { type: "divider" };
+  if (type === "progress_card") return { type, ...optionalId(raw), ...(label(raw.title) ? { title: label(raw.title) } : {}), steps: array(raw.steps).map(progress).filter((step): step is ProgressStep => Boolean(step)), ...optionalLocked(raw) };
+  if (type === "result_group") return { type, ...optionalId(raw), ...(label(raw.title) ? { title: label(raw.title) } : {}), results: array(raw.results).map(result).filter((item): item is ResultRef => Boolean(item)), ...optionalLocked(raw) };
+  if (type === "divider") return { type: "divider", ...optionalLocked(raw) };
   return undefined;
 }
 

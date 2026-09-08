@@ -42,19 +42,23 @@ export type ConfirmationPlan = {
 export type ChoiceSubmission = { pendingQuestionId: string; payload: Record<string, unknown>; optionIds: string[] };
 export type PendingChoice = { pendingQuestionId: string; sessionId: string; turnId: string; graphRevision: number; idempotencyKey: string };
 
+export type ConversationBlockLock = { locked?: boolean };
+
 export type ConversationBlock =
-  | { type: "paragraph"; text: string }
-  | { type: "heading"; level: 1 | 2 | 3; text: string }
-  | { type: "quote"; text: string }
-  | { type: "bullet_list"; items: string[] }
-  | { type: "numbered_list"; items: string[] }
-  | { type: "choice_grid"; id?: string; title?: string; options: AgentOption[]; selectionMode: "single" | "multiple"; selectedOptionIds?: string[] }
-  | { type: "comparison_table"; title?: string; columns: string[]; rows: string[][] }
-  | { type: "brief_card"; title?: string; fields: BriefField[]; editable: boolean }
-  | { type: "confirmation_card"; title?: string; text: string; plan: ConfirmationPlan }
-  | { type: "progress_card"; title?: string; steps: ProgressStep[] }
-  | { type: "result_group"; title?: string; results: ResultRef[] }
-  | { type: "divider" };
+  | (ConversationBlockLock & { type: "understanding"; id?: string; title?: string; text: string })
+  | (ConversationBlockLock & { type: "question"; id: string; title?: string; prompt: string; options: string[] })
+  | (ConversationBlockLock & { type: "paragraph"; text: string })
+  | (ConversationBlockLock & { type: "heading"; level: 1 | 2 | 3; text: string })
+  | (ConversationBlockLock & { type: "quote"; text: string })
+  | (ConversationBlockLock & { type: "bullet_list"; items: string[] })
+  | (ConversationBlockLock & { type: "numbered_list"; items: string[] })
+  | (ConversationBlockLock & { type: "choice_grid"; id?: string; title?: string; options: AgentOption[]; selectionMode: "single" | "multiple"; selectedOptionIds?: string[] })
+  | (ConversationBlockLock & { type: "comparison_table"; title?: string; columns: string[]; rows: string[][] })
+  | (ConversationBlockLock & { type: "brief_card"; id?: string; title?: string; fields: BriefField[]; editable: boolean })
+  | (ConversationBlockLock & { type: "confirmation_card"; id?: string; title?: string; text: string; plan: ConfirmationPlan })
+  | (ConversationBlockLock & { type: "progress_card"; id?: string; title?: string; steps: ProgressStep[] })
+  | (ConversationBlockLock & { type: "result_group"; id?: string; title?: string; results: ResultRef[] })
+  | (ConversationBlockLock & { type: "divider" });
 
 export type AgentContextAssetRef = { assetId: string; refId: string; label: string; nodeId?: string };
 export type AgentContextSkillRef = { id: string; version: number };

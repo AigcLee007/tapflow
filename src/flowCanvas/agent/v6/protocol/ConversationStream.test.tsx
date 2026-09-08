@@ -107,7 +107,7 @@ describe("ConversationStream", () => {
     expect(onAction).toHaveBeenLastCalledWith({ type: "place_result", resultId: "result-1" });
   });
 
-  it("supports locked choices, keyboard access, progress states, and safe table overflow", () => {
+  it("supports normalized locked choices, keyboard access, progress states, and safe table overflow", () => {
     const onAction = vi.fn();
     render(
       <ConversationStream
@@ -128,6 +128,28 @@ describe("ConversationStream", () => {
     expect(screen.getByRole("button", { name: "已锁定" }).tabIndex).toBe(0);
     expect(within(screen.getByRole("table", { name: "宽表" })).getByText("更多内容")).toBeTruthy();
     expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("emits typed recovery actions for failed steps and cancel for active progress", () => {
+    const onAction = vi.fn<(action: AgentBlockAction) => void>();
+    render(
+      <ConversationStream
+        blocks={[
+          { type: "progress_card", id: "failed-progress", steps: [{ id: "failed-step", label: "失败步骤", status: "failed" }] },
+          { type: "progress_card", id: "active-progress", steps: [{ id: "running-step", label: "运行中", status: "running" }] },
+        ]}
+        onAction={onAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重试失败步骤" }));
+    expect(onAction).toHaveBeenLastCalledWith({ type: "retry_progress", blockId: "failed-progress", stepId: "failed-step" });
+    fireEvent.click(screen.getByRole("button", { name: "修改失败步骤" }));
+    expect(onAction).toHaveBeenLastCalledWith({ type: "revise_progress", blockId: "failed-progress", stepId: "failed-step" });
+    fireEvent.click(screen.getByRole("button", { name: "恢复失败步骤" }));
+    expect(onAction).toHaveBeenLastCalledWith({ type: "recover_progress", blockId: "failed-progress", stepId: "failed-step" });
+    fireEvent.click(screen.getByRole("button", { name: "取消执行" }));
+    expect(onAction).toHaveBeenLastCalledWith({ type: "cancel_progress", blockId: "active-progress" });
   });
 
   it("does not render unsafe provider or HTML fields", () => {

@@ -9,17 +9,7 @@ import { ConfirmationBlock } from "./blockRenderers/ConfirmationBlock";
 import { ProgressBlock } from "./blockRenderers/ProgressBlock";
 import { ResultGroupBlock } from "./blockRenderers/ResultGroupBlock";
 
-export type AgentV6StreamBlock = (ConversationBlock & { id?: string }) | {
-  type: "understanding";
-  title?: string;
-  text: string;
-} | {
-  type: "question";
-  id: string;
-  title?: string;
-  prompt: string;
-  options: string[];
-} | ({ type: "choice_grid"; locked?: boolean; id?: string; title?: string; options: { id: string; label: string; description?: string }[]; selectionMode: "single" | "multiple"; selectedOptionIds?: string[] });
+export type AgentV6StreamBlock = ConversationBlock;
 
 export type AgentBlockAction =
   | { type: "answer_question"; blockId: string; value: string }
@@ -30,6 +20,9 @@ export type AgentBlockAction =
   | { type: "confirm_execution"; blockId: string }
   | { type: "revise_plan"; blockId: string }
   | { type: "cancel_progress"; blockId: string }
+  | { type: "retry_progress"; blockId: string; stepId: string }
+  | { type: "revise_progress"; blockId: string; stepId: string }
+  | { type: "recover_progress"; blockId: string; stepId: string }
   | { type: "select_result"; resultId: string }
   | { type: "preview_result"; resultId: string }
   | { type: "refine_result"; resultId: string }
