@@ -108,6 +108,37 @@ describe("Agent V6 capability controllers", () => {
     expect(JSON.stringify(result)).not.toMatch(/provider|route|credential|signedUrl/i);
   });
 
+  it("drops skill items with invalid modality, visibility, or version", async () => {
+    const validSkill = {
+      id: "valid-skill",
+      modality: "text",
+      name: "有效 Skill",
+      summary: "可展示",
+      version: 0,
+      visibility: "private",
+    };
+    const controller = new SkillController({
+      listSkills: vi.fn().mockResolvedValue([
+        validSkill,
+        { ...validSkill, id: "unknown-modality", modality: "audio" },
+        { ...validSkill, id: "internal-visibility", visibility: "internal" },
+        { ...validSkill, id: "nan-version", version: Number.NaN },
+        { ...validSkill, id: "fractional-version", version: 1.5 },
+        { ...validSkill, id: "negative-version", version: -1 },
+      ]),
+    });
+
+    await expect(controller.list()).resolves.toEqual([{
+      id: "valid-skill",
+      inputHints: [],
+      modality: "text",
+      name: "有效 Skill",
+      summary: "可展示",
+      version: 0,
+      visibility: "private",
+    }]);
+  });
+
   it("projects app metadata through an explicit safe allowlist", async () => {
     const controller = new AppController({
       listApps: vi.fn().mockResolvedValue([{
