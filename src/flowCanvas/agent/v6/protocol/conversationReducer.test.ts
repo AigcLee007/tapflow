@@ -173,6 +173,22 @@ describe("Agent V6 conversation reducer", () => {
     }
   });
 
+  it("does not collide when two new states are created without identities or replay seed", () => {
+    const first = initialConversationState();
+    const second = initialConversationState();
+
+    expect(first.sessionId).not.toBe(second.sessionId);
+    expect(first.turnId).not.toBe(second.turnId);
+  });
+
+  it("keeps initial identities stable when replay seed is explicit", () => {
+    const first = initialConversationState({}, { replaySeed: "replay-1" });
+    const second = initialConversationState({}, { replaySeed: "replay-1" });
+
+    expect(second.sessionId).toBe(first.sessionId);
+    expect(second.turnId).toBe(first.turnId);
+  });
+
   it("accepts a legal maximum-length identity through confirmation", () => {
     const sessionId = "s".repeat(128);
     const turnId = "t".repeat(128);
@@ -611,9 +627,31 @@ describe("Agent V6 conversation reducer", () => {
     expect(reset.graphRevision).toBe(12);
     expect(reset.contextSnapshot.graphRevision).toBe(12);
     expect(reset.sessionId).toBe("session-1");
-    expect(reset.turnId).toMatch(/^turn-h[0-9a-f]{16}$/);
-    expect(reset.turnId).not.toBe(state.turnId);
     expect(reset.turnId).toMatch(/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$/);
+    expect(reset.turnId).not.toBe(state.turnId);
+  });
+
+  it("creates a unique turn for each reset and refinement by default", () => {
+    const state = initialConversationState({ sessionId: "session-1", turnId: "turn-1" });
+    const firstReset = reduceConversation(state, { type: "reset" });
+    const secondReset = reduceConversation(state, { type: "reset" });
+    const refining = { ...state, phase: "refining" as const, refiningResultId: "result-1" };
+    const firstRefinement = reduceConversation(refining, { type: "turn_submitted", prompt: "refine" });
+    const secondRefinement = reduceConversation(refining, { type: "turn_submitted", prompt: "refine" });
+
+    expect(firstReset.turnId).not.toBe(secondReset.turnId);
+    expect(firstRefinement.turnId).not.toBe(secondRefinement.turnId);
+  });
+
+  it("keeps replayed reset and refinement turns deterministic from turn or event IDs", () => {
+    const state = initialConversationState({ sessionId: "session-1", turnId: "turn-1" });
+    const resetEvent = { type: "reset" as const, turnId: "replayed-reset-turn" };
+    const refinementEvent = { type: "turn_submitted" as const, prompt: "refine", eventId: "replayed-refinement-event" };
+    const refining = { ...state, phase: "refining" as const, refiningResultId: "result-1" };
+
+    expect(reduceConversation(state, resetEvent).turnId).toBe("replayed-reset-turn");
+    expect(reduceConversation(state, resetEvent).turnId).toBe(reduceConversation(state, resetEvent).turnId);
+    expect(reduceConversation(refining, refinementEvent).turnId).toBe(reduceConversation(refining, refinementEvent).turnId);
   });
 
   it("keeps reset decision identity bound to the preserved session and new turn", () => {
@@ -627,7 +665,7 @@ describe("Agent V6 conversation reducer", () => {
     const secondDecision = applyBrief(secondReset, { type: "brief_ready", graphRevision: 0 }).pendingDecision!;
 
     expect(firstReset.sessionId).toBe(secondReset.sessionId);
-    expect(firstReset.turnId).toBe(secondReset.turnId);
+    expect(firstReset.turnId).not.toBe(secondReset.turnId);
     expect(firstDecision.sessionId).toBe("session-1");
     expect(secondDecision.sessionId).toBe("session-1");
     expect(firstDecision.turnId).toBe(firstReset.turnId);

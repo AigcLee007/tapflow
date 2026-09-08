@@ -16,7 +16,7 @@ import { normalizeBlocks } from "./blockNormalizer";
 import { normalizeStableId, stableHash } from "./stableId";
 
 export type ConversationEvent =
-  | { type: "turn_submitted"; prompt: string }
+  | { type: "turn_submitted"; prompt: string; turnId?: string; eventId?: string }
   | { type: "choice_requested"; id?: string }
   | { type: "choice_submitted"; sessionId: string; turnId: string; graphRevision: number; idempotencyKey: string; pendingQuestionId: string; payload: Record<string, unknown>; optionIds: string[] }
   | { type: "brief_started" }
@@ -31,10 +31,10 @@ export type ConversationEvent =
   | { type: "revise" }
   | { type: "recover" }
   | { type: "mode_changed"; mode: AgentExecutionMode }
-  | { type: "reset" };
+  | { type: "reset"; turnId?: string; eventId?: string };
 
 export type ConversationIdFactory = () => string;
-export type ConversationReducerOptions = { createId?: ConversationIdFactory };
+export type ConversationReducerOptions = { createId?: ConversationIdFactory; replaySeed?: string };
 
 const EMPTY_CONTEXT = {
   projectId: null,
@@ -51,8 +51,14 @@ const EMPTY_CONTEXT = {
 export function initialConversationState(overrides: Partial<ConversationState> = {}, options: ConversationReducerOptions = {}): ConversationState {
   const graphRevision = isValidGraphRevision(overrides.graphRevision) ? overrides.graphRevision : 0;
   const context = { ...normalizeContext(overrides.contextSnapshot), graphRevision };
-  const sessionId = normalizeStableId(overrides.sessionId) ?? generatedId("session", options.createId, { kind: "initial-session", context: overrides.contextSnapshot });
-  const turnId = normalizeStableId(overrides.turnId) ?? generatedId("turn", options.createId, { kind: "initial-turn", sessionId });
+  const explicitSessionId = normalizeStableId(overrides.sessionId);
+  const explicitTurnId = normalizeStableId(overrides.turnId);
+  const sessionId = explicitSessionId ?? (options.replaySeed
+    ? generatedId("session", options.createId, { kind: "initial-session", replaySeed: options.replaySeed, context: overrides.contextSnapshot })
+    : randomId("session", options.createId));
+  const turnId = explicitTurnId ?? (options.replaySeed || explicitSessionId
+    ? generatedId("turn", options.createId, { kind: "initial-turn", replaySeed: options.replaySeed, sessionId })
+    : randomId("turn", options.createId));
   const baseState = {
     phase: "idle",
     executionState: "idle",
@@ -97,6 +103,22 @@ function generatedId(prefix: string, createId?: ConversationIdFactory, seed?: un
     if (normalized && normalized.length <= AGENT_V6_ID_MAX_LENGTH) return normalized;
   }
   return `${prefix}-${stableHash(seed ?? { prefix })}`;
+}
+
+function randomId(prefix: string, createId?: ConversationIdFactory) {
+  if (createId) return generatedId(prefix, createId);
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return uuid;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function eventTurnId(prefix: string, event: { turnId?: string; eventId?: string }, options: ConversationReducerOptions, seed: Record<string, unknown>) {
+  const turnId = normalizeStableId(event.turnId);
+  if (turnId) return turnId;
+  if (normalizeStableId(event.eventId) || options.replaySeed) {
+    return generatedId(prefix, options.createId, { ...seed, eventId: event.eventId, replaySeed: options.replaySeed });
+  }
+  return randomId(prefix, options.createId);
 }
 
 function normalizeStableIds(value: unknown) {
@@ -448,7 +470,7 @@ export function reduceConversation(state: ConversationState, event: Conversation
   if (event.type === "reset") return initialConversationState({
     mode: state.mode,
     sessionId: normalizeStableId(state.sessionId) ?? generatedId("session", options.createId, { kind: "reset-session", sessionId: state.sessionId, turnId: state.turnId, graphRevision: state.graphRevision }),
-    turnId: generatedId("turn", options.createId, { kind: "reset-turn", sessionId: state.sessionId, turnId: state.turnId, graphRevision: state.graphRevision }),
+    turnId: eventTurnId("turn", event, options, { kind: "reset-turn", sessionId: state.sessionId, turnId: state.turnId, graphRevision: state.graphRevision }),
     contextSnapshot: state.contextSnapshot,
     graphRevision: state.graphRevision,
   }, options);
@@ -507,7 +529,7 @@ export function reduceConversation(state: ConversationState, event: Conversation
       }
       return state;
     case "refining":
-      if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", turnId: generatedId("turn", options.createId, { kind: "refinement-turn", sessionId: state.sessionId, turnId: state.turnId, prompt: event.prompt, graphRevision: state.graphRevision }), prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null, pendingDecision: null, pendingQuestionId: null, pendingChoice: null, choiceSubmission: null, confirmed: false };
+      if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", turnId: eventTurnId("turn", event, options, { kind: "refinement-turn", sessionId: state.sessionId, turnId: state.turnId, prompt: event.prompt, graphRevision: state.graphRevision }), prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null, pendingDecision: null, pendingQuestionId: null, pendingChoice: null, choiceSubmission: null, confirmed: false };
       return state;
     case "failed":
       if (event.type === "retry" || event.type === "revise" || event.type === "recover") return recoverFromFailure(state, event, options.createId);
