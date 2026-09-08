@@ -5,7 +5,13 @@ import type {
   ConfirmationPlan,
   ConversationState,
 } from "./conversationTypes";
-import { AGENT_V6_LABEL_MAX_LENGTH, AGENT_V6_MAX_ITEMS, AGENT_V6_TEXT_MAX_LENGTH } from "./conversationTypes";
+import {
+  AGENT_V6_DEFAULT_SESSION_ID,
+  AGENT_V6_DEFAULT_TURN_ID,
+  AGENT_V6_LABEL_MAX_LENGTH,
+  AGENT_V6_MAX_ITEMS,
+  AGENT_V6_TEXT_MAX_LENGTH,
+} from "./conversationTypes";
 import { normalizeBlocks } from "./blockNormalizer";
 import { normalizeStableId } from "./stableId";
 
@@ -54,8 +60,8 @@ export function initialConversationState(overrides: Partial<ConversationState> =
     blocks: normalizeBlocks(overrides.blocks),
     progress: [],
     results: [],
-    sessionId: normalizeStableId(overrides.sessionId),
-    turnId: normalizeStableId(overrides.turnId),
+    sessionId: overrides.sessionId === undefined ? AGENT_V6_DEFAULT_SESSION_ID : normalizeStableId(overrides.sessionId),
+    turnId: overrides.turnId === undefined ? AGENT_V6_DEFAULT_TURN_ID : normalizeStableId(overrides.turnId),
     error: typeof overrides.error === "string" ? boundedText(overrides.error, AGENT_V6_TEXT_MAX_LENGTH) : null,
     graphRevision,
     plan: normalizePlan(overrides.plan ?? undefined),
@@ -139,7 +145,22 @@ function normalizePlan(plan: ConfirmationPlan | undefined): ConfirmationPlan {
   };
 }
 
-const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds"]);
+const SAFE_PAYLOAD_KEYS = new Set(["prompt", "text", "value", "field", "optionIds", "resultId", "assetId", "assetIds", "nodeId", "nodeIds", "refId", "refIds", "modelKey", "skillId", "appId", "mode", "fields", "options", "parameters", "referenceIds", "uploadedAssetIds"]);
+const STABLE_REFERENCE_PAYLOAD_KEYS = new Set([
+  "assetid",
+  "assetids",
+  "nodeid",
+  "nodeids",
+  "refid",
+  "refids",
+  "referenceid",
+  "referenceids",
+  "uploadedassetid",
+  "uploadedassetids",
+  "resultid",
+  "optionids",
+  "selectednodeids",
+]);
 const MAX_PAYLOAD_DEPTH = 32;
 const MAX_PAYLOAD_NODES = 256;
 const MAX_PAYLOAD_ARRAY_LENGTH = 32;
@@ -183,6 +204,22 @@ function isSensitiveString(value: string) {
   return value.length >= 64 && /^[a-z0-9+/=_-]+$/i.test(value) && (/[+/=_-]/.test(value) || value.length >= 128);
 }
 
+function isStableReferenceValue(value: unknown): boolean {
+  if (typeof value === "string") return Boolean(normalizeStableId(value)) && !isSensitiveString(value);
+  return Array.isArray(value) && value.every((item) => isStableReferenceValue(item));
+}
+
+function hasInvalidStableReference(value: unknown, seen = new Set<object>()): boolean {
+  if (value === null || typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) return value.some((item) => hasInvalidStableReference(item, seen));
+  if (!isPlainObject(value)) return false;
+  return Object.entries(value).some(([key, item]) => {
+    return (STABLE_REFERENCE_PAYLOAD_KEYS.has(normalizePayloadKey(key)) && !isStableReferenceValue(item))
+      || hasInvalidStableReference(item, seen);
+  });
+}
+
 function isPayloadWithinLimits(value: unknown, depth = 0, state = { nodes: 0, seen: new Set<object>() }): boolean {
   if (value === null || typeof value === "boolean") return true;
   if (typeof value === "string") return value.length <= MAX_PAYLOAD_STRING_LENGTH;
@@ -219,6 +256,7 @@ function sanitizePayloadValue(value: unknown, strict: boolean, root: boolean, se
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     const normalizedKey = normalizePayloadKey(key);
+    if (STABLE_REFERENCE_PAYLOAD_KEYS.has(normalizedKey) && !isStableReferenceValue(item)) return null;
     const allowed = !SENSITIVE_PAYLOAD_KEYS.has(normalizedKey) && (!root || SAFE_PAYLOAD_KEYS.has(key));
     if (!allowed) {
       if (strict) return null;
@@ -253,7 +291,7 @@ function stableSerialize(value: unknown): string | null {
 }
 
 function normalizeApprovedPayload(payload: Record<string, unknown> | undefined): Record<string, unknown> | null {
-  if (!isPayloadWithinLimits(payload ?? {})) return null;
+  if (!isPayloadWithinLimits(payload ?? {}) || hasInvalidStableReference(payload ?? {})) return null;
   try {
     const normalized = sanitizePayloadValue(payload ?? {}, false, true, new Set());
     return isPlainObject(normalized) ? normalized : null;
@@ -264,7 +302,11 @@ function normalizeApprovedPayload(payload: Record<string, unknown> | undefined):
 
 function decisionIdFor(state: ConversationState, decisionId?: string) {
   if (decisionId !== undefined) return boundedId(decisionId);
-  return normalizeStableId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`) ?? "";
+  return normalizeStableId(`decision:${stateDecisionId(state.sessionId, AGENT_V6_DEFAULT_SESSION_ID)}:${stateDecisionId(state.turnId, AGENT_V6_DEFAULT_TURN_ID)}:${state.graphRevision}`) ?? "";
+}
+
+function stateDecisionId(value: unknown, fallback: string) {
+  return normalizeStableId(value) ?? fallback;
 }
 
 function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision, payload?: Record<string, unknown>): AgentDecision | null {
@@ -272,8 +314,8 @@ function pendingDecision(state: ConversationState, decisionId?: string, graphRev
   if (!stableId) return null;
   const normalizedPayload = normalizeApprovedPayload(payload);
   if (!normalizedPayload) return null;
-  const sessionId = boundedId(state.sessionId) || "session";
-  const turnId = boundedId(state.turnId) || "turn";
+  const sessionId = stateDecisionId(state.sessionId, AGENT_V6_DEFAULT_SESSION_ID);
+  const turnId = stateDecisionId(state.turnId, AGENT_V6_DEFAULT_TURN_ID);
   return { type: "execute", decisionId: stableId, sessionId, turnId, graphRevision, payload: normalizedPayload, idempotencyKey: stableId };
 }
 
@@ -370,7 +412,7 @@ function isExecutionDecision(decision: AgentDecision) {
 
 export function canExecuteDecision(state: ConversationState, decision: AgentDecision): boolean {
   if (!isExecutionDecision(decision) || state.phase !== "executing") return false;
-  if (!isSafeDecision(decision) || decision.sessionId !== boundedId(state.sessionId) || decision.turnId !== boundedId(state.turnId) || decision.graphRevision !== state.graphRevision || !decision.idempotencyKey || decision.idempotencyKey !== state.pendingDecision?.idempotencyKey || decision.decisionId !== state.pendingDecision?.decisionId || typeof decision.payload !== "object" || decision.payload === null) return false;
+  if (!isSafeDecision(decision) || decision.sessionId !== stateDecisionId(state.sessionId, AGENT_V6_DEFAULT_SESSION_ID) || decision.turnId !== stateDecisionId(state.turnId, AGENT_V6_DEFAULT_TURN_ID) || decision.graphRevision !== state.graphRevision || !decision.idempotencyKey || decision.idempotencyKey !== state.pendingDecision?.idempotencyKey || decision.decisionId !== state.pendingDecision?.decisionId || typeof decision.payload !== "object" || decision.payload === null) return false;
   if (stableSerialize(decision.payload) !== stableSerialize(state.pendingDecision?.payload)) return false;
   const plan = state.plan ?? {};
   const fieldsMatch = (decision.costCredits ?? 0) === (plan.costCredits ?? 0) && Boolean(decision.batch) === Boolean(plan.batch) && Boolean(decision.writesCanvas) === Boolean(plan.writesCanvas) && Boolean(decision.skill) === Boolean(plan.skill) && Boolean(decision.app) === Boolean(plan.app);

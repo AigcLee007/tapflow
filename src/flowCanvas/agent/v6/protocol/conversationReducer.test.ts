@@ -57,6 +57,23 @@ describe("Agent V6 conversation reducer", () => {
     })).toBe(false);
   });
 
+  it("uses the default session and turn IDs consistently after confirmation", () => {
+    let state = applyBrief(initialConversationState(), { type: "brief_ready", graphRevision: 0 });
+    expect(state.sessionId).toBe("session");
+    expect(state.turnId).toBe("turn");
+    expect(state.pendingDecision?.sessionId).toBe("session");
+    expect(state.pendingDecision?.turnId).toBe("turn");
+
+    state = reduceConversation(state, {
+      type: "confirmation_granted",
+      decisionId: state.pendingDecision!.decisionId,
+      graphRevision: 0,
+    });
+
+    expect(state.phase).toBe("executing");
+    expect(canExecuteDecision(state, state.pendingDecision!)).toBe(true);
+  });
+
   it("tracks execution state and requires matching confirmation metadata", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 4 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12 }, graphRevision: 4 });
@@ -124,6 +141,44 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", api_key: "secret" } } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "signed-url": "temporary" } } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "base-url": "internal" } } })).toBe(false);
+  });
+
+  it("validates nested reference payloads as stable IDs, including every array item", () => {
+    const safePayload = {
+      parameters: {
+        nested: {
+          assetId: "asset-1",
+          nodeId: "node-1",
+          refId: "ref-1",
+          referenceIds: ["ref-1", "ref-2"],
+          uploadedAssetIds: ["asset-2", "asset-3"],
+        },
+      },
+    };
+    const safe = applyBrief(initialConversationState({ sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      graphRevision: 0,
+      payload: safePayload,
+    });
+    expect(safe.pendingDecision?.payload).toEqual(safePayload);
+
+    for (const [key, value] of [
+      ["assetId", "https://signed.example/asset?token=secret"],
+      ["nodeId", "data:image/png;base64,secret"],
+      ["refId", "blob:https://local/ref"],
+      ["referenceIds", ["ref-1", "https://signed.example/ref"]],
+      ["uploadedAssetIds", ["asset-1", "Bearer secret-token"]],
+    ] as const) {
+      const rejected = applyBrief(initialConversationState({ sessionId: "s", turnId: "t" }), {
+        type: "brief_ready",
+        decisionId: "d",
+        graphRevision: 0,
+        payload: { parameters: { nested: { [key]: value } } },
+      });
+      expect(rejected.pendingDecision, key).toBeNull();
+      expect(rejected.phase, key).toBe("drafting_brief");
+    }
   });
 
   const expectSensitiveKeysToBeRemoved = (sensitiveKeyVariants: string[]) => {
