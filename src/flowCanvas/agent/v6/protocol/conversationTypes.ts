@@ -1,7 +1,7 @@
 export const AGENT_V6_MAX_ITEMS = 12;
 export const AGENT_V6_TEXT_MAX_LENGTH = 4_000;
 export const AGENT_V6_LABEL_MAX_LENGTH = 400;
-export const AGENT_V6_ID_MAX_LENGTH = 200;
+export const AGENT_V6_ID_MAX_LENGTH = 128;
 export const AGENT_V6_DEFAULT_SESSION_ID = "session";
 export const AGENT_V6_DEFAULT_TURN_ID = "turn";
 

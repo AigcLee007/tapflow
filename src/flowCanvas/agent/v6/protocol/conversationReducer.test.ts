@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canExecuteDecision,
   initialConversationState,
@@ -6,6 +6,8 @@ import {
 } from "./conversationReducer";
 
 describe("Agent V6 conversation reducer", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   const applyBrief = (state: ReturnType<typeof initialConversationState>, event: Extract<Parameters<typeof reduceConversation>[1], { type: "brief_ready" }>) => {
     let next = state;
     if (next.phase === "idle") next = reduceConversation(next, { type: "turn_submitted", prompt: "test" });
@@ -72,6 +74,28 @@ describe("Agent V6 conversation reducer", () => {
 
     expect(state.phase).toBe("executing");
     expect(canExecuteDecision(state, state.pendingDecision!)).toBe(true);
+  });
+
+  it("uses the same safe fallback for missing and invalid session and turn IDs", () => {
+    for (const overrides of [
+      {},
+      { sessionId: "https://signed.example/session", turnId: "eyJhbGciOiJIUzI1NiJ9.payload.signature" },
+      { sessionId: undefined, turnId: null },
+    ]) {
+      const state = initialConversationState(overrides as never);
+      expect(state.sessionId).toBe("session");
+      expect(state.turnId).toBe("turn");
+
+      const ready = applyBrief(state, { type: "brief_ready", graphRevision: 0 });
+      expect(ready.pendingDecision?.sessionId).toBe(state.sessionId);
+      expect(ready.pendingDecision?.turnId).toBe(state.turnId);
+      const confirmed = reduceConversation(ready, {
+        type: "confirmation_granted",
+        decisionId: ready.pendingDecision!.decisionId,
+        graphRevision: 0,
+      });
+      expect(canExecuteDecision(confirmed, confirmed.pendingDecision!)).toBe(true);
+    }
   });
 
   it("tracks execution state and requires matching confirmation metadata", () => {
@@ -223,12 +247,12 @@ describe("Agent V6 conversation reducer", () => {
   it("returns failed conversations to explicit retry, revise, and recover phases", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", plan: { costCredits: 0 }, graphRevision: 0 });
-    expect(state.pendingDecision?.decisionId).toBe("decision:session-1:turn-1:0");
-    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision:session-1:turn-1:0", graphRevision: 0 });
+    expect(state.pendingDecision?.decisionId).toBe("decision_session-1_turn-1_0");
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision_session-1_turn-1_0", graphRevision: 0 });
     const failed = reduceConversation(state, { type: "turn_failed", error: "错误" });
     const retried = reduceConversation(failed, { type: "retry" });
     expect(retried.phase).toBe("executing");
-    expect(retried.pendingDecision?.decisionId).toBe("decision:session-1:turn-1:0");
+    expect(retried.pendingDecision?.decisionId).toBe("decision_session-1_turn-1_0");
     expect(retried.confirmed).toBe(true);
     expect(canExecuteDecision(retried, retried.pendingDecision!)).toBe(true);
     const revised = reduceConversation(failed, { type: "revise" });
@@ -379,17 +403,41 @@ describe("Agent V6 conversation reducer", () => {
   });
 
   it("preserves graph revision when resetting", () => {
-    const state = initialConversationState({ graphRevision: 12 });
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("550e8400-e29b-41d4-a716-446655440000");
+    const state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 12 });
     const reset = reduceConversation(state, { type: "reset" });
     expect(reset.phase).toBe("idle");
     expect(reset.graphRevision).toBe(12);
     expect(reset.contextSnapshot.graphRevision).toBe(12);
+    expect(reset.sessionId).toBe("session-1");
+    expect(reset.turnId).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(reset.turnId).not.toBe(state.turnId);
+    expect(reset.turnId).toMatch(/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$/);
+  });
+
+  it("keeps reset decision identity bound to the preserved session and new turn", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("550e8400-e29b-41d4-a716-446655440001")
+      .mockReturnValueOnce("550e8400-e29b-41d4-a716-446655440002");
+    const first = initialConversationState({ sessionId: "session-1", turnId: "turn-1" });
+    const firstReset = reduceConversation(first, { type: "reset" });
+    const secondReset = reduceConversation(first, { type: "reset" });
+    const firstDecision = applyBrief(firstReset, { type: "brief_ready", graphRevision: 0 }).pendingDecision!;
+    const secondDecision = applyBrief(secondReset, { type: "brief_ready", graphRevision: 0 }).pendingDecision!;
+
+    expect(firstReset.sessionId).toBe(secondReset.sessionId);
+    expect(firstReset.turnId).not.toBe(secondReset.turnId);
+    expect(firstDecision.sessionId).toBe("session-1");
+    expect(secondDecision.sessionId).toBe("session-1");
+    expect(firstDecision.turnId).toBe(firstReset.turnId);
+    expect(secondDecision.turnId).toBe(secondReset.turnId);
+    expect(firstDecision.decisionId).not.toBe(secondDecision.decisionId);
   });
 
   it("generates the same required decision ID when brief_ready omits one", () => {
     const first = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
     const second = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
-    expect(first.pendingDecision?.decisionId).toBe("decision:s:t:3");
+    expect(first.pendingDecision?.decisionId).toBe("decision_s_t_3");
     expect(second.pendingDecision?.decisionId).toBe(first.pendingDecision?.decisionId);
     expect(first.pendingDecision?.sessionId).toBe("s");
     expect(first.pendingDecision?.turnId).toBe("t");

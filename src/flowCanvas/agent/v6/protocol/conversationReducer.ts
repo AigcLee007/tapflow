@@ -60,8 +60,8 @@ export function initialConversationState(overrides: Partial<ConversationState> =
     blocks: normalizeBlocks(overrides.blocks),
     progress: [],
     results: [],
-    sessionId: overrides.sessionId === undefined ? AGENT_V6_DEFAULT_SESSION_ID : normalizeStableId(overrides.sessionId),
-    turnId: overrides.turnId === undefined ? AGENT_V6_DEFAULT_TURN_ID : normalizeStableId(overrides.turnId),
+    sessionId: normalizeStableId(overrides.sessionId) ?? AGENT_V6_DEFAULT_SESSION_ID,
+    turnId: normalizeStableId(overrides.turnId) ?? AGENT_V6_DEFAULT_TURN_ID,
     error: typeof overrides.error === "string" ? boundedText(overrides.error, AGENT_V6_TEXT_MAX_LENGTH) : null,
     graphRevision,
     plan: normalizePlan(overrides.plan ?? undefined),
@@ -75,6 +75,13 @@ function boundedText(value: unknown, max: number) {
 
 function boundedId(value: unknown) {
   return normalizeStableId(value) ?? "";
+}
+
+function nextTurnId() {
+  const generated = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `turn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return normalizeStableId(generated) ?? `turn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function normalizeStableIds(value: unknown) {
@@ -302,7 +309,7 @@ function normalizeApprovedPayload(payload: Record<string, unknown> | undefined):
 
 function decisionIdFor(state: ConversationState, decisionId?: string) {
   if (decisionId !== undefined) return boundedId(decisionId);
-  return normalizeStableId(`decision:${stateDecisionId(state.sessionId, AGENT_V6_DEFAULT_SESSION_ID)}:${stateDecisionId(state.turnId, AGENT_V6_DEFAULT_TURN_ID)}:${state.graphRevision}`) ?? "";
+  return normalizeStableId(`decision_${stateDecisionId(state.sessionId, AGENT_V6_DEFAULT_SESSION_ID)}_${stateDecisionId(state.turnId, AGENT_V6_DEFAULT_TURN_ID)}_${state.graphRevision}`) ?? "";
 }
 
 function stateDecisionId(value: unknown, fallback: string) {
@@ -356,7 +363,13 @@ function isActive(phase: AgentV6Phase) {
 
 export function reduceConversation(state: ConversationState, event: ConversationEvent): ConversationState {
   if (event.type === "mode_changed") return { ...state, mode: event.mode };
-  if (event.type === "reset") return initialConversationState({ mode: state.mode, contextSnapshot: state.contextSnapshot, graphRevision: state.graphRevision });
+  if (event.type === "reset") return initialConversationState({
+    mode: state.mode,
+    sessionId: stateDecisionId(state.sessionId, AGENT_V6_DEFAULT_SESSION_ID),
+    turnId: nextTurnId(),
+    contextSnapshot: state.contextSnapshot,
+    graphRevision: state.graphRevision,
+  });
   if (event.type === "turn_failed") {
     return isActive(state.phase)
       ? { ...state, phase: "failed", executionState: "failed", error: boundedText(event.error ?? "Agent 执行失败。", 4_000), pendingDecision: state.pendingDecision, confirmed: Boolean(state.confirmed && state.pendingDecision) }
