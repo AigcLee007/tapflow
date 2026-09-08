@@ -52,6 +52,59 @@ describe("agentV6Api contract adapter", () => {
     expect(apiPost.mock.calls[0]?.[1]).toEqual({ projectId: null, flowId: null, graphRevision: 0, decision: { type: "confirm" } });
   });
 
+  it("normalizes a confirmation response with its pending decision", async () => {
+    apiPost.mockResolvedValue({
+      blocks: [],
+      phase: "executing",
+      executionState: "running",
+      sessionId: "s",
+      turnId: "t",
+      graphRevision: 4,
+      pendingDecision: {
+        type: "execute",
+        decisionId: "decision-1",
+        sessionId: "s",
+        turnId: "t",
+        graphRevision: 4,
+        payload: { prompt: "approved", asset: "data:image/png;base64,secret", provider: "must-drop" },
+        idempotencyKey: "idem-1",
+        costCredits: 12,
+        writesCanvas: true,
+      },
+    });
+
+    const response = await agentV6Api.confirmExecution("s", "t", {
+      projectId: "p",
+      flowId: "f",
+      graphRevision: 4,
+      type: "confirm",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(response.pendingDecision).toEqual({
+      type: "execute",
+      decisionId: "decision-1",
+      sessionId: "s",
+      turnId: "t",
+      graphRevision: 4,
+      payload: { prompt: "approved" },
+      idempotencyKey: "idem-1",
+      costCredits: 12,
+      writesCanvas: true,
+    });
+  });
+
+  it("sends the requested mode when creating a session", async () => {
+    apiPost.mockResolvedValue({ id: "s", title: "x", projectId: "p", flowId: "f", executionMode: "auto" });
+
+    await agentV6Api.createSession({ projectId: "p", flowId: "f", graphRevision: 0, title: "x", mode: "auto" });
+
+    expect(apiPost.mock.calls[0]).toEqual([
+      "/agent/sessions",
+      { title: "x", projectId: "p", flowId: "f", mode: "auto" },
+    ]);
+  });
+
   it("normalizes real history executionMode and carries the replay cursor", async () => {
     apiGet.mockResolvedValueOnce({
       session: { id: "s", title: "x", projectId: "p", flowId: "f", executionMode: "auto" },

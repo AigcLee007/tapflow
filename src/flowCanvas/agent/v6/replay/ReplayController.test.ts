@@ -76,17 +76,20 @@ describe("Agent V6 replay controller", () => {
         ...liveResponse,
         contextSnapshot: { projectId: "project-1", flowId: "flow-1", graphRevision: 3, injected: "drop" },
         plan: { costCredits: 999999999, injected: "drop" },
-        pendingDecision: { type: "execute", decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 3, payload: { secret: "drop" }, idempotencyKey: "idem-1", costCredits: 1 },
+        pendingDecision: { type: "execute", decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 3, payload: { prompt: "approved", secret: "drop" }, idempotencyKey: "idem-1", costCredits: 1 },
         error: "e".repeat(5000),
       },
     }]);
     expect(first.replaySeq).toBe(1);
     expect(first.contextSnapshot).not.toHaveProperty("injected");
     expect(first.plan?.costCredits).toBeLessThanOrEqual(1_000_000);
-    expect(first.pendingDecision?.payload).toEqual({});
+    expect(first.pendingDecision?.payload).toEqual({ prompt: "approved" });
     expect(first.error?.length).toBeLessThanOrEqual(4000);
     expect(controller.applyEvents([{ id: "event-1", seq: 1, eventType: "v6_response", eventJson: liveResponse }])).toBe(first);
-    expect(controller.applyEvents([{ id: "event-3", seq: 3, eventType: "v6_response", eventJson: { ...liveResponse, phase: "failed" } }])).toBe(first);
+    const gap = controller.applyEvents([{ id: "event-3", seq: 3, eventType: "v6_response", eventJson: { ...liveResponse, phase: "failed" } }]);
+    expect(gap.replaySeq).toBe(first.replaySeq);
+    expect(gap.replayCursor).toBe(first.replayCursor);
+    expect(gap.replayError).toBe("resync-required");
   });
 
   it("consumes an unknown event in the valid session scope so the next valid event is not blocked", () => {
@@ -129,6 +132,39 @@ describe("Agent V6 replay controller", () => {
     expect(state.sessionId).toBe("session-1");
     expect(state.mode).toBe("manual_confirmation");
     expect(state.replayError).toBe("resync-required");
+  });
+
+  it("rejects a first response that crosses the existing session scope", () => {
+    const controller = new ReplayController(scope, initialConversationState({ sessionId: "session-1", graphRevision: 3 }));
+    const state = controller.applyResponse({ ...liveResponse, sessionId: "other-session" });
+
+    expect(state.replaySeq).toBe(0);
+    expect(state.replayCursor).toBeNull();
+    expect(state.sessionId).toBe("session-1");
+    expect(state.replayError).toBe("resync-required");
+  });
+
+  it("marks a sequence gap for resync instead of silently dropping it", () => {
+    const controller = new ReplayController(scope);
+    controller.applyEvents([{ id: "event-1", seq: 1, eventType: "future_event", eventJson: { sessionId: "session-1", projectId: "project-1", flowId: "flow-1" } }]);
+
+    const state = controller.applyEvents([{ id: "event-3", seq: 3, eventType: "future_event", eventJson: { sessionId: "session-1", projectId: "project-1", flowId: "flow-1" } }]);
+
+    expect(state.replaySeq).toBe(1);
+    expect(state.replayCursor).toBe("event-1");
+    expect(state.replayError).toBe("resync-required");
+  });
+
+  it("keeps duplicate and old event cursor semantics while consuming unknown events", () => {
+    const controller = new ReplayController(scope);
+    const first = controller.applyEvents([{ id: "event-1", seq: 1, eventType: "future_event", eventJson: { sessionId: "session-1", projectId: "project-1", flowId: "flow-1" } }]);
+    const duplicate = controller.applyEvents([{ id: "event-1", seq: 1, eventType: "future_event", eventJson: {} }]);
+    const old = controller.applyEvents([{ id: "event-0", seq: 0, eventType: "future_event", eventJson: {} }]);
+
+    expect(duplicate).toBe(first);
+    expect(old).toBe(first);
+    expect(old.replayCursor).toBe("event-1");
+    expect(old.replayError).toBeNull();
   });
 
   it("validates embedded response scope even when the durable event scope is valid", () => {

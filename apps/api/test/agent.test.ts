@@ -74,11 +74,11 @@ async function registerOwner(api: ReturnType<typeof buildTestApp>, email: string
   return response.json();
 }
 
-async function createSession(api: ReturnType<typeof buildTestApp>, accessToken: string, title: string) {
+async function createSession(api: ReturnType<typeof buildTestApp>, accessToken: string, title: string, mode?: "auto" | "manual_confirmation") {
   const response = await api.inject({
     headers: { authorization: `Bearer ${accessToken}` },
     method: "POST",
-    payload: { flowId: null, projectId: null, title },
+    payload: { flowId: null, projectId: null, title, ...(mode ? { mode } : {}) },
     url: "/api/v2/agent/sessions",
   });
   expect(response.statusCode).toBe(201);
@@ -177,6 +177,35 @@ describeWithDatabase("agent routes", () => {
         expect(manualRead.statusCode).toBe(200);
         expect(manualRead.json()).toMatchObject({ executionMode: "manual_confirmation" });
 
+        await app.close();
+      } finally {
+        await appPool.end();
+        await adminPool.end();
+      }
+    });
+  });
+
+  test("persists the requested mode when creating a session", async () => {
+    await withDatabase(async ({ createAppDatabaseUrl, databaseUrl }) => {
+      process.env.DATABASE_URL = databaseUrl;
+      const adminPool = createPgPool();
+      let appPool = createPgPool();
+      try {
+        await runMigrations(adminPool);
+        appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
+        const app = buildTestApp(appPool);
+        const owner = await registerOwner(app, "agent-session-create-mode@example.com", "Agent Session Create Mode");
+        const session = await createSession(app, owner.accessToken, "Create Mode Session", "auto");
+
+        expect(session).toMatchObject({ executionMode: "auto" });
+
+        const read = await app.inject({
+          headers: { authorization: `Bearer ${owner.accessToken}` },
+          method: "GET",
+          url: `/api/v2/agent/sessions/${session.id}`,
+        });
+        expect(read.statusCode).toBe(200);
+        expect(read.json()).toMatchObject({ executionMode: "auto" });
         await app.close();
       } finally {
         await appPool.end();

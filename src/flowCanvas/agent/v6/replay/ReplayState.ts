@@ -27,13 +27,33 @@ function eventFor(type: ConversationEvent["type"], response: AgentV6Response): C
   return { type } as ConversationEvent;
 }
 
+const sensitivePayloadKeys = new Set(["provider", "route", "credential", "credentialid", "apikey", "baseurl", "signedurl", "authorization", "token", "secret", "password", "nonce", "authtag", "data", "blob", "html", "base64"]);
+function safePayload(value: unknown, depth = 0): Record<string, unknown> {
+  if (depth > 6 || value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 32)) {
+    if (sensitivePayloadKeys.has(key.toLowerCase().replace(/[^a-z0-9]/g, ""))) continue;
+    if (typeof item === "string") {
+      if (/^(?:data:|blob:|https?:\/\/)/i.test(item) || /\b(?:bearer|basic)\s+\S+/i.test(item)) continue;
+      result[key] = item.slice(0, 4000);
+    } else if (item === null || typeof item === "boolean" || (typeof item === "number" && Number.isFinite(item))) {
+      result[key] = item;
+    } else if (Array.isArray(item)) {
+      result[key] = item.slice(0, 12).map((entry) => typeof entry === "object" && entry !== null ? safePayload(entry, depth + 1) : entry).filter((entry) => entry !== null);
+    } else if (typeof item === "object") {
+      result[key] = safePayload(item, depth + 1);
+    }
+  }
+  return result;
+}
+
 function safeDecision(value: unknown): AgentDecision | null {
   const raw = asRecord(value);
   const type = raw.type;
   const decisionId = safeId(raw.decisionId); const sessionId = safeId(raw.sessionId); const turnId = safeId(raw.turnId); const idempotencyKey = safeId(raw.idempotencyKey);
   const graphRevision = safeNumber(raw.graphRevision, Number.MAX_SAFE_INTEGER);
   if (!decisionId || !sessionId || !turnId || !idempotencyKey || graphRevision === undefined) return null;
-  const base = { decisionId, sessionId, turnId, graphRevision: Math.floor(graphRevision), payload: {}, idempotencyKey };
+  const base = { decisionId, sessionId, turnId, graphRevision: Math.floor(graphRevision), payload: safePayload(raw.payload), idempotencyKey };
   if (type === "execute" || type === "confirm" || type === "cancel" || type === "select_choice" || type === "update_brief" || type === "refine") {
     const result: Record<string, unknown> = { ...base, type };
     if (type === "execute") {
@@ -75,7 +95,7 @@ function safePlan(value: unknown): ConversationState["plan"] {
 }
 
 function hasResponseScopeMismatch(state: ReplayState, response: AgentV6Response, scope: AgentV6Scope): boolean {
-  if (state.replaySeq > 0 && state.sessionId && response.sessionId !== state.sessionId) return true;
+  if (state.sessionId && response.sessionId !== state.sessionId) return true;
   if (response.projectId !== undefined && response.projectId !== scope.projectId) return true;
   if (response.flowId !== undefined && response.flowId !== scope.flowId) return true;
   const snapshot = asRecord(response.contextSnapshot);
@@ -106,7 +126,6 @@ export function applyResponse(state: ReplayState, response: AgentV6Response, sco
 }
 
 export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent, scope: AgentV6Scope): ReplayState {
-  if (!Number.isSafeInteger(event.seq) || event.seq <= state.replaySeq || event.seq !== state.replaySeq + 1) return state;
   const payload = asRecord(event.eventJson);
   const eventSessionId = safeId(event.sessionId) ?? safeId(payload.sessionId);
   const eventProjectId = event.projectId !== undefined ? event.projectId : (payload.projectId === null || typeof payload.projectId === "string" ? payload.projectId as string | null : undefined);
@@ -119,6 +138,9 @@ export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent
     || (eventFlowId !== undefined && responseCandidate.flowId !== undefined && responseCandidate.flowId !== eventFlowId)) {
     return { ...state, replayError: "resync-required" };
   }
+  if (!Number.isSafeInteger(event.seq)) return { ...state, replayError: "resync-required" };
+  if (event.seq <= state.replaySeq) return state;
+  if (event.seq !== state.replaySeq + 1) return { ...state, replayError: "resync-required" };
   if (!state.sessionId && event.sessionId && typeof responseCandidate.sessionId !== "string" && !payload.sessionId) {
     return { ...state, replayError: "resync-required" };
   }

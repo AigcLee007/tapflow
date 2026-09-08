@@ -1,7 +1,7 @@
 import { apiGet, apiPatch, apiPost } from "../../../../services/v2HttpClient";
 import type { CanvasAgentSnapshot } from "../../canvasAgentTypes";
 import type { AgentReferenceContext } from "../../agentReferenceContext";
-import type { AgentExecutionMode, AgentV6Phase, ConfirmationPlan, ConversationState } from "../protocol/conversationTypes";
+import type { AgentDecision, AgentExecutionMode, AgentV6Phase, ConfirmationPlan, ConversationState } from "../protocol/conversationTypes";
 import { normalizeBlocks } from "../protocol/blockNormalizer";
 import { initialConversationState } from "../protocol/conversationReducer";
 import { normalizeStableId } from "../protocol/stableId";
@@ -62,6 +62,39 @@ function safeDecision(value: unknown): Record<string, unknown> | null {
   if (type === "refine") return { type, ...(typeof source.resultId === "string" ? { resultId: source.resultId } : {}), ...(typeof source.prompt === "string" ? { prompt: source.prompt } : {}) };
   return null;
 }
+function safePendingDecision(value: unknown): ConversationState["pendingDecision"] {
+  const source = asRecord(value);
+  if (source.type !== "execute") return null;
+  const decisionId = normalizeStableId(source.decisionId);
+  const sessionId = normalizeStableId(source.sessionId);
+  const turnId = normalizeStableId(source.turnId);
+  const idempotencyKey = normalizeStableId(source.idempotencyKey);
+  const graphRevision = typeof source.graphRevision === "number" && Number.isSafeInteger(source.graphRevision) && source.graphRevision >= 0 ? source.graphRevision : null;
+  if (!decisionId || !sessionId || !turnId || !idempotencyKey || graphRevision === null) return null;
+  const sensitiveKeys = new Set(["provider", "route", "credential", "credentialid", "apikey", "baseurl", "signedurl", "authorization", "token", "secret", "password", "nonce", "authtag", "data", "blob", "html", "base64"]);
+  const sensitiveString = (input: string) => /^(?:data:|blob:)/i.test(input) || /\b(?:bearer|basic)\s+\S+/i.test(input) || /^ey[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i.test(input) || /^(?:sk-|rk-|gh[pousr]_|xox[baprs]-|AIza)/i.test(input);
+  const sanitize = (input: unknown, depth = 0): unknown => {
+    if (depth > 6) return null;
+    if (input === null || typeof input === "boolean") return input;
+    if (typeof input === "number") return Number.isFinite(input) ? input : null;
+    if (typeof input === "string") return sensitiveString(input) ? null : input.slice(0, 4000);
+    if (Array.isArray(input)) return input.slice(0, 12).map((item) => sanitize(item, depth + 1)).filter((item) => item !== null);
+    const record = asRecord(input);
+    const result: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(record).slice(0, 32)) {
+      if (sensitiveKeys.has(key.toLowerCase().replace(/[^a-z0-9]/g, ""))) continue;
+      const safe = sanitize(item, depth + 1);
+      if (safe !== null) result[key] = safe;
+    }
+    return result;
+  };
+  const payload = sanitize(source.payload);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const result: AgentDecision = { type: "execute", decisionId, sessionId, turnId, graphRevision, payload: payload as Record<string, unknown>, idempotencyKey };
+  if (typeof source.costCredits === "number" && Number.isFinite(source.costCredits) && source.costCredits >= 0) result.costCredits = source.costCredits;
+  for (const key of ["batch", "writesCanvas", "skill", "app", "requiresConfirmation"] as const) if (typeof source[key] === "boolean") result[key] = source[key];
+  return result;
+}
 function normalizeResponse(value: unknown, fallback: AgentV6Scope & { sessionId?: string; turnId?: string }): AgentV6Response {
   const source = asRecord(value);
   const phase = phaseSet.has(source.phase as AgentV6Phase) ? source.phase as AgentV6Phase : "understanding";
@@ -75,7 +108,7 @@ function normalizeResponse(value: unknown, fallback: AgentV6Scope & { sessionId?
   const blocks = normalizeBlocks(source.blocks ?? source.conversationBlocks ?? source.message);
   const progressBlock = normalizeBlocks([{ type: "progress_card", steps: source.progress }])[0];
   const resultBlock = normalizeBlocks([{ type: "result_group", results: source.results }])[0];
-  return { sessionId: normalizeStableId(source.sessionId) ?? fallback.sessionId ?? "", turnId: normalizeStableId(source.turnId) ?? fallback.turnId ?? "", phase, executionState, graphRevision, blocks, ...(source.projectId === null || typeof source.projectId === "string" ? { projectId: source.projectId as string | null } : {}), ...(source.flowId === null || typeof source.flowId === "string" ? { flowId: source.flowId as string | null } : {}), ...(source.mode === "auto" || source.mode === "manual_confirmation" ? { mode: source.mode } : {}), ...(source.contextSnapshot && typeof source.contextSnapshot === "object" ? { contextSnapshot: safeState.contextSnapshot } : {}), ...(source.plan && typeof source.plan === "object" ? { plan: safeState.plan } : {}), ...(progressBlock?.type === "progress_card" ? { progress: progressBlock.steps } : {}), ...(resultBlock?.type === "result_group" ? { results: resultBlock.results } : {}), ...(typeof source.prompt === "string" ? { prompt: source.prompt.slice(0, 4000) } : {}), ...(typeof source.error === "string" ? { error: source.error.slice(0, 4000) } : {}) };
+  return { sessionId: normalizeStableId(source.sessionId) ?? fallback.sessionId ?? "", turnId: normalizeStableId(source.turnId) ?? fallback.turnId ?? "", phase, executionState, graphRevision, blocks, ...(source.projectId === null || typeof source.projectId === "string" ? { projectId: source.projectId as string | null } : {}), ...(source.flowId === null || typeof source.flowId === "string" ? { flowId: source.flowId as string | null } : {}), ...(source.mode === "auto" || source.mode === "manual_confirmation" ? { mode: source.mode } : {}), ...(source.contextSnapshot && typeof source.contextSnapshot === "object" ? { contextSnapshot: safeState.contextSnapshot } : {}), ...(source.plan && typeof source.plan === "object" ? { plan: safeState.plan } : {}), ...(source.pendingDecision !== undefined ? { pendingDecision: safePendingDecision(source.pendingDecision) } : {}), ...(progressBlock?.type === "progress_card" ? { progress: progressBlock.steps } : {}), ...(resultBlock?.type === "result_group" ? { results: resultBlock.results } : {}), ...(typeof source.prompt === "string" ? { prompt: source.prompt.slice(0, 4000) } : {}), ...(typeof source.error === "string" ? { error: source.error.slice(0, 4000) } : {}) };
 }
 function normalizeCursor(value: unknown): string | null { return normalizeStableId(value) ?? null; }
 function normalizeDurableEvent(value: unknown): AgentV6DurableEvent | null {
@@ -110,7 +143,7 @@ function toHistoryResponse(turn: Record<string, unknown>, session: AgentV6Sessio
 }
 
 export const agentV6Api: AgentV6Api = {
-  createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), projectId: input.projectId, flowId: input.flowId })),
+  createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), projectId: input.projectId, flowId: input.flowId, mode: input.mode ?? "manual_confirmation" })),
   listSessions: async (input) => { const query = sessionQuery(input); const raw = await apiGet<unknown>(`/agent/sessions${query ? `?${query}` : ""}`); return Array.isArray(raw) ? raw.map(normalizeSession) : []; },
   getSession: async (sessionId, input) => { const query = sessionQuery(input); return normalizeSession(await apiGet<unknown>(`${sessionPath(sessionId)}${query ? `?${query}` : ""}`)); },
   getHistory: async (sessionId, input) => { const query = sessionQuery(input); const source = asRecord(await apiGet<unknown>(`${sessionPath(sessionId)}/history${query ? `?${query}` : ""}`)); const session = normalizeSession(source.session); const turns = Array.isArray(source.turns) ? source.turns : []; return { session, responses: turns.map((turn) => toHistoryResponse(asRecord(turn), session)), lastSeq: typeof source.lastSeq === "number" ? source.lastSeq : 0, replayCursor: normalizeCursor(source.replayCursor) }; },

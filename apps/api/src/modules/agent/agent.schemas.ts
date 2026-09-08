@@ -79,6 +79,7 @@ export const getAgentImageRunSettingsEstimateQuerySchema = z.object({
 
 export const createAgentSessionSchema = z.object({
   flowId: z.string().uuid().nullable().optional(),
+  mode: z.enum(["auto", "manual_confirmation"]).optional(),
   projectId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(1).max(120).optional(),
 });

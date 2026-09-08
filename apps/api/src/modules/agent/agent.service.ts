@@ -562,9 +562,10 @@ export class AgentService {
             flow_id,
             title,
             created_by,
+            execution_mode,
             updated_at
           )
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, now())
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, now())
           RETURNING
             id::text AS id,
             project_id::text AS project_id,
@@ -581,6 +582,7 @@ export class AgentService {
           input.flowId ?? null,
           input.title?.trim() || "Canvas Agent",
           context.userId,
+          input.mode ?? "manual_confirmation",
         ],
       );
       return this.mapSession(result.rows[0]!);
