@@ -59,12 +59,23 @@ describe("Agent V6 conversation reducer", () => {
     })).toBe(false);
   });
 
-  it("uses the default session and turn IDs consistently after confirmation", () => {
-    let state = applyBrief(initialConversationState(), { type: "brief_ready", graphRevision: 0 });
-    expect(state.sessionId).toBe("session");
-    expect(state.turnId).toBe("turn");
-    expect(state.pendingDecision?.sessionId).toBe("session");
-    expect(state.pendingDecision?.turnId).toBe("turn");
+  it("generates distinct injected IDs for missing session and turn IDs", () => {
+    const ids = ["generated-session", "generated-turn", "generated-decision", "generated-idempotency"];
+    const createId = vi.fn(() => ids.shift() ?? "fallback-id");
+    let state = initialConversationState({}, { createId });
+    expect(state.sessionId).toBe("generated-session");
+    expect(state.turnId).toBe("generated-turn");
+
+    state = reduceConversation(state, { type: "turn_submitted", prompt: "test" });
+    state = reduceConversation(state, { type: "brief_started" });
+    state = reduceConversation(state, { type: "brief_ready", graphRevision: 0 }, { createId });
+    expect(state.pendingDecision?.sessionId).toBe("generated-session");
+    expect(state.pendingDecision?.turnId).toBe("generated-turn");
+    expect(state.pendingDecision?.decisionId).toBe("generated-decision");
+    expect(state.pendingDecision?.idempotencyKey).toBe("generated-idempotency");
+    expect(state.pendingDecision?.decisionId).not.toBe(state.pendingDecision?.idempotencyKey);
+    expect(state.pendingDecision!.decisionId.length).toBeLessThanOrEqual(128);
+    expect(state.pendingDecision!.idempotencyKey.length).toBeLessThanOrEqual(128);
 
     state = reduceConversation(state, {
       type: "confirmation_granted",
@@ -76,26 +87,37 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, state.pendingDecision!)).toBe(true);
   });
 
-  it("uses the same safe fallback for missing and invalid session and turn IDs", () => {
+  it("generates unique IDs for missing and invalid session and turn IDs", () => {
+    const createId = vi.fn()
+      .mockReturnValueOnce("session-generated-1")
+      .mockReturnValueOnce("turn-generated-1")
+      .mockReturnValueOnce("session-generated-2")
+      .mockReturnValueOnce("turn-generated-2")
+      .mockReturnValueOnce("session-generated-3")
+      .mockReturnValueOnce("turn-generated-3");
     for (const overrides of [
       {},
       { sessionId: "https://signed.example/session", turnId: "eyJhbGciOiJIUzI1NiJ9.payload.signature" },
       { sessionId: undefined, turnId: null },
     ]) {
-      const state = initialConversationState(overrides as never);
-      expect(state.sessionId).toBe("session");
-      expect(state.turnId).toBe("turn");
-
-      const ready = applyBrief(state, { type: "brief_ready", graphRevision: 0 });
-      expect(ready.pendingDecision?.sessionId).toBe(state.sessionId);
-      expect(ready.pendingDecision?.turnId).toBe(state.turnId);
-      const confirmed = reduceConversation(ready, {
-        type: "confirmation_granted",
-        decisionId: ready.pendingDecision!.decisionId,
-        graphRevision: 0,
-      });
-      expect(canExecuteDecision(confirmed, confirmed.pendingDecision!)).toBe(true);
+      const state = initialConversationState(overrides as never, { createId });
+      expect(state.sessionId).toMatch(/^[A-Za-z0-9_-]+$/);
+      expect(state.turnId).toMatch(/^[A-Za-z0-9_-]+$/);
+      expect(state.sessionId).not.toBe("session");
+      expect(state.turnId).not.toBe("turn");
     }
+  });
+
+  it("accepts a legal maximum-length identity through confirmation", () => {
+    const sessionId = "s".repeat(128);
+    const turnId = "t".repeat(128);
+    let state = initialConversationState({ sessionId, turnId });
+    state = applyBrief(state, { type: "brief_ready", graphRevision: 0 });
+    expect(state.pendingDecision?.sessionId).toBe(sessionId);
+    expect(state.pendingDecision?.turnId).toBe(turnId);
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId: state.pendingDecision!.decisionId, graphRevision: 0 });
+    expect(state.phase).toBe("executing");
+    expect(canExecuteDecision(state, state.pendingDecision!)).toBe(true);
   });
 
   it("tracks execution state and requires matching confirmation metadata", () => {
@@ -117,7 +139,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 1 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 0 }, graphRevision: 1 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 1 });
-    const decision = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 1, payload: {}, idempotencyKey: "decision-1", costCredits: 0 };
+    const decision = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 1, payload: {}, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
     expect(canExecuteDecision(state, decision)).toBe(true);
     state = reduceConversation(state, { type: "verification_started" });
     expect(state.phase).toBe("verifying");
@@ -128,7 +150,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 2 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "decision-1", plan: { costCredits: 12, writesCanvas: true }, graphRevision: 2 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision-1", graphRevision: 2 });
-    const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: "decision-1", costCredits: 12, writesCanvas: true };
+    const base = { type: "execute" as const, decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 2, payload: {}, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 12, writesCanvas: true };
     expect(canExecuteDecision(state, { ...base, graphRevision: 3 })).toBe(false);
     expect(canExecuteDecision(state, { ...base, writesCanvas: false })).toBe(false);
     expect(canExecuteDecision(state, { ...base, costCredits: 11 })).toBe(false);
@@ -143,7 +165,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "d", graphRevision: 0, payload: { prompt: "approved", fields: { tone: "calm" } } });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
-    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm" } } })).toBe(true);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "replaced", fields: { tone: "calm" } } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", fields: { tone: "calm", route: "internal" } } })).toBe(false);
@@ -160,7 +182,7 @@ describe("Agent V6 conversation reducer", () => {
       payload: { prompt: "approved", parameters: { apiKey: "secret", signed_url: "temporary", baseUrl: "internal", safe: "ok" } },
     });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
-    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok" } } })).toBe(true);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", api_key: "secret" } } })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "approved", parameters: { safe: "ok", "signed-url": "temporary" } } })).toBe(false);
@@ -247,12 +269,13 @@ describe("Agent V6 conversation reducer", () => {
   it("returns failed conversations to explicit retry, revise, and recover phases", () => {
     let state = initialConversationState({ sessionId: "session-1", turnId: "turn-1", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", plan: { costCredits: 0 }, graphRevision: 0 });
-    expect(state.pendingDecision?.decisionId).toBe("decision_session-1_turn-1_0");
-    state = reduceConversation(state, { type: "confirmation_granted", decisionId: "decision_session-1_turn-1_0", graphRevision: 0 });
+    const decisionId = state.pendingDecision!.decisionId;
+    expect(decisionId.length).toBeLessThanOrEqual(128);
+    state = reduceConversation(state, { type: "confirmation_granted", decisionId, graphRevision: 0 });
     const failed = reduceConversation(state, { type: "turn_failed", error: "错误" });
     const retried = reduceConversation(failed, { type: "retry" });
     expect(retried.phase).toBe("executing");
-    expect(retried.pendingDecision?.decisionId).toBe("decision_session-1_turn-1_0");
+    expect(retried.pendingDecision?.decisionId).toBe(decisionId);
     expect(retried.confirmed).toBe(true);
     expect(canExecuteDecision(retried, retried.pendingDecision!)).toBe(true);
     const revised = reduceConversation(failed, { type: "revise" });
@@ -360,7 +383,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
-    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "i", costCredits: 0 };
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
     const circular: Record<string, unknown> = {};
     circular.self = circular;
     expect(() => canExecuteDecision(state, { ...base, payload: circular })).not.toThrow();
@@ -374,7 +397,7 @@ describe("Agent V6 conversation reducer", () => {
     let state = initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 0 });
     state = applyBrief(state, { type: "brief_ready", decisionId: "d", plan: {}, graphRevision: 0 });
     state = reduceConversation(state, { type: "confirmation_granted", decisionId: "d", graphRevision: 0 });
-    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: "d", costCredits: 0 };
+    const base = { type: "execute" as const, decisionId: "d", sessionId: "s", turnId: "t", graphRevision: 0, idempotencyKey: state.pendingDecision!.idempotencyKey, costCredits: 0 };
 
     const deeplyNested: Record<string, unknown> = {};
     let cursor = deeplyNested;
@@ -437,8 +460,9 @@ describe("Agent V6 conversation reducer", () => {
   it("generates the same required decision ID when brief_ready omits one", () => {
     const first = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
     const second = applyBrief(initialConversationState({ sessionId: "s", turnId: "t", graphRevision: 3 }), { type: "brief_ready", graphRevision: 3 });
-    expect(first.pendingDecision?.decisionId).toBe("decision_s_t_3");
-    expect(second.pendingDecision?.decisionId).toBe(first.pendingDecision?.decisionId);
+    expect(first.pendingDecision?.decisionId).toHaveLength(36);
+    expect(second.pendingDecision?.decisionId).not.toBe(first.pendingDecision?.decisionId);
+    expect(first.pendingDecision?.idempotencyKey).not.toBe(first.pendingDecision?.decisionId);
     expect(first.pendingDecision?.sessionId).toBe("s");
     expect(first.pendingDecision?.turnId).toBe("t");
   });
@@ -530,6 +554,22 @@ describe("Agent V6 conversation reducer", () => {
 
     const presented = { ...drafted, phase: "presenting_results" as const };
     expect(reduceConversation(presented, { type: "refinement_requested", resultId: "blob:https://local/result" })).toBe(presented);
+  });
+
+  it("requires the current question ID for choice submissions and ignores replay or out-of-order events", () => {
+    let state = reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "test" });
+    state = reduceConversation(state, { type: "choice_requested", id: "first-question" });
+    expect(reduceConversation(state, { type: "choice_submitted", optionIds: ["one"] } as never)).toBe(state);
+    expect(reduceConversation(state, { type: "choice_submitted", id: "old-question", optionIds: ["one"] })).toBe(state);
+
+    state = reduceConversation(
+      reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "new question" }),
+      { type: "choice_requested", id: "second-question" },
+    );
+    expect(reduceConversation(state, { type: "choice_submitted", id: "first-question", optionIds: ["one"] })).toBe(state);
+    const submitted = reduceConversation(state, { type: "choice_submitted", id: "second-question", optionIds: ["one"] });
+    expect(submitted.phase).toBe("drafting_brief");
+    expect(reduceConversation(submitted, { type: "choice_submitted", id: "second-question", optionIds: ["one"] })).toBe(submitted);
   });
 
   it("safely degrades malformed context arrays and nested references", () => {

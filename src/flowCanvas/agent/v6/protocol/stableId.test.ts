@@ -7,6 +7,7 @@ describe("Agent V6 stable IDs", () => {
     expect(normalizeStableId("node_01-safe")).toBe("node_01-safe");
     expect(normalizeStableId("550e8400-e29b-41d4-a716-446655440000")).toBe("550e8400-e29b-41d4-a716-446655440000");
     expect(normalizeStableId("a".repeat(128))).toBe("a".repeat(128));
+    expect(normalizeStableId("opaqueIdentifierThatLooksLikeBase64ButIsAnOpaqueId")).toBe("opaqueIdentifierThatLooksLikeBase64ButIsAnOpaqueId");
   });
 
   it("rejects empty, oversized, separator-edged, and non-ASCII IDs", () => {
