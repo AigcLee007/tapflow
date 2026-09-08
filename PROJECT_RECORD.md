@@ -6877,3 +6877,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added the V6 server schema, confirmation policy, safe response/replay projection, and orchestration adapter under `apps/api/src/modules/agent/v6`. New V6 turn and decision routes are authenticated and tenant-scoped, validate session project/flow ownership, preserve the required response shape, and delegate turn/decision work to the existing V5 Agent service rather than duplicating billing or provider execution.
 - Added focused coverage for ambiguous prompt state, scope rejection, confirmation requirements, safe response fields, stale graph conflict propagation, and duplicate turn idempotency. Focused Task 6 tests pass: 6 tests.
 - API build remains blocked by the pre-existing workflow-core/Redis export/type errors in `src/app.ts`, official skill modules, asset service, and workflow-runs service. The frontend build was not completed in this task run after the API-focused implementation; no V6 default entry was changed.
+
+## 2026-09-09 - Agent V6 Default Workspace Integration
+
+- Switched `CanvasAgentPanel` to render the V6 `AgentWorkspace` as the default user-facing Agent surface while retaining the V5 durable session adapter for session, turn, decision, history, and scope persistence.
+- Added V6 panel integration coverage and updated the existing panel contract tests from the removed V5 window expectation to the V6 workspace expectation. The Vitest command must exclude repository worktrees/review copies; otherwise those copies are discovered and make the run appear hung.
+- Local validation passed: V6 frontend suite 13 files / 143 tests, V6 workspace/protocol suite 12 files / 133 tests, API V6 suite 3 files / 15 passed with 1 skipped, Worker workflow-runtime 1 file / 16 tests, DB suite 22 files / 55 passed with 38 skipped, and `npm run build`.
+- Existing non-blocking build warnings remain for Browserslist freshness, CSS utility parsing, mixed static/dynamic imports, and large chunks. Authenticated staging browser acceptance has not been run in this environment; V6 rollout outside staging remains unapproved.
