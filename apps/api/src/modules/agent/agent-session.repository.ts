@@ -244,6 +244,10 @@ export class AgentSessionRepository {
         `,
         [sessionId],
       );
+      const cursor = await client.query<{ last_seq: string | null; replay_cursor: string | null }>(
+        `SELECT MAX(seq)::text AS last_seq, (array_agg(id::text ORDER BY seq DESC))[1] AS replay_cursor FROM agent_task_events WHERE session_id = $1::uuid`,
+        [sessionId],
+      );
 
       return {
         messages: messages.rows.map((row) => ({
@@ -255,6 +259,8 @@ export class AgentSessionRepository {
           sessionId: row.session_id,
         })),
         session: this.mapSession(session),
+        lastSeq: Number(cursor.rows[0]?.last_seq ?? 0),
+        replayCursor: cursor.rows[0]?.replay_cursor ?? null,
         turns: turns.rows.map((row) => ({
           agentVersion: row.agent_version,
           blocksJson: row.blocks_json ?? [],
@@ -613,7 +619,7 @@ export class AgentSessionRepository {
 
   async cancelTurn(
     context: AgentContext,
-    input: { reason?: string; turnId: string },
+    input: { reason?: string; sessionId: string; turnId: string },
   ): Promise<boolean> {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query(
@@ -624,12 +630,13 @@ export class AgentSessionRepository {
               lease_expires_at = NULL,
               error_json = COALESCE(error_json, '{}'::jsonb) || jsonb_build_object(
                 'code', 'AGENT_TURN_CANCELLED',
-                'reason', $3
+                'reason', $4
               ),
               updated_at = now()
-          WHERE tenant_id = $1::uuid AND id = $2::uuid
+          WHERE tenant_id = $1::uuid AND id = $2::uuid AND session_id = $3::uuid
+            AND status IN ('running', 'planned')
         `,
-        [context.tenantId, input.turnId, input.reason ?? "Cancelled by user"],
+        [context.tenantId, input.turnId, input.sessionId, input.reason ?? "Cancelled by user"],
       );
       return result.rowCount === 1;
     }, this.pool);

@@ -56,7 +56,21 @@ export const listAgentSessionsQuerySchema = z.object({
 
 export const getAgentEventsQuerySchema = z.object({
   afterSeq: z.coerce.number().int().nonnegative().optional(),
+  flowId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
 });
+
+export const agentSessionScopeSchema = z.object({
+  flowId: z.string().uuid().nullable().optional(),
+  graphRevision: z.number().int().nonnegative().optional(),
+  projectId: z.string().uuid().nullable().optional(),
+}).strict();
+
+export const cancelAgentTurnSchema = agentSessionScopeSchema.extend({
+  idempotencyKey: z.string().trim().min(1).max(200),
+  reason: z.string().trim().max(500).optional(),
+  turnId: z.string().uuid(),
+}).strict();
 
 export const getAgentImageRunSettingsEstimateQuerySchema = z.object({
   routeKey: z.string().trim().min(1).max(200),
@@ -163,6 +177,9 @@ export const createAgentV5TurnSchema = z.object({
 }).strict();
 
 export const updateAgentV5ModeSchema = z.object({
+  flowId: z.string().uuid().nullable().optional(),
+  graphRevision: z.number().int().nonnegative().optional(),
+  projectId: z.string().uuid().nullable().optional(),
   mode: z.enum(["auto", "manual_confirmation"]),
 }).strict();
 
@@ -279,6 +296,8 @@ export type CreateAgentV5DecisionInput = z.infer<typeof createAgentV5DecisionSch
 export type UpdateAgentV5ModeInput = z.infer<typeof updateAgentV5ModeSchema>;
 export type AgentReferenceContextInput = z.infer<typeof agentReferenceContextSchema>;
 export type GetAgentEventsQuery = z.infer<typeof getAgentEventsQuerySchema>;
+export type AgentSessionScopeInput = z.infer<typeof agentSessionScopeSchema>;
+export type CancelAgentTurnInput = z.infer<typeof cancelAgentTurnSchema>;
 export type GetAgentImageRunSettingsEstimateQuery = z.infer<typeof getAgentImageRunSettingsEstimateQuerySchema>;
 export type ListAgentSessionsQuery = z.infer<typeof listAgentSessionsQuerySchema>;
 export const executeAgentTurnSchema = createAgentTurnSchema;

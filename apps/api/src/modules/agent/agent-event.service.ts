@@ -32,8 +32,12 @@ export class AgentEventService {
   }
 
   async getReplay(context: AgentContext, sessionId: string, afterSeq = 0) {
+    const events = await this.repository.getSessionEvents(context, sessionId, afterSeq);
+    const last = events.at(-1);
     return {
-      events: await this.repository.getSessionEvents(context, sessionId, afterSeq),
+      events,
+      lastSeq: last?.seq ?? afterSeq,
+      replayCursor: last?.id ?? null,
     };
   }
 

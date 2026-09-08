@@ -114,4 +114,5 @@ export type ConversationState = {
   turnId?: string;
   replaySeq: number;
   replayCursor: string | null;
+  replayError: "resync-required" | null;
 };

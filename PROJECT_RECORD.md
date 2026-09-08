@@ -6850,3 +6850,10 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added shared dismissible-layer behavior to the V6 Agent History surface, including Escape, outside click, and mutual exclusion with capability, mode, and model menus. Workspace overlay ownership is now represented by one active-layer state; `CanvasAgentPanel` was not changed.
 - Made history date labels testable with an injected clock and fixed workspace fixtures to `2026-09-09`, removing dependence on the machine's current date.
 - Focused validation passed: V6 workspace 2 files / 9 tests, V6 protocol 4 files / 79 tests, `npm run build`, and `git diff --check`. Build warnings are existing Browserslist, CSS utility, mixed-import, and chunk-size warnings.
+
+## 2026-09-09 - Agent V6 Task 5 Replay And Cancel Contract Fix
+
+- Normalized real session history `executionMode` to the V6 `mode` field and carried history/event `lastSeq` plus `replayCursor` through the frontend adapter and replay state.
+- Durable replay now consumes unknown events when session/project/flow scope is valid, advances the cursor so later valid events continue, and marks scope mismatches as `resync-required` instead of silently blocking.
+- Mode, history, event, decision, and cancel requests now carry supported project/flow scope. Server routes validate session scope, and cancellation requires an explicit `turnId` and returns the actual canceled turn response for normal replay projection.
+- Focused validation passed: all V6 tests (10 files / 119 tests), API V6 contract tests (2 tests), API build, frontend build, and `git diff --check`. The existing API integration suite remains blocked by unrelated duplicate `agentV2Enabled` declarations in the pre-existing modified `apps/api/src/config/env.ts`.

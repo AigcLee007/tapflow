@@ -8,6 +8,8 @@ import {
   type ApplyAgentCanvasOpsInput,
   type CreateAgentV5DecisionInput,
   type CreateAgentV5TurnInput,
+  type AgentSessionScopeInput,
+  type CancelAgentTurnInput,
   type CreateAgentMessageInput,
   type CreateAgentSessionInput,
   type CreateAgentTurnInput,
@@ -24,6 +26,8 @@ import {
   createAgentTurnSchema,
   createAgentV5DecisionSchema,
   createAgentV5TurnSchema,
+  agentSessionScopeSchema,
+  cancelAgentTurnSchema,
   executeAgentTurnSchema,
   getAgentEventsQuerySchema,
   getAgentImageRunSettingsEstimateQuerySchema,
@@ -238,7 +242,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        return reply.send(await app.agentService.getSession(getAgentContext(request), params.sessionId));
+        const scope = parseQuery<AgentSessionScopeInput>(request, agentSessionScopeSchema);
+        return reply.send(await app.agentService.getSession(getAgentContext(request), params.sessionId, scope));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -253,7 +258,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        return reply.send(await app.agentService.getSessionHistory(getAgentContext(request), params.sessionId));
+        const scope = parseQuery<AgentSessionScopeInput>(request, agentSessionScopeSchema);
+        return reply.send(await app.agentService.getSessionHistory(getAgentContext(request), params.sessionId, scope));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -274,6 +280,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
             getAgentContext(request),
             params.sessionId,
             query.afterSeq ?? 0,
+            query,
           ),
         );
       } catch (error) {
@@ -295,6 +302,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
           getAgentContext(request),
           params.sessionId,
           query.afterSeq ?? 0,
+          query,
         );
 
         reply.raw.setHeader("cache-control", "no-cache");
@@ -361,7 +369,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<UpdateAgentV5ModeInput>(request, updateAgentV5ModeSchema);
-        return reply.send(await app.agentService.setV5ExecutionMode(getAgentContext(request), params.sessionId, body.mode));
+        return reply.send(await app.agentService.setV5ExecutionMode(getAgentContext(request), params.sessionId, body));
       } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
@@ -372,8 +380,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
-        const body = z.object({ decision: createAgentV5DecisionSchema }).strict().parse(request.body) as { decision: CreateAgentV5DecisionInput };
-        return reply.send(await app.agentService.recordV5Decision(getAgentContext(request), params.sessionId, params.turnId, body.decision));
+        const body = z.object({ ...agentSessionScopeSchema.shape, decision: createAgentV5DecisionSchema }).strict().parse(request.body) as AgentSessionScopeInput & { decision: CreateAgentV5DecisionInput };
+        return reply.send(await app.agentService.recordV5Decision(getAgentContext(request), params.sessionId, params.turnId, body.decision, body));
       } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
@@ -477,8 +485,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const body = z.object({ reason: z.string().trim().max(500).optional() }).strict().parse(request.body);
-        return reply.send(await app.agentService.cancelV2Turn(getAgentContext(request), params.sessionId, body.reason));
+        const body = parseBody<CancelAgentTurnInput>(request, cancelAgentTurnSchema);
+        return reply.send(await app.agentService.cancelV2Turn(getAgentContext(request), params.sessionId, body));
       } catch (error) { return handleRouteError(error, request, reply); }
     },
   );

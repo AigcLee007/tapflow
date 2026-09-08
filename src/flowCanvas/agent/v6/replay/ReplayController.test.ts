@@ -34,7 +34,7 @@ describe("Agent V6 replay controller", () => {
       responses: [
         { ...liveResponse, phase: "understanding", blocks: [{ type: "paragraph", text: "你好" }] },
         { ...liveResponse, phase: "waiting_for_choice" },
-      ],
+      ], lastSeq: 0, replayCursor: null,
     });
     expect(state.mode).toBe("auto");
     expect(state.phase).toBe("waiting_for_choice");
@@ -53,7 +53,7 @@ describe("Agent V6 replay controller", () => {
         blocks: [{ type: "result_group", id: "results", results: [{ id: "result-1", label: "结果" }] }],
         plan: { costCredits: 1 },
         pendingDecision: { type: "execute", decisionId: "decision-1", sessionId: "session-1", turnId: "turn-1", graphRevision: 3, payload: {}, idempotencyKey: "decision-idem", costCredits: 1 },
-      }],
+      }], lastSeq: 0, replayCursor: null,
     });
     expect(state.phase).toBe("presenting_results");
     expect(state.results).toEqual([{ id: "result-1", label: "结果" }]);
@@ -63,7 +63,7 @@ describe("Agent V6 replay controller", () => {
     const controller = new ReplayController(scope);
     const initial = controller.state;
     expect(controller.applyResponse({ ...liveResponse, graphRevision: 2 })).toBe(initial);
-    expect(controller.applyResponse({ ...liveResponse, projectId: "other-project" } as AgentV6Response & { projectId: string })).toBe(initial);
+    expect(controller.applyResponse({ ...liveResponse, projectId: "other-project" } as AgentV6Response & { projectId: string }).replayError).toBe("resync-required");
   });
 
   it("normalizes replay fields and rejects duplicate or out-of-order durable events", () => {
@@ -87,5 +87,28 @@ describe("Agent V6 replay controller", () => {
     expect(first.error?.length).toBeLessThanOrEqual(4000);
     expect(controller.applyEvents([{ id: "event-1", seq: 1, eventType: "v6_response", eventJson: liveResponse }])).toBe(first);
     expect(controller.applyEvents([{ id: "event-3", seq: 3, eventType: "v6_response", eventJson: { ...liveResponse, phase: "failed" } }])).toBe(first);
+  });
+
+  it("consumes an unknown event in the valid session scope so the next valid event is not blocked", () => {
+    const controller = new ReplayController(scope);
+    const state = controller.applyEvents([
+      { id: "event-1", seq: 1, eventType: "future_event", eventJson: { sessionId: "session-1", projectId: "project-1", flowId: "flow-1" } },
+      { id: "event-2", seq: 2, eventType: "v6_response", eventJson: { ...liveResponse, phase: "waiting_for_choice" } },
+    ]);
+
+    expect(state.replaySeq).toBe(2);
+    expect(state.replayCursor).toBe("event-2");
+    expect(state.phase).toBe("waiting_for_choice");
+    expect(state.replayError).toBeNull();
+  });
+
+  it("marks a scope-mismatched event as resync-required without blocking a later explicit resync", () => {
+    const controller = new ReplayController(scope);
+    const state = controller.applyEvents([
+      { id: "event-1", seq: 1, eventType: "future_event", eventJson: { sessionId: "session-1", projectId: "other-project", flowId: "flow-1" } },
+    ]);
+
+    expect(state.replaySeq).toBe(0);
+    expect(state.replayError).toBe("resync-required");
   });
 });

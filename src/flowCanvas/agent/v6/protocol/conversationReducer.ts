@@ -82,6 +82,7 @@ export function initialConversationState(overrides: Partial<ConversationState> =
     contextSnapshot: context,
     replaySeq: typeof overrides.replaySeq === "number" && Number.isInteger(overrides.replaySeq) && overrides.replaySeq >= 0 ? overrides.replaySeq : 0,
     replayCursor: typeof overrides.replayCursor === "string" ? boundedId(overrides.replayCursor) || null : null,
+    replayError: overrides.replayError === "resync-required" ? "resync-required" : null,
   };
   return {
     ...baseState,

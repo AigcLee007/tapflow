@@ -79,8 +79,8 @@ export function createReplayState(scope: AgentV6Scope, seed?: string, mode?: Con
 }
 
 export function applyResponse(state: ReplayState, response: AgentV6Response, scope: AgentV6Scope): ReplayState {
-  if (response.projectId !== undefined && response.projectId !== scope.projectId) return state;
-  if (response.flowId !== undefined && response.flowId !== scope.flowId) return state;
+  if (response.projectId !== undefined && response.projectId !== scope.projectId) return { ...state, replayError: "resync-required" };
+  if (response.flowId !== undefined && response.flowId !== scope.flowId) return { ...state, replayError: "resync-required" };
   if (response.graphRevision < state.graphRevision || response.graphRevision < scope.graphRevision) return state;
   const normalizedBlocks = normalizeBlocks(response.blocks);
   let next = initialConversationState({ mode: response.mode ?? state.mode, sessionId: response.sessionId, turnId: response.turnId, prompt: response.prompt ?? state.prompt, contextSnapshot: response.contextSnapshot ?? state.contextSnapshot, graphRevision: response.graphRevision }, { replaySeed: response.sessionId });
@@ -90,12 +90,16 @@ export function applyResponse(state: ReplayState, response: AgentV6Response, sco
   const contextSnapshot = next.contextSnapshot;
   const safePlanValue = response.plan === undefined ? next.plan : safePlan(response.plan);
   const safePendingDecision = response.pendingDecision === undefined ? next.pendingDecision : safeDecision(response.pendingDecision);
-  return { ...next, sessionId: response.sessionId || next.sessionId, turnId: response.turnId || next.turnId, graphRevision: response.graphRevision, contextSnapshot, blocks: normalizedBlocks.length ? normalizedBlocks : next.blocks, progress: response.progress === undefined ? progress : safeProgress(response.progress), results: response.results === undefined ? resultRefs : safeResults(response.results), plan: safePlanValue, pendingDecision: safePendingDecision, prompt: response.prompt === undefined ? next.prompt : boundedText(response.prompt), error: response.error === undefined ? next.error : boundedText(response.error), executionState: response.executionState ?? next.executionState, replaySeq: state.replaySeq, replayCursor: state.replayCursor };
+  return { ...next, sessionId: response.sessionId || next.sessionId, turnId: response.turnId || next.turnId, graphRevision: response.graphRevision, contextSnapshot, blocks: normalizedBlocks.length ? normalizedBlocks : next.blocks, progress: response.progress === undefined ? progress : safeProgress(response.progress), results: response.results === undefined ? resultRefs : safeResults(response.results), plan: safePlanValue, pendingDecision: safePendingDecision, prompt: response.prompt === undefined ? next.prompt : boundedText(response.prompt), error: response.error === undefined ? next.error : boundedText(response.error), executionState: response.executionState ?? next.executionState, replaySeq: state.replaySeq, replayCursor: state.replayCursor, replayError: null };
 }
 
 export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent, scope: AgentV6Scope): ReplayState {
   if (!Number.isSafeInteger(event.seq) || event.seq <= state.replaySeq || event.seq !== state.replaySeq + 1) return state;
   const payload = asRecord(event.eventJson);
+  const eventSessionId = safeId(payload.sessionId);
+  const eventProjectId = payload.projectId === null || typeof payload.projectId === "string" ? payload.projectId as string | null : undefined;
+  const eventFlowId = payload.flowId === null || typeof payload.flowId === "string" ? payload.flowId as string | null : undefined;
+  if (eventSessionId && state.replaySeq > 0 && eventSessionId !== state.sessionId || eventProjectId !== undefined && eventProjectId !== scope.projectId || eventFlowId !== undefined && eventFlowId !== scope.flowId) return { ...state, replayError: "resync-required" };
   const response = asRecord(payload.response);
   let next = state;
   if (event.eventType === "v6_response" || typeof response.phase === "string" || typeof payload.phase === "string") next = applyResponse(state, (response.phase ? response : payload) as AgentV6Response, scope);
@@ -106,11 +110,14 @@ export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent
     else if (type === "execution_started" || type === "verification_started" || type === "results_presented") next = reduceConversation(state, { type });
     const blocks = normalizeBlocks(payload.blocks); if (blocks.length) next = { ...next, blocks };
   }
-  return next === state ? state : { ...next, replaySeq: event.seq, replayCursor: safeId(event.id) ?? null };
+  if (next === state) {
+    return { ...state, sessionId: eventSessionId ?? state.sessionId, replaySeq: event.seq, replayCursor: safeId(event.id) ?? null, replayError: null };
+  }
+  return { ...next, replaySeq: event.seq, replayCursor: safeId(event.id) ?? null, replayError: null };
 }
 
 export function restoreHistory(history: AgentV6History, scope: AgentV6Scope): ReplayState {
   let state = createReplayState(scope, history.session.id, history.session.mode);
   for (const response of history.responses) state = applyResponse(state, response, scope);
-  return reduceConversation(state, { type: "mode_changed", mode: history.session.mode });
+  return { ...reduceConversation(state, { type: "mode_changed", mode: history.session.mode }), replaySeq: history.lastSeq, replayCursor: history.replayCursor, replayError: null };
 }

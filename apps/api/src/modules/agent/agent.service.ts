@@ -27,6 +27,8 @@ import type {
   CanvasAgentSnapshotInput,
   CreateAgentSessionInput,
   CreateAgentTurnInput,
+  AgentSessionScopeInput,
+  CancelAgentTurnInput,
 } from "./agent.schemas.js";
 import { V2AgentTurnLoop, type V2AgentToolExecution } from "./v2/agent-turn-loop.js";
 import { V2WorkflowRunAdapter } from "./v2/v2-workflow-run-adapter.js";
@@ -59,6 +61,8 @@ type AgentSessionRow = {
   title: string;
   updated_at: string;
 };
+
+type AgentSessionScope = Pick<AgentSessionScopeInput, "projectId" | "flowId">;
 
 type AgentTurnRow = {
   assistant_message_id: string | null;
@@ -582,7 +586,7 @@ export class AgentService {
     }, this.pool);
   }
 
-  async getSession(context: AgentContext, sessionId: string) {
+  async getSession(context: AgentContext, sessionId: string, scope: AgentSessionScope = {}) {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<AgentSessionRow>(
         `
@@ -604,7 +608,7 @@ export class AgentService {
       if (result.rowCount === 0) {
         throw new AgentApiError(404, "AGENT_SESSION_NOT_FOUND", "Agent session not found.");
       }
-
+      this.assertSessionScope({ projectId: result.rows[0]!.project_id, flowId: result.rows[0]!.flow_id }, scope);
       return this.mapSession(result.rows[0]!);
     }, this.pool);
   }
@@ -620,16 +624,20 @@ export class AgentService {
     }
   }
 
-  async getSessionHistory(context: AgentContext, sessionId: string) {
+  async getSessionHistory(context: AgentContext, sessionId: string, scope: AgentSessionScope = {}) {
     try {
+      const session = await this.sessionRepository.getSession(context, sessionId);
+      this.assertSessionScope({ projectId: session.projectId, flowId: session.flowId }, scope);
       return await this.sessionRepository.getSessionHistory(context, sessionId);
     } catch (error) {
       return toAgentRepositoryError(error);
     }
   }
 
-  async getSessionEvents(context: AgentContext, sessionId: string, afterSeq = 0) {
+  async getSessionEvents(context: AgentContext, sessionId: string, afterSeq = 0, scope: AgentSessionScope = {}) {
     try {
+      const session = await this.sessionRepository.getSession(context, sessionId);
+      this.assertSessionScope({ projectId: session.projectId, flowId: session.flowId }, scope);
       return await this.eventService.getReplay(context, sessionId, afterSeq);
     } catch (error) {
       return toAgentRepositoryError(error);
@@ -650,7 +658,9 @@ export class AgentService {
     return this.runSettingsService.estimateImageRunSettings(context, input);
   }
 
-  async buildSessionEventsStream(context: AgentContext, sessionId: string, afterSeq = 0) {
+  async buildSessionEventsStream(context: AgentContext, sessionId: string, afterSeq = 0, scope: AgentSessionScope = {}) {
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    this.assertSessionScope(session, scope);
     try {
       return await this.eventService.buildReplayStream(context, sessionId, afterSeq);
     } catch (error) {
@@ -922,7 +932,9 @@ export class AgentService {
     }, this.pool);
   }
 
-  async setV5ExecutionMode(context: AgentContext, sessionId: string, mode: "auto" | "manual_confirmation") {
+  async setV5ExecutionMode(context: AgentContext, sessionId: string, input: { mode: "auto" | "manual_confirmation" } & AgentSessionScopeInput) {
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    this.assertSessionScope(session, input);
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<AgentSessionRow>(
         `
@@ -932,16 +944,17 @@ export class AgentService {
           RETURNING id::text AS id, project_id::text AS project_id, flow_id::text AS flow_id, title, status,
             execution_mode, conversation_phase, created_at::text AS created_at, updated_at::text AS updated_at
         `,
-        [sessionId, mode],
+        [sessionId, input.mode],
       );
       if (result.rowCount === 0) throw new AgentApiError(404, "AGENT_SESSION_NOT_FOUND", "Agent session not found.");
       return this.mapSession(result.rows[0]!);
     }, this.pool);
   }
 
-  async recordV5Decision(context: AgentContext, sessionId: string, turnId: string, decision: CreateAgentV5DecisionInput) {
+  async recordV5Decision(context: AgentContext, sessionId: string, turnId: string, decision: CreateAgentV5DecisionInput, scope: AgentSessionScopeInput = {}) {
     return withTenantTransaction(context, async (client) => {
       const session = await this.requireSession(client, sessionId, true);
+      this.assertSessionScope({ projectId: session.project_id, flowId: session.flow_id }, scope);
       const found = await client.query<V5TurnRow>(
         `
           SELECT id::text AS id, session_id::text AS session_id, blocks_json, conversation_phase,
@@ -1408,19 +1421,38 @@ export class AgentService {
     return { status: tool.arguments.status, summary: tool.arguments.summary };
   }
 
-  async cancelV2Turn(context: AgentContext, sessionId: string, reason?: string) {
+  async cancelV2Turn(context: AgentContext, sessionId: string, input: CancelAgentTurnInput) {
+    const session = await this.sessionRepository.getSession(context, sessionId);
+    this.assertSessionScope(session, input);
     const history = await this.sessionRepository.getSessionHistory(context, sessionId);
-    const turn = [...history.turns].reverse().find((item) => item.status === "running" || item.status === "planned");
-    if (!turn) return { cancelled: false };
-    const cancelled = await this.sessionRepository.cancelTurn(context, { turnId: turn.id, reason });
+    const turn = history.turns.find((item) => item.id === input.turnId);
+    if (!turn || turn.sessionId !== sessionId) throw new AgentApiError(404, "AGENT_TURN_NOT_FOUND", "Agent turn not found.");
+    const cancellable = turn.status === "running" || turn.status === "planned";
+    if (!cancellable) return { cancelled: false, turnId: turn.id };
+    const cancelled = await this.sessionRepository.cancelTurn(context, { sessionId, turnId: turn.id, reason: input.reason });
     if (cancelled && this.skillRunService) {
       const runs = await withTenantTransaction(context, async (client) => {
         const result = await client.query<{ id: string }>(`SELECT id::text AS id FROM agent_skill_runs WHERE tenant_id = $1::uuid AND session_id = $2::uuid AND turn_id = $3::uuid AND status NOT IN ('succeeded','partial_success','failed','cancelled')`, [context.tenantId, sessionId, turn.id]);
         return result.rows.map((row) => row.id);
       }, this.pool);
-      await Promise.all(runs.map((runId) => this.skillRunService!.cancel(context, runId, reason)));
+      await Promise.all(runs.map((runId) => this.skillRunService!.cancel(context, runId, input.reason)));
     }
-    return { cancelled, turnId: turn.id };
+    return { cancelled, turnId: turn.id, response: {
+      sessionId,
+      turnId: turn.id,
+      projectId: session.projectId,
+      flowId: session.flowId,
+      phase: "failed" as const,
+      executionState: "failed" as const,
+      graphRevision: turn.graphRevision ?? 0,
+      blocks: turn.blocksJson,
+      error: input.reason || "已取消",
+    } };
+  }
+
+  private assertSessionScope(session: { projectId: string | null; flowId: string | null }, scope: AgentSessionScope): void {
+    if (scope.projectId !== undefined && scope.projectId !== session.projectId) throw new AgentApiError(409, "AGENT_SESSION_SCOPE_MISMATCH", "Agent session is not bound to the requested project.");
+    if (scope.flowId !== undefined && scope.flowId !== session.flowId) throw new AgentApiError(409, "AGENT_SESSION_SCOPE_MISMATCH", "Agent session is not bound to the requested flow.");
   }
 
   async approveV2SkillRun(context: AgentContext, sessionId: string, runId: string) {

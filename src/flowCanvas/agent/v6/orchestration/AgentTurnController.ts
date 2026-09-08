@@ -46,7 +46,7 @@ export class AgentTurnController {
 
   async cancel(input: AgentV6CancelInput): Promise<AgentV6Response> {
     const result = await this.api.cancelTurn(input.sessionId, input);
-    const response: AgentV6Response = {
+    const response: AgentV6Response = result.response ?? {
       sessionId: input.sessionId,
       turnId: result.turnId ?? input.turnId ?? "",
       projectId: input.projectId,

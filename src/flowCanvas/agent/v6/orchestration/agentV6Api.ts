@@ -15,20 +15,20 @@ export type AgentV6Response = {
   pendingDecision?: ConversationState["pendingDecision"]; progress?: ConversationState["progress"]; results?: ConversationState["results"];
   prompt?: string | null; error?: string | null;
 };
-export type AgentV6History = { session: AgentV6Session; responses: AgentV6Response[] };
+export type AgentV6History = { session: AgentV6Session; responses: AgentV6Response[]; lastSeq: number; replayCursor: string | null };
 export type AgentV6DurableEvent = { id: string; seq: number; eventType: string; eventJson: Record<string, unknown> };
-export type AgentV6EventsResponse = { events: AgentV6DurableEvent[] };
+export type AgentV6EventsResponse = { events: AgentV6DurableEvent[]; lastSeq: number; replayCursor: string | null; resyncRequired?: boolean };
 export type AgentV6TurnInput = AgentV6Scope & { prompt: string; idempotencyKey: string; mode?: AgentExecutionMode; modelKey?: string | null; contextSnapshot?: ConversationState["contextSnapshot"]; referenceContext?: AgentReferenceContext; snapshot?: CanvasAgentSnapshot };
 export type AgentV6DecisionInput = AgentV6Scope & { type: string; payload?: Record<string, unknown>; idempotencyKey: string; [key: string]: unknown };
-export type AgentV6CancelInput = AgentV6Scope & { sessionId: string; turnId?: string; idempotencyKey: string; reason?: string };
-export type AgentV6CancelResponse = { cancelled: boolean; turnId?: string };
+export type AgentV6CancelInput = AgentV6Scope & { sessionId: string; turnId: string; idempotencyKey: string; reason?: string };
+export type AgentV6CancelResponse = { cancelled: boolean; turnId?: string; response?: AgentV6Response };
 
 export type AgentV6Api = {
   createSession(input: AgentV6Scope & { title?: string; mode?: AgentExecutionMode }): Promise<AgentV6Session>;
   listSessions(input: AgentV6Scope): Promise<AgentV6Session[]>;
   getSession(sessionId: string, input: AgentV6Scope): Promise<AgentV6Session>;
   getHistory(sessionId: string, input: AgentV6Scope): Promise<AgentV6History>;
-  listEvents(sessionId: string, input?: { afterSeq?: number }): Promise<AgentV6DurableEvent[]>;
+  listEvents(sessionId: string, input?: { projectId?: string | null; flowId?: string | null; afterSeq?: number }): Promise<AgentV6EventsResponse>;
   submitTurn(sessionId: string, input: AgentV6TurnInput): Promise<AgentV6Response>;
   submitDecision(sessionId: string, turnId: string, input: AgentV6DecisionInput): Promise<AgentV6Response>;
   confirmExecution(sessionId: string, turnId: string, input: AgentV6DecisionInput): Promise<AgentV6Response>;
@@ -77,6 +77,7 @@ function normalizeResponse(value: unknown, fallback: AgentV6Scope & { sessionId?
   const resultBlock = normalizeBlocks([{ type: "result_group", results: source.results }])[0];
   return { sessionId: normalizeStableId(source.sessionId) ?? fallback.sessionId ?? "", turnId: normalizeStableId(source.turnId) ?? fallback.turnId ?? "", phase, executionState, graphRevision, blocks, ...(source.projectId === null || typeof source.projectId === "string" ? { projectId: source.projectId as string | null } : {}), ...(source.flowId === null || typeof source.flowId === "string" ? { flowId: source.flowId as string | null } : {}), ...(source.mode === "auto" || source.mode === "manual_confirmation" ? { mode: source.mode } : {}), ...(source.contextSnapshot && typeof source.contextSnapshot === "object" ? { contextSnapshot: safeState.contextSnapshot } : {}), ...(source.plan && typeof source.plan === "object" ? { plan: safeState.plan } : {}), ...(progressBlock?.type === "progress_card" ? { progress: progressBlock.steps } : {}), ...(resultBlock?.type === "result_group" ? { results: resultBlock.results } : {}), ...(typeof source.prompt === "string" ? { prompt: source.prompt.slice(0, 4000) } : {}), ...(typeof source.error === "string" ? { error: source.error.slice(0, 4000) } : {}) };
 }
+function normalizeCursor(value: unknown): string | null { return normalizeStableId(value) ?? null; }
 function normalizeSession(value: unknown): AgentV6Session {
   const source = asRecord(value);
   return {
@@ -89,18 +90,18 @@ function normalizeSession(value: unknown): AgentV6Session {
   };
 }
 function toHistoryResponse(turn: Record<string, unknown>, session: AgentV6Session): AgentV6Response {
-  return normalizeResponse({ sessionId: session.id, turnId: turn.id, phase: turn.phase ?? turn.conversationPhase, executionState: turn.executionState, graphRevision: turn.graphRevision, blocks: turn.blocks ?? turn.blocksJson, plan: turn.plan ?? turn.planJson, error: asRecord(turn.errorJson).message }, { ...session, sessionId: session.id, turnId: typeof turn.id === "string" ? turn.id : undefined });
+  return normalizeResponse({ sessionId: session.id, projectId: session.projectId, flowId: session.flowId, turnId: turn.id, phase: turn.phase ?? turn.conversationPhase, executionState: turn.executionState, mode: session.mode, graphRevision: turn.graphRevision, blocks: turn.blocks ?? turn.blocksJson, plan: turn.plan ?? turn.planJson, error: asRecord(turn.errorJson).message }, { ...session, sessionId: session.id, turnId: typeof turn.id === "string" ? turn.id : undefined, graphRevision: typeof turn.graphRevision === "number" ? turn.graphRevision : 0 });
 }
 
 export const agentV6Api: AgentV6Api = {
   createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), projectId: input.projectId, flowId: input.flowId })),
   listSessions: async (input) => { const query = sessionQuery(input); const raw = await apiGet<unknown>(`/agent/sessions${query ? `?${query}` : ""}`); return Array.isArray(raw) ? raw.map(normalizeSession) : []; },
-  getSession: async (sessionId) => normalizeSession(await apiGet<unknown>(sessionPath(sessionId))),
-  getHistory: async (sessionId) => { const source = asRecord(await apiGet<unknown>(`${sessionPath(sessionId)}/history`)); const session = (source.session ?? {}) as AgentV6Session; const turns = Array.isArray(source.turns) ? source.turns : []; return { session, responses: turns.map((turn) => toHistoryResponse(asRecord(turn), session)) }; },
-  listEvents: async (sessionId, input) => { const query = input?.afterSeq === undefined ? "" : `?afterSeq=${encodeURIComponent(String(Math.max(0, Math.floor(input.afterSeq))))}`; const raw = await apiGet<AgentV6EventsResponse>(`${sessionPath(sessionId)}/events${query}`); return Array.isArray(raw.events) ? raw.events : []; },
+  getSession: async (sessionId, input) => { const query = sessionQuery(input); return normalizeSession(await apiGet<unknown>(`${sessionPath(sessionId)}${query ? `?${query}` : ""}`)); },
+  getHistory: async (sessionId, input) => { const query = sessionQuery(input); const source = asRecord(await apiGet<unknown>(`${sessionPath(sessionId)}/history${query ? `?${query}` : ""}`)); const session = normalizeSession(source.session); const turns = Array.isArray(source.turns) ? source.turns : []; return { session, responses: turns.map((turn) => toHistoryResponse(asRecord(turn), session)), lastSeq: typeof source.lastSeq === "number" ? source.lastSeq : 0, replayCursor: normalizeCursor(source.replayCursor) }; },
+  listEvents: async (sessionId, input) => { const query = new URLSearchParams(); if (input?.projectId) query.set("projectId", input.projectId); if (input?.flowId) query.set("flowId", input.flowId); if (input?.afterSeq !== undefined) query.set("afterSeq", String(Math.max(0, Math.floor(input.afterSeq)))); const suffix = query.toString(); const raw = await apiGet<AgentV6EventsResponse>(`${sessionPath(sessionId)}/events${suffix ? `?${suffix}` : ""}`); return { events: Array.isArray(raw.events) ? raw.events : [], lastSeq: typeof raw.lastSeq === "number" ? raw.lastSeq : 0, replayCursor: normalizeCursor(raw.replayCursor), ...(raw.resyncRequired ? { resyncRequired: true } : {}) }; },
   submitTurn: async (sessionId, input) => normalizeResponse(await apiPost<unknown>(`${sessionPath(sessionId)}/v5-turns`, { contextSnapshot: defaultContext(input), idempotencyKey: input.idempotencyKey, mode: input.mode ?? "manual_confirmation", modelKey: input.modelKey ?? null, prompt: input.prompt, referenceContext: input.referenceContext ?? { items: [] }, snapshot: input.snapshot ?? defaultSnapshot(input) }), input),
-  submitDecision: async (sessionId, turnId, input) => { const decision = safeDecision(input.payload ?? input); if (!decision) throw new Error("AGENT_V6_UNSAFE_DECISION"); return normalizeResponse(await apiPost<unknown>(`${sessionPath(sessionId)}/v5-turns/${encodeURIComponent(turnId)}/decisions`, { decision }), input); },
+  submitDecision: async (sessionId, turnId, input) => { const decision = safeDecision(input.payload ?? input); if (!decision) throw new Error("AGENT_V6_UNSAFE_DECISION"); return normalizeResponse(await apiPost<unknown>(`${sessionPath(sessionId)}/v5-turns/${encodeURIComponent(turnId)}/decisions`, { projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision, decision }), input); },
   confirmExecution: (sessionId, turnId, input) => agentV6Api.submitDecision(sessionId, turnId, { ...input, type: "confirm", payload: { type: "confirm" } }),
-  setMode: async (sessionId, input) => normalizeSession(await apiPatch<unknown>(`${sessionPath(sessionId)}/v5-mode`, { mode: input.mode })),
-  cancelTurn: (sessionId, input) => apiPost<AgentV6CancelResponse>(`${sessionPath(sessionId)}/cancel`, input.reason ? { reason: input.reason } : {}),
+  setMode: async (sessionId, input) => normalizeSession(await apiPatch<unknown>(`${sessionPath(sessionId)}/v5-mode`, { projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision, mode: input.mode })),
+  cancelTurn: (sessionId, input) => apiPost<AgentV6CancelResponse>(`${sessionPath(sessionId)}/cancel`, { turnId: input.turnId, projectId: input.projectId, flowId: input.flowId, graphRevision: input.graphRevision, idempotencyKey: input.idempotencyKey, ...(input.reason ? { reason: input.reason } : {}) }),
 };
