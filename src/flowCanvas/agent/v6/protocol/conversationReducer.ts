@@ -5,6 +5,8 @@ import type {
   ConfirmationPlan,
   ConversationState,
 } from "./conversationTypes";
+import { AGENT_V6_LABEL_MAX_LENGTH, AGENT_V6_MAX_ITEMS, AGENT_V6_TEXT_MAX_LENGTH } from "./conversationTypes";
+import { normalizeBlocks } from "./blockNormalizer";
 import { normalizeStableId } from "./stableId";
 
 export type ConversationEvent =
@@ -43,17 +45,18 @@ export function initialConversationState(overrides: Partial<ConversationState> =
   return {
     phase: "idle",
     executionState: "idle",
-    mode: "manual_confirmation",
-    prompt: null,
-    pendingQuestionId: null,
     pendingDecision: null,
     confirmed: false,
-    blocks: [],
+    refiningResultId: null,
+    mode: overrides.mode === "auto" ? "auto" : "manual_confirmation",
+    prompt: typeof overrides.prompt === "string" ? boundedText(overrides.prompt, AGENT_V6_TEXT_MAX_LENGTH) : null,
+    pendingQuestionId: normalizeStableId(overrides.pendingQuestionId) ?? null,
+    blocks: normalizeBlocks(overrides.blocks),
     progress: [],
     results: [],
-    refiningResultId: null,
-    error: null,
-    ...overrides,
+    sessionId: normalizeStableId(overrides.sessionId),
+    turnId: normalizeStableId(overrides.turnId),
+    error: typeof overrides.error === "string" ? boundedText(overrides.error, AGENT_V6_TEXT_MAX_LENGTH) : null,
     graphRevision,
     plan: normalizePlan(overrides.plan ?? undefined),
     contextSnapshot: context,
@@ -65,7 +68,16 @@ function boundedText(value: unknown, max: number) {
 }
 
 function boundedId(value: unknown) {
-  return boundedText(value, 200);
+  return normalizeStableId(value) ?? "";
+}
+
+function normalizeStableIds(value: unknown) {
+  return Array.isArray(value)
+    ? value.slice(0, AGENT_V6_MAX_ITEMS).flatMap((item) => {
+      const id = normalizeStableId(item);
+      return id ? [id] : [];
+    })
+    : [];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -80,24 +92,24 @@ function isValidGraphRevision(value: unknown): value is number {
 
 function normalizeContext(context: ConversationState["contextSnapshot"] | undefined): ConversationState["contextSnapshot"] {
   const source = isPlainObject(context) ? context : EMPTY_CONTEXT;
-  const strings = (value: unknown, limit: number) => Array.isArray(value) ? value.flatMap((item) => {
+  const strings = (value: unknown, limit = AGENT_V6_MAX_ITEMS) => Array.isArray(value) ? value.slice(0, limit).flatMap((item) => {
     const stableId = normalizeStableId(item);
     return stableId ? [stableId] : [];
-  }).slice(0, limit) : [];
-  const assetRefs = Array.isArray(source.assetRefs) ? source.assetRefs.flatMap((value) => {
+  }) : [];
+  const assetRefs = Array.isArray(source.assetRefs) ? source.assetRefs.slice(0, AGENT_V6_MAX_ITEMS).flatMap((value) => {
     if (!isPlainObject(value) || typeof value.label !== "string") return [];
     const assetId = normalizeStableId(value.assetId);
     const refId = normalizeStableId(value.refId);
     const nodeId = value.nodeId === undefined ? undefined : normalizeStableId(value.nodeId);
     if (!assetId || !refId || (value.nodeId !== undefined && !nodeId)) return [];
-    return [{ assetId, refId, label: boundedText(value.label, 400), ...(nodeId ? { nodeId } : {}) }];
-  }).slice(0, 12) : [];
-  const skillRefs = Array.isArray(source.skillRefs) ? source.skillRefs.flatMap((value) => {
+    return [{ assetId, refId, label: boundedText(value.label, AGENT_V6_LABEL_MAX_LENGTH), ...(nodeId ? { nodeId } : {}) }];
+  }) : [];
+  const skillRefs = Array.isArray(source.skillRefs) ? source.skillRefs.slice(0, AGENT_V6_MAX_ITEMS).flatMap((value) => {
     if (!isPlainObject(value)) return [];
     const id = normalizeStableId(value.id);
     if (!id) return [];
     return [{ id, version: typeof value.version === "number" && Number.isFinite(value.version) && value.version >= 0 ? value.version : 0 }];
-  }).slice(0, 12) : [];
+  }) : [];
   const projectId = normalizeStableId(source.projectId);
   const flowId = normalizeStableId(source.flowId);
   const modelKey = normalizeStableId(source.modelKey);
@@ -251,15 +263,18 @@ function normalizeApprovedPayload(payload: Record<string, unknown> | undefined):
 }
 
 function decisionIdFor(state: ConversationState, decisionId?: string) {
-  const supplied = boundedId(decisionId).trim();
-  return supplied || boundedId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`);
+  if (decisionId !== undefined) return boundedId(decisionId);
+  return normalizeStableId(`decision:${boundedId(state.sessionId) || "session"}:${boundedId(state.turnId) || "turn"}:${state.graphRevision}`) ?? "";
 }
 
 function pendingDecision(state: ConversationState, decisionId?: string, graphRevision = state.graphRevision, payload?: Record<string, unknown>): AgentDecision | null {
   const stableId = decisionIdFor(state, decisionId);
+  if (!stableId) return null;
   const normalizedPayload = normalizeApprovedPayload(payload);
   if (!normalizedPayload) return null;
-  return { type: "execute", decisionId: stableId, sessionId: boundedId(state.sessionId) || "session", turnId: boundedId(state.turnId) || "turn", graphRevision, payload: normalizedPayload, idempotencyKey: stableId };
+  const sessionId = boundedId(state.sessionId) || "session";
+  const turnId = boundedId(state.turnId) || "turn";
+  return { type: "execute", decisionId: stableId, sessionId, turnId, graphRevision, payload: normalizedPayload, idempotencyKey: stableId };
 }
 
 function isSafeDecision(decision: AgentDecision) {
@@ -311,12 +326,14 @@ export function reduceConversation(state: ConversationState, event: Conversation
       if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], progress: [], plan: null, pendingDecision: null, confirmed: false };
       return state;
     case "understanding":
-      if (event.type === "choice_requested") return { ...state, phase: "waiting_for_choice", pendingQuestionId: event.id };
+      if (event.type === "choice_requested") {
+        const questionId = normalizeStableId(event.id);
+        return questionId ? { ...state, phase: "waiting_for_choice", pendingQuestionId: questionId } : state;
+      }
       if (event.type === "brief_started") return { ...state, phase: "drafting_brief" };
-      if (event.type === "brief_ready") return briefReadyState(state, event);
       return state;
     case "waiting_for_choice":
-      if (event.type === "choice_submitted" && (!event.id || event.id === state.pendingQuestionId) && event.optionIds.length > 0) return { ...state, phase: "drafting_brief", pendingQuestionId: null };
+      if (event.type === "choice_submitted" && (!event.id || normalizeStableId(event.id) === state.pendingQuestionId) && normalizeStableIds(event.optionIds).length > 0) return { ...state, phase: "drafting_brief", pendingQuestionId: null };
       return state;
     case "drafting_brief":
       if (event.type === "brief_ready") return briefReadyState(state, event);
@@ -332,7 +349,10 @@ export function reduceConversation(state: ConversationState, event: Conversation
       if (event.type === "results_presented") return { ...state, phase: "presenting_results", executionState: "completed", confirmed: false, pendingDecision: null };
       return state;
     case "presenting_results":
-      if (event.type === "refinement_requested") return { ...state, phase: "refining", refiningResultId: event.resultId ?? null };
+      if (event.type === "refinement_requested") {
+        const resultId = event.resultId === undefined ? null : normalizeStableId(event.resultId);
+        return event.resultId === undefined || resultId ? { ...state, phase: "refining", refiningResultId: resultId ?? null } : state;
+      }
       return state;
     case "refining":
       if (event.type === "turn_submitted") return { ...state, phase: "understanding", executionState: "idle", prompt: boundedText(event.prompt, 4_000), error: null, blocks: [], results: [], plan: null };

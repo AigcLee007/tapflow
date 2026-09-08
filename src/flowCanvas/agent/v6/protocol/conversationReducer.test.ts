@@ -24,6 +24,19 @@ describe("Agent V6 conversation reducer", () => {
     expect(next.phase).toBe("waiting_for_choice");
   });
 
+  it("does not accept brief_ready directly from understanding", () => {
+    const state = reduceConversation(initialConversationState(), {
+      type: "turn_submitted",
+      prompt: "直接准备 brief",
+    });
+
+    const next = reduceConversation(state, { type: "brief_ready", graphRevision: 0 });
+
+    expect(next).toBe(state);
+    expect(next.phase).toBe("understanding");
+    expect(reduceConversation(next, { type: "brief_started" }).phase).toBe("drafting_brief");
+  });
+
   it("requires confirmation for paid canvas writes", () => {
     const state = applyBrief(initialConversationState(), {
       type: "brief_ready",
@@ -331,6 +344,89 @@ describe("Agent V6 conversation reducer", () => {
     expect(initialConversationState({ graphRevision: -1 }).graphRevision).toBe(0);
     expect(initialConversationState({ graphRevision: Number.NaN }).contextSnapshot.graphRevision).toBe(0);
     expect(initialConversationState({ graphRevision: Number.POSITIVE_INFINITY }).graphRevision).toBe(0);
+  });
+
+  it("normalizes every initial state field instead of allowing overrides to bypass invariants", () => {
+    const state = initialConversationState({
+      phase: "waiting_for_confirmation" as never,
+      executionState: "completed" as never,
+      mode: "invalid" as never,
+      prompt: 42 as never,
+      pendingQuestionId: "bad id" as never,
+      pendingDecision: {
+        type: "execute",
+        decisionId: "https://signed.example/decision",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        graphRevision: 4,
+        payload: {},
+        idempotencyKey: "https://signed.example/decision",
+      } as never,
+      plan: { title: "x", costCredits: Number.POSITIVE_INFINITY },
+      blocks: [{ type: "heading", level: 2, text: "safe", html: "<script>" }] as never,
+      progress: [{ id: "https://signed.example/step", label: "bad", status: "running" }] as never,
+      results: [{ id: "https://signed.example/result", label: "bad" }] as never,
+      refiningResultId: "blob:https://local/result" as never,
+      error: 42 as never,
+      sessionId: "session-1",
+      turnId: "turn-1",
+      graphRevision: 4,
+      contextSnapshot: {
+        projectId: "project-1",
+        flowId: "flow-1",
+        selectedNodeIds: ["node-1"],
+        assetRefs: [],
+        uploadedAssetIds: ["asset-1"],
+        skillRefs: [],
+        appRefs: [],
+        modelKey: "model-1",
+        graphRevision: 4,
+      },
+    });
+
+    expect(state.phase).toBe("idle");
+    expect(state.executionState).toBe("idle");
+    expect(state.mode).toBe("manual_confirmation");
+    expect(state.prompt).toBeNull();
+    expect(state.pendingQuestionId).toBeNull();
+    expect(state.pendingDecision).toBeNull();
+    expect(state.plan).toEqual({ title: "x" });
+    expect(state.blocks).toEqual([{ type: "heading", level: 2, text: "safe" }]);
+    expect(state.progress).toEqual([]);
+    expect(state.results).toEqual([]);
+    expect(state.refiningResultId).toBeNull();
+    expect(state.error).toBeNull();
+    expect(state.contextSnapshot.projectId).toBe("project-1");
+    expect(state.graphRevision).toBe(4);
+  });
+
+  it("uses the same stable ID validation for decisions and context IDs", () => {
+    const state = initialConversationState({ sessionId: "https://signed.example/session", turnId: "turn-1" });
+    const started = reduceConversation(state, { type: "turn_submitted", prompt: "test" });
+    const ready = reduceConversation(reduceConversation(started, { type: "brief_started" }), {
+      type: "brief_ready",
+      decisionId: "https://signed.example/decision",
+      graphRevision: 0,
+    });
+
+    expect(ready.pendingDecision).toBeNull();
+    expect(ready.phase).toBe("drafting_brief");
+  });
+
+  it("validates and caps stable IDs at event boundaries", () => {
+    const understanding = reduceConversation(
+      reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "test" }),
+      { type: "choice_requested", id: "invalid question id" },
+    );
+    expect(understanding.phase).toBe("understanding");
+
+    const waiting = reduceConversation(understanding, { type: "choice_requested", id: "direction" });
+    const optionIds = Array.from({ length: 100 }, (_, index) => `option-${index}`);
+    const drafted = reduceConversation(waiting, { type: "choice_submitted", id: "direction", optionIds });
+    expect(drafted.phase).toBe("drafting_brief");
+
+    const presented = { ...drafted, phase: "presenting_results" as const };
+    expect(reduceConversation(presented, { type: "refinement_requested", resultId: "blob:https://local/result" })).toBe(presented);
   });
 
   it("safely degrades malformed context arrays and nested references", () => {

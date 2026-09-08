@@ -73,4 +73,17 @@ describe("normalizeBlocks", () => {
     expect(table.rows.length).toBeLessThanOrEqual(12);
     expect(table.rows.every((row) => row.length <= 12 && row.every((cell) => cell.length <= 400))).toBe(true);
   });
+
+  it("caps every input array before mapping, including uploaded asset IDs", () => {
+    const values = Array.from({ length: 100_000 }, (_, index) => `asset-${index}`);
+    const [block] = normalizeBlocks([{
+      type: "result_group",
+      results: [{ id: "result-1", label: "结果", uploadedAssetIds: values }],
+    }]);
+
+    expect(block).toEqual({
+      type: "result_group",
+      results: [{ id: "result-1", label: "结果", uploadedAssetIds: values.slice(0, 12) }],
+    });
+  });
 });
