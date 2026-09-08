@@ -59,6 +59,33 @@ describe("Agent V6 conversation reducer", () => {
     })).toBe(false);
   });
 
+  it("starts low-risk plans immediately in auto mode", () => {
+    const state = applyBrief(initialConversationState({ mode: "auto", sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      plan: { costCredits: 0 },
+      graphRevision: 0,
+    });
+
+    expect(state.phase).toBe("executing");
+    expect(state.executionState).toBe("running");
+    expect(state.confirmed).toBe(false);
+    expect(canExecuteDecision(state, state.pendingDecision!)).toBe(true);
+  });
+
+  it("keeps high-risk plans behind confirmation in auto mode", () => {
+    const state = applyBrief(initialConversationState({ mode: "auto", sessionId: "s", turnId: "t" }), {
+      type: "brief_ready",
+      decisionId: "d",
+      plan: { costCredits: 0, writesCanvas: true },
+      graphRevision: 0,
+    });
+
+    expect(state.phase).toBe("waiting_for_confirmation");
+    expect(state.executionState).toBe("idle");
+    expect(canExecuteDecision(state, state.pendingDecision!)).toBe(false);
+  });
+
   it("uses the stored plan risk and never lets an execution request lower it", () => {
     let state = initialConversationState({ mode: "auto", sessionId: "session-1", turnId: "turn-1" });
     state = applyBrief(state, {
@@ -195,8 +222,23 @@ describe("Agent V6 conversation reducer", () => {
     expect(canExecuteDecision(state, base)).toBe(true);
     expect(canExecuteDecision(state, { ...base, idempotencyKey: "x".repeat(201) })).toBe(false);
     expect(canExecuteDecision(state, { ...base, payload: { prompt: "x".repeat(4_001) } })).toBe(false);
-    expect(canExecuteDecision(state, { ...base, costCredits: Number.POSITIVE_INFINITY })).toBe(true);
+    expect(canExecuteDecision(state, { ...base, costCredits: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, costCredits: Number.NaN })).toBe(false);
+    expect(canExecuteDecision(state, { ...base, costCredits: -1 })).toBe(false);
     expect(canExecuteDecision(state, { ...base, idempotencyKey: "different-idempotency" })).toBe(false);
+  });
+
+  it("rejects non-finite and negative plan costs", () => {
+    for (const costCredits of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      const state = applyBrief(initialConversationState({ sessionId: "s", turnId: "t" }), {
+        type: "brief_ready",
+        decisionId: "d",
+        plan: { costCredits },
+        graphRevision: 0,
+      });
+      expect(state.pendingDecision).toBeNull();
+      expect(state.phase).toBe("drafting_brief");
+    }
   });
 
   it("requires execution payload to match the approved payload exactly", () => {
@@ -662,6 +704,49 @@ describe("Agent V6 conversation reducer", () => {
     expect(reduceConversation(state, { ...event, idempotencyKey: "other-idempotency" })).toBe(state);
     const submitted = reduceConversation(state, event);
     expect(submitted.choiceSubmission).toEqual({ pendingQuestionId: "direction", payload: { value: "replay" }, optionIds: ["one", "two"] });
+  });
+
+  it("enforces single choice selection mode", () => {
+    let state = reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "test" });
+    state = reduceConversation({
+      ...state,
+      blocks: [{ type: "choice_grid", id: "direction", options: [{ id: "one", label: "One" }, { id: "two", label: "Two" }], selectionMode: "single" }],
+    }, { type: "choice_requested", id: "direction" });
+    const submitted = reduceConversation(state, {
+      type: "choice_submitted",
+      sessionId: state.sessionId!,
+      turnId: state.turnId!,
+      graphRevision: state.graphRevision,
+      idempotencyKey: state.pendingChoice!.idempotencyKey,
+      pendingQuestionId: "direction",
+      payload: {},
+      optionIds: ["one", "two"],
+    });
+
+    expect(submitted).toBe(state);
+  });
+
+  it("deduplicates and limits multiple choice selections", () => {
+    let state = reduceConversation(initialConversationState(), { type: "turn_submitted", prompt: "test" });
+    const options = Array.from({ length: 12 }, (_, index) => ({ id: `option-${index}`, label: `Option ${index}` }));
+    state = reduceConversation({
+      ...state,
+      blocks: [{ type: "choice_grid", id: "direction", options, selectionMode: "multiple" }],
+    }, { type: "choice_requested", id: "direction" });
+    const submitted = reduceConversation(state, {
+      type: "choice_submitted",
+      sessionId: state.sessionId!,
+      turnId: state.turnId!,
+      graphRevision: state.graphRevision,
+      idempotencyKey: state.pendingChoice!.idempotencyKey,
+      pendingQuestionId: "direction",
+      payload: {},
+      optionIds: ["option-0", "option-0", ...options.slice(1).map((option) => option.id), "option-11"],
+    });
+
+    expect(submitted.phase).toBe("drafting_brief");
+    expect(submitted.choiceSubmission?.optionIds).toEqual(options.map((option) => option.id));
+    expect(submitted.blocks[0]).toMatchObject({ selectedOptionIds: options.map((option) => option.id) });
   });
 
   it("safely degrades malformed context arrays and nested references", () => {
