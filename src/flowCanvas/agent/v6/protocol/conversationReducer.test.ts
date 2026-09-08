@@ -181,12 +181,33 @@ describe("Agent V6 conversation reducer", () => {
     expect(first.turnId).not.toBe(second.turnId);
   });
 
+  it("does not collide when an explicit session starts two turns", () => {
+    const first = initialConversationState({ sessionId: "s" });
+    const second = initialConversationState({ sessionId: "s" });
+
+    expect(first.sessionId).toBe("s");
+    expect(second.sessionId).toBe("s");
+    expect(first.turnId).not.toBe(second.turnId);
+  });
+
   it("keeps initial identities stable when replay seed is explicit", () => {
     const first = initialConversationState({}, { replaySeed: "replay-1" });
     const second = initialConversationState({}, { replaySeed: "replay-1" });
 
     expect(second.sessionId).toBe(first.sessionId);
     expect(second.turnId).toBe(first.turnId);
+  });
+
+  it("uses replay seed deterministically even when createId is provided", () => {
+    const firstCreateId = vi.fn(() => "first-random-id");
+    const secondCreateId = vi.fn(() => "second-random-id");
+    const first = initialConversationState({}, { replaySeed: "replay-1", createId: firstCreateId });
+    const second = initialConversationState({}, { replaySeed: "replay-1", createId: secondCreateId });
+
+    expect(second.sessionId).toBe(first.sessionId);
+    expect(second.turnId).toBe(first.turnId);
+    expect(firstCreateId).not.toHaveBeenCalled();
+    expect(secondCreateId).not.toHaveBeenCalled();
   });
 
   it("accepts a legal maximum-length identity through confirmation", () => {

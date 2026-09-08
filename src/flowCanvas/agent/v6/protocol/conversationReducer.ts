@@ -35,6 +35,7 @@ export type ConversationEvent =
 
 export type ConversationIdFactory = () => string;
 export type ConversationReducerOptions = { createId?: ConversationIdFactory; replaySeed?: string };
+type ReplayIdentity = { replaySeed?: string; eventId?: string };
 
 const EMPTY_CONTEXT = {
   projectId: null,
@@ -54,10 +55,10 @@ export function initialConversationState(overrides: Partial<ConversationState> =
   const explicitSessionId = normalizeStableId(overrides.sessionId);
   const explicitTurnId = normalizeStableId(overrides.turnId);
   const sessionId = explicitSessionId ?? (options.replaySeed
-    ? generatedId("session", options.createId, { kind: "initial-session", replaySeed: options.replaySeed, context: overrides.contextSnapshot })
+    ? generatedId("session", options.createId, { kind: "initial-session", context: overrides.contextSnapshot }, { replaySeed: options.replaySeed })
     : randomId("session", options.createId));
-  const turnId = explicitTurnId ?? (options.replaySeed || explicitSessionId
-    ? generatedId("turn", options.createId, { kind: "initial-turn", replaySeed: options.replaySeed, sessionId })
+  const turnId = explicitTurnId ?? (options.replaySeed
+    ? generatedId("turn", options.createId, { kind: "initial-turn", sessionId }, { replaySeed: options.replaySeed })
     : randomId("turn", options.createId));
   const baseState = {
     phase: "idle",
@@ -95,7 +96,10 @@ function boundedId(value: unknown) {
   return normalizeStableId(value) ?? "";
 }
 
-function generatedId(prefix: string, createId?: ConversationIdFactory, seed?: unknown) {
+function generatedId(prefix: string, createId?: ConversationIdFactory, seed?: unknown, replayIdentity?: ReplayIdentity) {
+  if (replayIdentity?.replaySeed || replayIdentity?.eventId) {
+    return `${prefix}-${stableHash({ seed, replaySeed: replayIdentity.replaySeed, eventId: replayIdentity.eventId })}`;
+  }
   if (!createId) return `${prefix}-${stableHash(seed ?? { prefix })}`;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const candidate = createId();
@@ -115,8 +119,9 @@ function randomId(prefix: string, createId?: ConversationIdFactory) {
 function eventTurnId(prefix: string, event: { turnId?: string; eventId?: string }, options: ConversationReducerOptions, seed: Record<string, unknown>) {
   const turnId = normalizeStableId(event.turnId);
   if (turnId) return turnId;
-  if (normalizeStableId(event.eventId) || options.replaySeed) {
-    return generatedId(prefix, options.createId, { ...seed, eventId: event.eventId, replaySeed: options.replaySeed });
+  const eventId = normalizeStableId(event.eventId);
+  if (eventId || options.replaySeed) {
+    return generatedId(prefix, options.createId, seed, { eventId, replaySeed: options.replaySeed });
   }
   return randomId(prefix, options.createId);
 }
