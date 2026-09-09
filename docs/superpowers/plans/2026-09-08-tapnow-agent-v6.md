@@ -265,7 +265,7 @@ git commit -m "feat: add agent v6 server orchestration"
 ### Task 7: Add durable V6 fields and result persistence
 
 **Files:**
-- Create: `packages/db/migrations/000080_agent_v6_conversation.sql`
+- Create: `packages/db/migrations/000083_agent_v6_conversation.sql`
 - Modify: `apps/api/src/modules/agent/agent-session.repository.ts`
 - Modify: `apps/api/src/modules/agent/agent.service.ts`
 - Modify: `apps/api/src/modules/agent/agent-event.service.ts`

@@ -7,10 +7,10 @@ import { createPgPool, runMigrations, withTenantTransaction } from "@aigc-flow/d
 import { AgentSessionRepository } from "../src/modules/agent/agent-session.repository.js";
 import { hasDatabaseEnv, withAppContextTransaction, withDatabase } from "../../../packages/db/test/helpers.js";
 
-const rootMigrationPath = path.resolve(process.cwd(), "packages/db/migrations/000080_agent_v6_conversation.sql");
+const rootMigrationPath = path.resolve(process.cwd(), "packages/db/migrations/000083_agent_v6_conversation.sql");
 const migrationPath = existsSync(rootMigrationPath)
   ? rootMigrationPath
-  : path.resolve(process.cwd(), "../../packages/db/migrations/000080_agent_v6_conversation.sql");
+  : path.resolve(process.cwd(), "../../packages/db/migrations/000083_agent_v6_conversation.sql");
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
 
