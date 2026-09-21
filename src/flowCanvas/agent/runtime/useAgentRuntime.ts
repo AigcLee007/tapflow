@@ -6,9 +6,11 @@ import type { AgentContextSnapshot } from "./agentProtocol";
 import { agentV6Api, type AgentV6Response, type AgentV6Scope } from "../v6/orchestration/agentV6Api";
 import { applyResponse, createReplayState, restoreHistory, type ReplayState } from "../v6/replay/ReplayState";
 import type { AgentExecutionMode, ConversationBlock, ResultRef } from "../v6/protocol/conversationTypes";
+import type { BriefField } from "../v6/protocol/conversationTypes";
 
 export type AgentRuntimeDecision =
   | { type: "answer_question"; answer: string | string[]; questionId?: string }
+  | { type: "edit_brief"; fields: BriefField[] }
   | { type: "approve_plan" }
   | { type: "cancel_execution" }
   | { type: "retry_execution" }
@@ -57,6 +59,7 @@ function responseState(current: ReplayState, response: AgentV6Response, scope: A
 export function useAgentRuntime() {
   const [state, setState] = useState<ReplayState>(() => createReplayState(scopeFromCanvas()));
   const [sessionTitle, setSessionTitle] = useState("新对话");
+  const [busy, setBusy] = useState(false);
 
   const apply = useCallback((response: AgentV6Response, scope: AgentV6Scope) => {
     setState((current) => responseState(current, response, scope));
@@ -73,10 +76,11 @@ export function useAgentRuntime() {
 
   const submitText = useCallback(async (prompt: string, options: SubmitTextOptions = {}) => {
     const text = prompt.trim();
-    if (!text) return;
+    if (!text || busy) return;
+    setBusy(true);
     const scope = scopeFromCanvas();
-    const sessionId = await ensureSession(text, scope);
     try {
+      const sessionId = await ensureSession(text, scope);
       const response = await agentV6Api.submitTurn(sessionId, {
         ...scope,
         prompt: text,
@@ -88,14 +92,19 @@ export function useAgentRuntime() {
     } catch (error) {
       setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Agent 暂时无法处理本次请求。", phase: "recoverable_error" }));
       throw error;
+    } finally {
+      setBusy(false);
     }
-  }, [apply, ensureSession]);
+  }, [apply, busy, ensureSession]);
 
   const submitDecision = useCallback(async (decision: AgentRuntimeDecision) => {
-    if (!state.sessionId || !state.turnId) return;
+    if (!state.sessionId || !state.turnId || busy) return;
+    setBusy(true);
     const scope = scopeFromCanvas();
     const payload = decision.type === "answer_question"
       ? { answers: { [decision.questionId ?? "answer"]: decision.answer } }
+      : decision.type === "edit_brief"
+        ? { instruction: JSON.stringify({ fields: decision.fields.map((field) => ({ key: field.label, value: field.value })) }) }
       : decision.type === "result_action"
         ? { action: decision.action, resultIds: decision.resultIds, ...(decision.instruction ? { instruction: decision.instruction } : {}) }
         : decision.type === "revise_plan"
@@ -112,8 +121,10 @@ export function useAgentRuntime() {
     } catch (error) {
       setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Agent 决策提交失败。", phase: "recoverable_error" }));
       throw error;
+    } finally {
+      setBusy(false);
     }
-  }, [apply, state.sessionId, state.turnId]);
+  }, [apply, busy, state.sessionId, state.turnId]);
 
   const openSession = useCallback(async (sessionId: string) => {
     const scope = scopeFromCanvas();
@@ -149,6 +160,8 @@ export function useAgentRuntime() {
 
   return useMemo(() => ({
     blocks: state.blocks as ConversationBlock[],
+    busy,
+    error: state.error ?? null,
     graphRevision: state.graphRevision,
     mode: state.mode,
     newConversation,
@@ -160,5 +173,5 @@ export function useAgentRuntime() {
     setExecutionMode,
     submitDecision,
     submitText,
-  }), [newConversation, openSession, sessionTitle, setExecutionMode, state, submitDecision, submitText]);
+  }), [busy, newConversation, openSession, sessionTitle, setExecutionMode, state, submitDecision, submitText]);
 }

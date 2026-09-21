@@ -115,6 +115,11 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
   const handleBlockAction = React.useCallback((action: AgentBlockAction) => {
     if (action.type === "answer_question") {
       void runtime.submitDecision({ type: "answer_question", questionId: action.blockId, answer: action.value });
+    } else if (action.type === "edit_brief") {
+      // The Brief component enters local edit mode; values are sent on submit.
+      return;
+    } else if (action.type === "submit_brief") {
+      void runtime.submitDecision({ type: "edit_brief", fields: action.fields });
     } else if (action.type === "select_choice") {
       const answer = action.optionIds.length > 1 ? action.optionIds : (action.optionIds[0] ?? "");
       if (action.blockId === "recovery") void runtime.submitDecision(answer === "retry" ? { type: "retry_execution" } : { type: "revise_plan", instruction: "修改计划" });
@@ -151,7 +156,8 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
   <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => { void addUploadedFiles(event.currentTarget.files); }} />
   <AgentWorkspace
     blocks={runtime.blocks}
-    busy={runtime.phase === "understanding" || runtime.phase === "executing" || runtime.phase === "verifying"}
+    busy={runtime.busy || runtime.phase === "understanding" || runtime.phase === "executing" || runtime.phase === "verifying"}
+    error={runtime.error}
     history={history}
     model={model}
     modelOptions={modelOptions}
