@@ -35,6 +35,7 @@ export type AgentV6Api = {
   submitDecision(sessionId: string, turnId: string, input: AgentV6DecisionInput): Promise<AgentV6Response>;
   confirmExecution(sessionId: string, turnId: string, input: AgentV6DecisionInput): Promise<AgentV6Response>;
   setMode(sessionId: string, input: AgentV6Scope & { mode: AgentExecutionMode }): Promise<AgentV6Session>;
+  renameSession(sessionId: string, input: AgentV6Scope & { title: string }): Promise<AgentV6Session>;
   cancelTurn(sessionId: string, input: AgentV6CancelInput): Promise<AgentV6CancelResponse>;
 };
 
@@ -162,7 +163,7 @@ function canonicalDecisionRequest(input: AgentV6DecisionInput) {
   const payload = type === "approve_plan" || type === "cancel_execution" || type === "retry_execution"
     ? {}
     : type === "answer_question"
-      ? (source.answers && typeof source.answers === "object" ? { answers: source.answers } : { answers: { [typeof source.questionId === "string" ? source.questionId : "answer"]: Array.isArray(source.optionIds) ? source.optionIds[0] : source.answer ?? "" } })
+      ? (source.answers && typeof source.answers === "object" ? { answers: source.answers } : { answers: { [typeof source.questionId === "string" ? source.questionId : "answer"]: Array.isArray(source.optionIds) ? source.optionIds : source.answer ?? "" } })
       : type === "result_action"
         ? { action: source.action === "place" || source.action === "select" || source.action === "reference" || source.action === "variant" || source.action === "edit" ? source.action : "variant", resultIds: Array.isArray(source.resultIds) ? source.resultIds.filter((value): value is string => typeof value === "string") : typeof source.resultId === "string" ? [source.resultId] : [], ...(typeof source.instruction === "string" ? { instruction: source.instruction } : typeof source.prompt === "string" ? { instruction: source.prompt } : {}) }
         : { instruction: typeof source.instruction === "string" ? source.instruction : typeof source.prompt === "string" ? source.prompt : "修改计划" };
@@ -170,7 +171,7 @@ function canonicalDecisionRequest(input: AgentV6DecisionInput) {
 }
 
 export const agentV6Api: AgentV6Api = {
-  createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), projectId: input.projectId, flowId: input.flowId })),
+  createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), ...(input.mode ? { mode: input.mode } : {}), projectId: input.projectId, flowId: input.flowId })),
   listSessions: async (input) => { const query = sessionQuery(input); const raw = await apiGet<unknown>(`/agent/sessions${query ? `?${query}` : ""}`); return Array.isArray(raw) ? raw.map(normalizeSession) : []; },
   getSession: async (sessionId, input) => { const query = sessionQuery(input); return normalizeSession(await apiGet<unknown>(`${sessionPath(sessionId)}${query ? `?${query}` : ""}`)); },
   getHistory: async (sessionId, input) => { const query = sessionQuery(input); const source = asRecord(await apiGet<unknown>(`${sessionPath(sessionId)}/history${query ? `?${query}` : ""}`)); const session = normalizeSession(source.session); const turns = Array.isArray(source.turns) ? source.turns : []; return { session, responses: turns.map((turn) => toHistoryResponse(asRecord(turn), session)), lastSeq: typeof source.lastSeq === "number" ? source.lastSeq : 0, replayCursor: normalizeCursor(source.replayCursor) }; },
@@ -190,6 +191,7 @@ export const agentV6Api: AgentV6Api = {
   },
   confirmExecution: (sessionId, turnId, input) => agentV6Api.submitDecision(sessionId, turnId, { ...input, type: "confirm", payload: { type: "confirm" } }),
   setMode: async (sessionId, input) => normalizeSession(await apiPatch<unknown>(`${sessionPath(sessionId)}/mode`, { mode: input.mode })),
+  renameSession: async (sessionId, input) => normalizeSession(await apiPatch<unknown>(sessionPath(sessionId), { title: input.title })),
   cancelTurn: async (sessionId, input) => {
     const response = await apiPost<unknown>(`${sessionPath(sessionId)}/turns/${encodeURIComponent(input.turnId)}/decisions`, {
       graphRevision: input.graphRevision,

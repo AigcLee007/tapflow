@@ -49,4 +49,17 @@ describe("canonical requirement planning", () => {
     const planner = new AgentRequirementPlanner({ textRuntime: { generateText: vi.fn().mockRejectedValue(new Error("secret provider failure")) }, routeKey: "text" });
     await expect(planner.plan({ tenantId: "t", userId: "u" }, { prompt: "poster", contextSnapshot: snapshot, answers: {}, previousPlan: null, models: [] })).rejects.toThrow("AGENT_PLANNER_UNAVAILABLE");
   });
+
+  it("keeps a first/last-frame prompt-only request to two images plus text", async () => {
+    const generateText = vi.fn().mockResolvedValue({ outputText: JSON.stringify(output) });
+    const planner = new AgentRequirementPlanner({ textRuntime: { generateText }, routeKey: "text" });
+    const result = await planner.plan({ tenantId: "tenant", userId: "user" }, { prompt: "我要生成两张图，需要首帧图片、尾帧图片和首尾帧视频的提示词", contextSnapshot: snapshot, answers: {}, previousPlan: null, models: [] });
+    expect(result.steps.map((step) => step.kind)).toEqual(["image", "image", "text"]);
+  });
+
+  it("rejects a silent video step when the user only asked for a video prompt", async () => {
+    const videoOutput = { ...output, steps: [...output.steps, { id: "video", label: "视频", kind: "video" as const, prompt: "生成视频", referenceIds: [], dependsOnStepIds: [], video: { durationSeconds: 5, resolution: "720p" as const, generateAudio: false } }] };
+    const planner = new AgentRequirementPlanner({ textRuntime: { generateText: vi.fn().mockResolvedValue({ outputText: JSON.stringify(videoOutput) }) }, routeKey: "text" });
+    await expect(planner.plan({ tenantId: "tenant", userId: "user" }, { prompt: "准备首尾帧图片和视频提示词", contextSnapshot: snapshot, answers: {}, previousPlan: null, models: [] })).rejects.toThrow("AGENT_PLANNER_VIDEO_NOT_REQUESTED");
+  });
 });

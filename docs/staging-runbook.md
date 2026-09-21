@@ -2,6 +2,8 @@
 
 ## Start Staging Services
 
+Keep `AGENT_RUNTIME_ENABLED=false` and `AGENT_RUNTIME_COMPAT_ENABLED=false` during rollback or before the authenticated Agent smoke tests. Disabled routes return an explicit 503 and do not start work.
+
 ```bash
 docker compose -f docker-compose.staging.yml up -d --build tapflow-redis tapflow-api tapflow-worker tapflow-frontend
 ```

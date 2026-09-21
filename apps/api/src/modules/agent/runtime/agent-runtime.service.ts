@@ -91,7 +91,11 @@ export function verifyAgentDeliveryGroup(
 export class AgentRuntimeService {
   constructor(private readonly dependencies: AgentRuntimeServiceDependencies) {}
 
-  async createSession(ctx: AgentServiceContext, input: { projectId: string | null; flowId: string | null; title?: string }) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.createSession(ctx, input); }
+  async createSession(ctx: AgentServiceContext, input: { projectId: string | null; flowId: string | null; title?: string; mode?: "auto" | "manual_confirmation" }) {
+    requirePermission(ctx, "flow:read");
+    const session = await this.dependencies.repository.createSession(ctx, input);
+    return input.mode && input.mode !== session.mode ? this.dependencies.repository.updateSession(ctx, session.id, { mode: input.mode }) : session;
+  }
   async listSessions(ctx: AgentServiceContext, filter: { projectId?: string | null; flowId?: string | null; limit?: number } = {}) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.listSessions(ctx, filter); }
   async getSession(ctx: AgentServiceContext, sessionId: string) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.getSession(ctx, sessionId); }
   async getHistory(ctx: AgentServiceContext, sessionId: string, options: { limit?: number; cursor?: string | null } = {}) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.getHistory(ctx, sessionId, options); }
@@ -349,11 +353,15 @@ export class AgentRuntimeService {
       if (!Number.isFinite(quote.credits) || quote.credits < 0 || !quote.fingerprint) throw new Error("PRICING_NOT_FOUND");
       const modelNames = [...new Set(quote.steps.map(step => step.modelDisplayName).filter(Boolean))].join("、");
       blocks.push({ type: "plan", id: "plan", summary: requirement.understanding + (modelNames ? " 使用模型：" + modelNames + "。" : ""), deliverables: requirement.steps.map(step => ({ id: step.id, label: step.label, kind: step.kind, quantity: 1 })), quantity: steps.length, estimatedCredits: quote.credits, references: context.refs.map(ref => ref.refId), capabilities: [...new Set(steps.map(step => step.kind + ".generate"))], writes: ["素材库", "会话结果"], requiresConfirmation: true });
-      blocks.push({ type: "confirmation", id: "approval", text: "确认按此计划生成并保存结果，完成后可选择放入画布。", costCredits: quote.credits, quantity: steps.length, writes: ["素材库", "会话结果"], confirmLabel: "确认生成", reviseLabel: "修改计划" });
-      patch = { phase: "waiting_for_confirmation", executionState: "idle", blocks, pendingDecision: pending(turn, "approval", ["approve_plan", "revise_plan", "edit_brief"]), planJson: { requirement, answers, context, steps, quote, ...(resultAction ? { resultAction } : {}) } };
+      const execution = session.mode === "auto" ? { key: `turn:${turn.id}:auto` } : undefined;
+      if (session.mode !== "auto") blocks.push({ type: "confirmation", id: "approval", text: "确认按此计划生成并保存结果，完成后可选择放入画布。", costCredits: quote.credits, quantity: steps.length, writes: ["素材库", "会话结果"], confirmLabel: "确认生成", reviseLabel: "修改计划" });
+      patch = session.mode === "auto"
+        ? { phase: "executing", executionState: "queued", blocks, pendingDecision: null, planJson: { requirement, answers, context, steps, quote, execution, ...(resultAction ? { resultAction } : {}) } }
+        : { phase: "waiting_for_confirmation", executionState: "idle", blocks, pendingDecision: pending(turn, "approval", ["approve_plan", "revise_plan", "edit_brief"]), planJson: { requirement, answers, context, steps, quote, ...(resultAction ? { resultAction } : {}) } };
     }
     const next = state(turn, { ...patch, status: "planned", blocks: normalizeConversationBlocks(blocks) });
-    return decisionId ? this.dependencies.repository.completeDecision(ctx, { ...next, decisionId }) : this.dependencies.repository.saveTurnStateCAS(ctx, next);
+    const planned = decisionId ? await this.dependencies.repository.completeDecision(ctx, { ...next, decisionId }) : await this.dependencies.repository.saveTurnStateCAS(ctx, next);
+    return session.mode === "auto" && planned.planJson.execution ? this.start(ctx, session, planned) : planned;
   }
 
   private progress(requirement: AgentRequirementPlan): ConversationBlock {

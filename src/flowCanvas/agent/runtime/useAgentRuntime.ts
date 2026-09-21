@@ -155,6 +155,13 @@ export function useAgentRuntime(initialSessionId?: string | null) {
     if (state.sessionId) void agentV6Api.setMode(state.sessionId, { ...scopeFromCanvas(), mode }).catch(() => undefined);
   }, [state.sessionId]);
 
+  const renameSession = useCallback(async (title: string) => {
+    const next = title.trim();
+    if (!next || !state.sessionId) return;
+    const session = await agentV6Api.renameSession(state.sessionId, { ...scopeFromCanvas(), title: next });
+    setSessionTitle(session.title);
+  }, [state.sessionId]);
+
   useEffect(() => {
     if (!state.sessionId || !state.turnId || state.phase !== "executing") return;
     let disposed = false;
@@ -185,5 +192,6 @@ export function useAgentRuntime(initialSessionId?: string | null) {
     setExecutionMode,
     submitDecision,
     submitText,
-  }), [busy, newConversation, openSession, sessionTitle, setExecutionMode, state, submitDecision, submitText]);
+    renameSession,
+  }), [busy, newConversation, openSession, renameSession, sessionTitle, setExecutionMode, state, submitDecision, submitText]);
 }

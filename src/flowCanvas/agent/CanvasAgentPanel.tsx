@@ -175,7 +175,7 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
       setCanvasReferences((current) => current.filter((item) => item.id !== id));
     }}
     onRoleChange={(id, role) => setReferenceRoles((current) => ({ ...current, [id]: role }))}
-    onRename={() => undefined}
+    onRename={(title) => { void runtime.renameSession(title).catch(() => undefined); }}
     onSend={async (text) => {
       setPrompt("");
       setModelLocked(true);

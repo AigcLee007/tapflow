@@ -113,6 +113,10 @@ function handleRouteError(
     return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
   }
 
+  if (error instanceof Error && ["AGENT_GRAPH_REVISION_CONFLICT", "AGENT_STATE_VERSION_CONFLICT", "AGENT_PENDING_DECISION_CONFLICT", "AGENT_DECISION_ALREADY_SUBMITTED", "AGENT_RESULT_SCOPE_CONFLICT"].includes(error.message)) {
+    return sendError(request, reply, 409, error.message, "The Agent state is stale; refresh and retry.");
+  }
+
   request.log.error(
     {
       err: error,
@@ -163,11 +167,17 @@ function writeAgentSseFailure(error: unknown, request: FastifyRequest, reply: Fa
 
 export function registerAgentRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
+  const canonicalRuntimeGuard = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (app.agentService.env.agentRuntimeEnabled === false) return sendError(request, reply, 503, "AGENT_RUNTIME_DISABLED", "Canonical Agent runtime is disabled.");
+  };
+  const compatibilityRuntimeGuard = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (app.agentService.env.agentRuntimeCompatEnabled === false) return sendError(request, reply, 503, "AGENT_RUNTIME_COMPAT_DISABLED", "Legacy Agent compatibility routes are disabled.");
+  };
   const agentV6Orchestrator = new AgentV6Orchestrator(app.agentService as unknown as AgentV6ServicePort);
 
   app.get(
     "/api/v2/agent/capabilities",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (_request, reply) => {
       const env = app.agentService.env;
       const runtimeCapabilities = projectAgentRuntimeCapabilities(env);
@@ -183,7 +193,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -227,7 +237,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -242,7 +252,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -255,8 +265,22 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   );
 
   app.patch(
+    "/api/v2/agent/sessions/:sessionId",
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = z.object({ title: z.string().trim().min(1).max(200) }).strict().parse(request.body);
+        return reply.send(await app.canonicalAgentRuntime.updateSession(getAgentContext(request), params.sessionId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
     "/api/v2/agent/sessions/:sessionId/mode",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -270,7 +294,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.get(
     "/api/v2/agent/sessions/:sessionId/turns/:turnId",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
@@ -282,7 +306,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId/history",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -298,7 +322,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId/events",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -316,18 +340,14 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId/events/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
-        const streamBody = await app.agentService.buildSessionEventsStream(
-          getAgentContext(request),
-          params.sessionId,
-          query.afterSeq ?? 0,
-          query,
-        );
+        const events = await app.canonicalAgentRuntime.getEvents(getAgentContext(request), params.sessionId, query.afterSeq ?? 0);
+        const streamBody = events.map((event) => formatStreamEvent("agent_event", event)).join("");
 
         reply.raw.setHeader("cache-control", "no-cache");
         reply.raw.setHeader("connection", "keep-alive");
@@ -345,7 +365,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/messages",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -361,7 +381,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -376,7 +396,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v5-turns",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -388,7 +408,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/:turnId/decisions",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
@@ -400,7 +420,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v6-turns",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -412,7 +432,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v6-turns/:turnId/decisions",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
@@ -424,7 +444,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.patch(
     "/api/v2/agent/sessions/:sessionId/v5-mode",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -436,7 +456,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v5-turns/:turnId/decisions",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
@@ -449,7 +469,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/canvas-ops",
     {
-      preHandler: [...authHandlers, requirePermission("flow:update")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:update")],
     },
     async (request, reply) => {
       try {
@@ -471,7 +491,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/execute/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:run")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")],
     },
     async (request, reply) => {
       try {
@@ -502,7 +522,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/v2-turns/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:update")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:update")],
     },
     async (request, reply) => {
       try {
@@ -525,7 +545,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/v2/stream",
-    { preHandler: [...authHandlers, requirePermission("flow:update")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:update")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -541,7 +561,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/cancel",
-    { preHandler: [...authHandlers, requirePermission("flow:run")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -553,7 +573,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/approvals/:approvalId/stream",
-    { preHandler: [...authHandlers, requirePermission("flow:run")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), approvalId: z.string().uuid() }).parse(request.params);
@@ -572,7 +592,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/tool-calls/approve/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:run")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")],
     },
     async (request, reply) => {
       try {
@@ -603,7 +623,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {

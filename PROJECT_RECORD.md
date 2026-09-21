@@ -2,6 +2,13 @@
 
 Last updated: 2026-09-21
 
+## 2026-09-21 - Canonical Agent runtime repair continuation
+
+- Completed the canonical result-action loop: result ownership is checked against the current session and turn, selection/reference state is durable, and edit/variant actions create a new quoted planning turn that remains behind confirmation and billing.
+- Added running/failed/cancelled workflow reconciliation, retry execution-key rotation, explicit 409 stale-state responses, and canonical event-stream projection.
+- Added first/last-frame intent constraints so a request for two images plus a video prompt cannot silently create a video workflow; added separate default-off `AGENT_RUNTIME_ENABLED` and `AGENT_RUNTIME_COMPAT_ENABLED` flags and staging documentation.
+- Session mode and rename persistence are wired through the canonical UI. Focused API tests and frontend production build pass; authenticated Postgres/Redis/S3/provider E2E remains a release gate.
+
 ## 2026-09-09 - Agent V6 Task 8 delivery verification contract
 
 - Added and wired a Worker delivery verifier for explicitly marked Agent V6/Agent Skill workflows. It accepts only non-empty text or stable asset IDs, rejects temporary URLs/base64/blob/data/provider fields, and distinguishes canceled from retryable delivery failure without duplicating billing logic.
