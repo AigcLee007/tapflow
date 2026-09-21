@@ -1,4 +1,11 @@
 import type { CanvasAgentSnapshot } from "./canvasAgentTypes";
+import {
+  normalizeAgentContextSnapshot,
+  type AgentContextRef,
+  type AgentContextSnapshot as CanonicalAgentContextSnapshot,
+} from "./runtime/agentProtocol";
+
+export type { AgentContextRef, CanonicalAgentContextSnapshot };
 
 export type AgentContextSnapshot = {
   assetIds: string[];
@@ -38,3 +45,30 @@ export function isSnapshotCurrent(snapshot: AgentContextSnapshot, current: Pick<
     && snapshot.projectId === current.projectId
     && snapshot.graphRevision === current.graphRevision;
 }
+
+/**
+ * Builds the server-facing snapshot. The older canvas snapshot above remains
+ * available for V5/V6 compatibility, while new runtime code uses this
+ * provider-neutral shape exclusively.
+ */
+export function buildStableAgentContextSnapshot(input: {
+  appIds?: string[];
+  flowId?: string | null;
+  graphRevision: number;
+  modelKey?: string | null;
+  projectId: string | null;
+  refs?: AgentContextRef[];
+  skillIds?: string[];
+}): CanonicalAgentContextSnapshot {
+  return normalizeAgentContextSnapshot({
+    appIds: input.appIds ?? [],
+    flowId: input.flowId ?? null,
+    graphRevision: input.graphRevision,
+    modelKey: input.modelKey ?? null,
+    projectId: input.projectId,
+    refs: input.refs ?? [],
+    skillIds: input.skillIds ?? [],
+  });
+}
+
+export const buildAgentProtocolContextSnapshot = buildStableAgentContextSnapshot;

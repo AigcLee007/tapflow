@@ -1,5 +1,6 @@
 import type { AgentContinuationContext } from "./canvasAgentApi";
 import type { AgentReferenceChip } from "./CanvasAgentWorkspaceTypes";
+import type { AgentContextRef, AgentReferenceRole } from "./runtime/agentProtocol";
 
 export type AgentReferenceContextItem = {
   assetId: string;
@@ -7,6 +8,7 @@ export type AgentReferenceContextItem = {
   label: string;
   nodeId?: string;
   refId: string;
+  role?: AgentReferenceRole;
 };
 
 export type AgentReferenceContext = {
@@ -31,6 +33,7 @@ export function buildAgentReferenceContext(input: {
       kind: chip.kind,
       label: chip.label,
       ...(chip.nodeId ? { nodeId: chip.nodeId } : {}),
+      ...(((chip as AgentReferenceChip & { role?: AgentReferenceRole }).role) ? { role: (chip as AgentReferenceChip & { role?: AgentReferenceRole }).role } : {}),
       refId: chip.refId,
     });
   }
@@ -57,3 +60,17 @@ export function buildAgentReferenceContext(input: {
 
   return { items: items.slice(0, AGENT_REFERENCE_LIMIT) };
 }
+
+/** Convert UI chips to the canonical stable reference protocol. */
+export function buildStableAgentReferenceRefs(context: AgentReferenceContext): AgentContextRef[] {
+  return context.items.map((item) => ({
+    refId: item.refId,
+    source: item.kind === "canvas_node" ? "canvas" : item.kind === "upload" ? "upload" : "asset",
+    ...(item.nodeId ? { nodeId: item.nodeId } : {}),
+    ...(item.assetId ? { assetId: item.assetId } : {}),
+    ...(item.role ? { role: item.role } : {}),
+    label: item.label,
+  }));
+}
+
+export const buildAgentProtocolReferenceRefs = buildStableAgentReferenceRefs;

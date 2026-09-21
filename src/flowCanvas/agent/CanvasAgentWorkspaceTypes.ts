@@ -7,6 +7,8 @@ import type { CanvasAgentMessage } from "./useCanvasAgentSession";
 
 export type AgentWorkspaceTab = "chat" | "history" | "connections" | "logs";
 
+export type AgentReferenceRole = "subject" | "style" | "composition" | "layout" | "context";
+
 export type AgentReferenceChip = {
   id: string;
   kind: "artifact" | "canvas_node" | "upload";
@@ -15,6 +17,7 @@ export type AgentReferenceChip = {
   nodeId?: string;
   previewUrl?: string;
   refId?: string;
+  role?: AgentReferenceRole;
 };
 
 export type SendableAgentReferenceChip = AgentReferenceChip & {
