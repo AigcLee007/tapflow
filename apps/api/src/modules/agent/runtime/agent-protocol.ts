@@ -3,21 +3,28 @@ import { z } from "zod";
 export const AGENT_PROTOCOL_MAX_BLOCKS = 64;
 export const AGENT_PROTOCOL_MAX_QUESTIONS = 4;
 export const AGENT_PROTOCOL_MAX_RESULTS = 24;
-export const AGENT_PROTOCOL_MAX_TEXT = 4_000;
 export const AGENT_PROTOCOL_MAX_REFS = 64;
-export const AGENT_PROTOCOL_MAX_IDS = 64;
+export const AGENT_PROTOCOL_TEXT_MAX = 4_000;
+export const AGENT_PROTOCOL_ID_MAX = 200;
 
 export const agentPhaseSchema = z.enum([
   "idle", "understanding", "waiting_for_input", "planning", "waiting_for_confirmation",
   "executing", "verifying", "presenting_results", "refining", "failed", "cancelled",
 ]);
+export type AgentPhase = z.infer<typeof agentPhaseSchema>;
 
 export const agentExecutionStateSchema = z.enum(["idle", "queued", "running", "verifying", "completed", "failed", "cancelled"]);
+export type AgentExecutionState = z.infer<typeof agentExecutionStateSchema>;
 
-const idSchema = z.string().trim().min(1);
-const nullableIdSchema = idSchema.nullable();
-const sourceSchema = z.enum(["canvas", "asset", "upload"]);
+export const agentDecisionTypeSchema = z.enum([
+  "answer_question", "edit_brief", "approve_plan", "revise_plan", "result_action", "cancel_execution", "retry_execution",
+]);
+export type AgentDecisionType = z.infer<typeof agentDecisionTypeSchema>;
+
+const nonEmptyText = (max = AGENT_PROTOCOL_TEXT_MAX) => z.string().trim().min(1).max(max);
+const idSchema = nonEmptyText(AGENT_PROTOCOL_ID_MAX);
 const roleSchema = z.enum(["subject", "style", "composition", "layout", "context"]);
+const sourceSchema = z.enum(["canvas", "asset", "upload"]);
 
 export const agentContextRefSchema = z.object({
   refId: idSchema,
@@ -25,192 +32,146 @@ export const agentContextRefSchema = z.object({
   nodeId: idSchema.optional(),
   assetId: idSchema.optional(),
   role: roleSchema.optional(),
-  label: z.string().trim().min(1),
+  label: nonEmptyText(),
 }).strict();
 
 export const agentContextSnapshotSchema = z.object({
-  projectId: nullableIdSchema,
-  flowId: nullableIdSchema,
+  projectId: idSchema.nullable(),
+  flowId: idSchema.nullable(),
   graphRevision: z.number().int().nonnegative(),
   refs: z.array(agentContextRefSchema).max(AGENT_PROTOCOL_MAX_REFS),
-  skillIds: z.array(idSchema).max(AGENT_PROTOCOL_MAX_IDS),
-  appIds: z.array(idSchema).max(AGENT_PROTOCOL_MAX_IDS),
-  modelKey: nullableIdSchema,
+  skillIds: z.array(idSchema).max(AGENT_PROTOCOL_MAX_REFS),
+  appIds: z.array(idSchema).max(AGENT_PROTOCOL_MAX_REFS),
+  modelKey: idSchema.nullable(),
 }).strict();
 
-const questionSchema = z.object({
-  id: idSchema,
-  prompt: z.string().trim().min(1),
-  kind: z.enum(["text", "single", "multiple"]).optional(),
-  options: z.array(z.string().trim().min(1)).optional(),
-  required: z.boolean().optional(),
-  placeholder: z.string().trim().min(1).optional(),
-}).strict();
-
-const planSchema = z.object({
-  title: z.string().trim().min(1).optional(),
-  summary: z.string().trim().min(1).optional(),
-  deliverables: z.array(z.string().trim().min(1)).optional(),
-  modelKey: nullableIdSchema.optional(),
-  quantity: z.number().int().positive().optional(),
-  estimatedCredits: z.number().finite().nonnegative().optional(),
-  writesCanvas: z.boolean().optional(),
-  capabilities: z.array(idSchema).optional(),
-}).strict();
-
-const briefFieldSchema = z.object({ key: idSchema, label: z.string().trim().min(1), value: z.string().trim().min(1) }).strict();
-const progressStepSchema = z.object({
-  id: idSchema,
-  label: z.string().trim().min(1),
-  status: z.enum(["pending", "running", "completed", "failed"]),
-  detail: z.string().trim().min(1).optional(),
-}).strict();
-const resultRefSchema = z.object({
-  id: idSchema,
-  label: z.string().trim().min(1),
-  kind: z.enum(["image", "video", "text", "audio", "other"]).optional(),
-  assetId: idSchema.optional(),
-  contentText: z.string().trim().min(1).optional(),
-  status: z.enum(["ready", "selected", "failed"]).optional(),
-  sourceRefs: z.array(idSchema).optional(),
-  placedNodeId: idSchema.optional(),
-}).strict();
-
-const blockCommon = { type: z.string(), id: idSchema.optional(), title: z.string().trim().min(1).optional() } as const;
-const understandingBlockSchema = z.object({ ...blockCommon, type: z.literal("understanding"), text: z.string().trim().min(1) }).strict();
-const questionSetBlockSchema = z.object({ ...blockCommon, type: z.literal("question_set"), questions: z.array(questionSchema) }).strict();
-const planBlockSchema = z.object({
-  ...blockCommon,
-  type: z.literal("plan"),
-  summary: z.string().trim().min(1).optional(),
-  plan: planSchema.optional(),
-  deliverables: z.array(z.string().trim().min(1)).optional(),
-  modelKey: nullableIdSchema.optional(),
-  quantity: z.number().int().positive().optional(),
-  estimatedCredits: z.number().finite().nonnegative().optional(),
-  writesCanvas: z.boolean().optional(),
-  capabilities: z.array(idSchema).optional(),
-}).strict();
-const briefBlockSchema = z.object({ ...blockCommon, type: z.literal("brief"), text: z.string().trim().min(1).optional(), fields: z.array(briefFieldSchema) }).strict();
-const confirmationBlockSchema = z.object({
-  ...blockCommon,
-  type: z.literal("confirmation"),
-  text: z.string().trim().min(1),
-  risk: z.string().trim().min(1).optional(),
-  estimatedCredits: z.number().finite().nonnegative().optional(),
-  quantity: z.number().int().positive().optional(),
-  writesCanvas: z.boolean().optional(),
-}).strict();
-const progressBlockSchema = z.object({ ...blockCommon, type: z.literal("progress"), steps: z.array(progressStepSchema) }).strict();
-const resultGroupBlockSchema = z.object({ ...blockCommon, type: z.literal("result_group"), results: z.array(resultRefSchema) }).strict();
-const errorRecoveryBlockSchema = z.object({
-  ...blockCommon,
-  type: z.literal("error_recovery"),
-  text: z.string().trim().min(1),
-  retryable: z.boolean().optional(),
-  refundStatus: z.enum(["pending", "released", "refunded", "not_applicable"]).optional(),
-}).strict();
-
-export const conversationBlockSchema = z.discriminatedUnion("type", [
-  understandingBlockSchema,
-  questionSetBlockSchema,
-  planBlockSchema,
-  briefBlockSchema,
-  confirmationBlockSchema,
-  progressBlockSchema,
-  resultGroupBlockSchema,
-  errorRecoveryBlockSchema,
-]);
-export const conversationBlocksSchema = z.array(conversationBlockSchema).max(AGENT_PROTOCOL_MAX_BLOCKS);
-
-export const agentDecisionTypeSchema = z.enum([
-  "answer_question", "edit_brief", "approve_plan", "revise_plan", "result_action", "cancel_execution", "retry_execution",
-]);
-
-export const agentDecisionSchema = z.object({
-  type: agentDecisionTypeSchema,
-  decisionId: idSchema,
-  sessionId: idSchema,
-  turnId: idSchema,
-  graphRevision: z.number().int().nonnegative(),
-  idempotencyKey: idSchema,
-  answer: z.record(z.string(), z.unknown()).optional(),
-  field: idSchema.optional(),
-  value: z.string().trim().min(1).max(AGENT_PROTOCOL_MAX_TEXT).optional(),
-  action: idSchema.optional(),
-  resultId: idSchema.optional(),
-}).strict();
-
-export type AgentPhase = z.infer<typeof agentPhaseSchema>;
-export type AgentExecutionState = z.infer<typeof agentExecutionStateSchema>;
 export type AgentContextRef = z.infer<typeof agentContextRefSchema>;
 export type AgentContextSnapshot = z.infer<typeof agentContextSnapshotSchema>;
+
+const questionOptionSchema = z.object({ id: idSchema, label: nonEmptyText() }).strict();
+const questionSchema = z.object({
+  id: idSchema,
+  prompt: nonEmptyText(),
+  kind: z.enum(["text", "single", "multiple"]),
+  options: z.array(questionOptionSchema).max(24).optional(),
+  required: z.boolean().optional(),
+}).strict();
+
+const deliverableSchema = z.object({
+  id: idSchema,
+  label: nonEmptyText(),
+  kind: z.enum(["image", "video", "text"]),
+  quantity: z.number().int().nonnegative().optional(),
+}).strict();
+
+const common = { id: idSchema.optional(), title: nonEmptyText().optional() } as const;
+const understandingSchema = z.object({ type: z.literal("understanding"), ...common, text: nonEmptyText() }).strict();
+const questionSetSchema = z.object({ type: z.literal("question_set"), ...common, questions: z.array(questionSchema).max(AGENT_PROTOCOL_MAX_QUESTIONS) }).strict();
+const planSchema = z.object({
+  type: z.literal("plan"), ...common,
+  summary: nonEmptyText().optional(),
+  deliverables: z.array(deliverableSchema).max(24).default([]),
+  capabilities: z.array(idSchema).max(24).optional(),
+  references: z.array(idSchema).max(24).optional(),
+  modelKey: idSchema.nullable().optional(),
+  quantity: z.number().int().nonnegative().optional(),
+  estimatedCredits: z.number().nonnegative().optional(),
+  writes: z.array(nonEmptyText(200)).max(24).optional(),
+  requiresConfirmation: z.boolean().optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.summary && value.deliverables.length === 0) ctx.addIssue({ code: "custom", path: ["deliverables"], message: "plan requires summary or deliverables" });
+});
+const briefFieldSchema = z.object({ key: idSchema.optional(), label: nonEmptyText(), value: nonEmptyText(), required: z.boolean().optional() }).strict();
+const briefSchema = z.object({ type: z.literal("brief"), ...common, fields: z.array(briefFieldSchema).max(64), editable: z.boolean().optional() }).strict();
+const confirmationSchema = z.object({
+  type: z.literal("confirmation"), ...common, text: nonEmptyText(), risk: nonEmptyText().optional(), costCredits: z.number().nonnegative().optional(), quantity: z.number().int().nonnegative().optional(),
+  writes: z.array(nonEmptyText(200)).max(24).optional(), confirmLabel: nonEmptyText(120).optional(), reviseLabel: nonEmptyText(120).optional(),
+}).strict();
+const progressStepSchema = z.object({ id: idSchema, label: nonEmptyText(), status: z.enum(["pending", "running", "completed", "failed"]), detail: nonEmptyText().optional() }).strict();
+const progressSchema = z.object({ type: z.literal("progress"), ...common, steps: z.array(progressStepSchema).max(64) }).strict();
+const resultSchema = z.object({
+  id: idSchema, label: nonEmptyText(), kind: z.enum(["image", "video", "text"]).optional(), assetId: idSchema.optional(), refId: idSchema.optional(), runId: idSchema.optional(), status: z.enum(["pending", "ready", "selected", "failed"]).optional(), sourceRefs: z.array(idSchema).max(24).optional(),
+}).strict();
+const resultGroupSchema = z.object({ type: z.literal("result_group"), ...common, results: z.array(resultSchema).max(AGENT_PROTOCOL_MAX_RESULTS) }).strict();
+const recoveryActionSchema = z.object({ id: idSchema, label: nonEmptyText(), action: z.enum(["retry", "revise", "dismiss"]) }).strict();
+const errorRecoverySchema = z.object({ type: z.literal("error_recovery"), ...common, message: nonEmptyText(), actions: z.array(recoveryActionSchema).max(24) }).strict();
+
+export const conversationBlockSchema = z.discriminatedUnion("type", [understandingSchema, questionSetSchema, planSchema, briefSchema, confirmationSchema, progressSchema, resultGroupSchema, errorRecoverySchema]);
 export type ConversationBlock = z.infer<typeof conversationBlockSchema>;
-export type AgentDecisionType = z.infer<typeof agentDecisionTypeSchema>;
-export type AgentDecision = z.infer<typeof agentDecisionSchema>;
 
 export class AgentProtocolError extends Error {
   readonly code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID";
 
-  constructor(code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID", message = code) {
-    super(message === code ? code : `${code}: ${message}`);
+  constructor(code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID") {
+    super(code);
     this.name = "AgentProtocolError";
     this.code = code;
   }
 }
 
-const unsafeKey = (key: string) => {
-  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return ["provider", "credential", "credentials", "authorization", "apikey", "apisecret", "secret", "token", "base64", "blob", "data", "signedurl"].includes(normalized);
-};
-
-const unsafeString = (value: string) => /^(?:data:|blob:)/i.test(value)
-  || /^https?:\/\//i.test(value)
-  || /(?:^|[^a-z])base64(?:$|[^a-z])/i.test(value)
-  || /(?:authorization\s*:|\b(?:bearer|basic)\s+)/i.test(value)
-  || /(?:x-amz-signature|x-amz-credential|signature=|expires=|token=)/i.test(value);
-
-function scanUnsafe(value: unknown): boolean {
-  if (typeof value === "string") return unsafeString(value);
-  if (Array.isArray(value)) return value.some(scanUnsafe);
-  if (value && typeof value === "object") return Object.entries(value).some(([key, child]) => unsafeKey(key) || scanUnsafe(child));
-  return false;
+function isObject(value: unknown): value is object {
+  return Boolean(value) && typeof value === "object";
 }
 
-function parseOrThrow<T>(schema: z.ZodType<T>, value: unknown, code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID"): T {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success || scanUnsafe(value)) throw new AgentProtocolError(code, code);
-  return parsed.data;
+function isUnsafeString(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  if (lower.startsWith("data:") || lower.startsWith("blob:") || lower.includes("base64,")) return true;
+  return /^https?:\/\//i.test(lower) && /[?&](x-amz-|signature|expires|token|sig|se|sv|st|sp)[^=]*=/i.test(lower);
+}
+
+function assertSafeValue(value: unknown, code: AgentProtocolError["code"], seen = new Set<object>()): void {
+  if (typeof value === "string") {
+    if (isUnsafeString(value)) throw new AgentProtocolError(code);
+    return;
+  }
+  if (!isObject(value)) return;
+  if (seen.has(value)) throw new AgentProtocolError(code);
+  seen.add(value);
+  const ctor = (value as { constructor?: { name?: string } }).constructor?.name;
+  if (ctor === "File" || ctor === "Blob" || ctor === "FileList") throw new AgentProtocolError(code);
+  if (Array.isArray(value)) {
+    for (const item of value) assertSafeValue(item, code, seen);
+  } else {
+    for (const [key, item] of Object.entries(value)) {
+      if (/^(provider|credential|authorization|base64|secret|api[_-]?key|signed[_-]?url|preview[_-]?url|data[_-]?url)$/i.test(key)) throw new AgentProtocolError(code);
+      assertSafeValue(item, code, seen);
+    }
+  }
 }
 
 export function normalizeAgentContextSnapshot(input: unknown): AgentContextSnapshot {
-  const parsed = parseOrThrow(agentContextSnapshotSchema, input, "AGENT_CONTEXT_UNSAFE");
-  const refs: AgentContextRef[] = [];
-  const seen = new Set<string>();
-  for (const ref of parsed.refs) {
-    if (seen.has(ref.refId)) continue;
-    seen.add(ref.refId);
-    refs.push({ ...ref, label: ref.label.slice(0, AGENT_PROTOCOL_MAX_TEXT) });
+  try {
+    assertSafeValue(input, "AGENT_CONTEXT_UNSAFE");
+    const parsed = agentContextSnapshotSchema.parse(input);
+    return {
+      ...parsed,
+      refs: parsed.refs.map((ref) => ({ ...ref })),
+      skillIds: [...parsed.skillIds],
+      appIds: [...parsed.appIds],
+    };
+  } catch (error) {
+    if (error instanceof AgentProtocolError) throw error;
+    throw new AgentProtocolError("AGENT_CONTEXT_UNSAFE");
   }
-  return {
-    ...parsed,
-    refs,
-    skillIds: [...new Set(parsed.skillIds)].slice(0, AGENT_PROTOCOL_MAX_IDS),
-    appIds: [...new Set(parsed.appIds)].slice(0, AGENT_PROTOCOL_MAX_IDS),
-  };
 }
 
 export function normalizeConversationBlocks(input: unknown): ConversationBlock[] {
-  if (!Array.isArray(input)) throw new AgentProtocolError("AGENT_BLOCK_INVALID", "AGENT_BLOCK_INVALID");
-  const values = input.slice(0, AGENT_PROTOCOL_MAX_BLOCKS);
-  const normalized: ConversationBlock[] = [];
-  for (const value of values) {
-    const block = parseOrThrow(conversationBlockSchema, value, "AGENT_BLOCK_INVALID");
-    if (block.type === "question_set") normalized.push({ ...block, questions: block.questions.slice(0, AGENT_PROTOCOL_MAX_QUESTIONS).map((question) => ({ ...question, prompt: question.prompt.slice(0, AGENT_PROTOCOL_MAX_TEXT), ...(question.placeholder ? { placeholder: question.placeholder.slice(0, AGENT_PROTOCOL_MAX_TEXT) } : {}) })) });
-    else if (block.type === "result_group") normalized.push({ ...block, results: block.results.slice(0, AGENT_PROTOCOL_MAX_RESULTS).map((result) => ({ ...result, label: result.label.slice(0, AGENT_PROTOCOL_MAX_TEXT), ...(result.contentText ? { contentText: result.contentText.slice(0, AGENT_PROTOCOL_MAX_TEXT) } : {}) })) });
-    else normalized.push(block);
+  try {
+    assertSafeValue(input, "AGENT_BLOCK_INVALID");
+    if (!Array.isArray(input)) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
+    return input.slice(0, AGENT_PROTOCOL_MAX_BLOCKS).map((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
+      const value = raw as Record<string, unknown>;
+      const copy: Record<string, unknown> = { ...value };
+      if (value.type === "question_set" && Array.isArray(value.questions)) copy.questions = value.questions.slice(0, AGENT_PROTOCOL_MAX_QUESTIONS);
+      if (value.type === "result_group" && Array.isArray(value.results)) copy.results = value.results.slice(0, AGENT_PROTOCOL_MAX_RESULTS);
+      const parsed = conversationBlockSchema.parse(copy);
+      if (parsed.type === "plan" && parsed.deliverables.length === 0 && !parsed.summary) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
+      return parsed;
+    });
+  } catch (error) {
+    if (error instanceof AgentProtocolError) throw error;
+    throw new AgentProtocolError("AGENT_BLOCK_INVALID");
   }
-  return normalized;
 }
 
-export const normalizeAgentBlocks = normalizeConversationBlocks;
