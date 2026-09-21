@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { normalizeConversationBlocks, type AgentContextSnapshot, type ConversationBlock } from "./agent-protocol.js";
-import type { AgentRuntimeContext, AgentRuntimeRepository, AgentRuntimeSession, AgentRuntimeStateInput, AgentRuntimeTurn } from "./agent-runtime.repository.js";
-import type { AgentRequirementPlanner, AgentRequirementPlan } from "./agent-requirement-planner.js";
+import type { AgentRuntimeContext, AgentRuntimeRepository, AgentRuntimeResultRef, AgentRuntimeSession, AgentRuntimeStateInput, AgentRuntimeTurn } from "./agent-runtime.repository.js";
+import type { AgentPlannedStep, AgentRequirementPlanner, AgentRequirementPlan } from "./agent-requirement-planner.js";
 import type { AgentRuntimeContextService } from "./agent-runtime-context.js";
 import type { AgentExecutionAdapter, AgentExecutionStep } from "./agent-execution-adapter.js";
 import { agentRuntimeDecisionSchema, agentRuntimeTurnSchema, type AgentRuntimeDecisionRequest } from "./agent-runtime.schemas.js";
@@ -39,6 +39,54 @@ function failureMessage(error: unknown): string {
   return "任务暂未完成，可重试恢复或修改计划。";
 }
 
+export type AgentDeliveryExecutionSnapshot = {
+  workflowStatus?: string;
+  nodeRuns?: Array<{ nodeId?: string | null; status?: string | null }>;
+  nodeIdsByStepId?: Record<string, string | undefined>;
+};
+
+export class AgentDeliveryVerificationError extends Error {
+  constructor(readonly code: "AGENT_DELIVERY_WORKFLOW_NOT_COMPLETED" | "AGENT_DELIVERY_NODE_MISSING" | "AGENT_DELIVERY_NODE_NOT_COMPLETED" | "AGENT_DELIVERY_RESULT_MISSING" | "AGENT_DELIVERY_INVALID_RESULT", message: string = code) {
+    super(`${code}: ${message}`);
+    this.name = "AgentDeliveryVerificationError";
+  }
+}
+
+const completedWorkflowStatuses = new Set(["completed", "succeeded"]);
+const completedNodeStatuses = new Set(["completed", "succeeded", "success", "ready"]);
+
+/**
+ * Verifies the durable evidence needed before an Agent execution can be
+ * presented as completed. Result refs are matched to planned steps through
+ * their server-owned lineage, never through a browser supplied index.
+ */
+export function verifyAgentDeliveryGroup(
+  results: AgentRuntimeResultRef[],
+  expectedSteps: Array<Pick<AgentPlannedStep, "id" | "kind"> & { label?: string }>,
+  execution: AgentDeliveryExecutionSnapshot = {},
+): AgentRuntimeResultRef[] {
+  if (execution.workflowStatus !== undefined && !completedWorkflowStatuses.has(execution.workflowStatus)) {
+    throw new AgentDeliveryVerificationError("AGENT_DELIVERY_WORKFLOW_NOT_COMPLETED", `Workflow status ${execution.workflowStatus} is not complete.`);
+  }
+  for (const step of expectedSteps) {
+    const delivery = results.find((candidate) => candidate.lineage?.stepId === step.id || (step.label && candidate.label === step.label));
+    if (!delivery) throw new AgentDeliveryVerificationError("AGENT_DELIVERY_RESULT_MISSING", `No result was delivered for step ${step.id}.`);
+    if (delivery.kind !== step.kind || delivery.status === "failed" || delivery.status === "pending") {
+      throw new AgentDeliveryVerificationError("AGENT_DELIVERY_INVALID_RESULT", `Result for step ${step.id} has the wrong kind or status.`);
+    }
+    if (step.kind === "text" ? !delivery.contentText?.trim() : !delivery.assetId?.trim()) {
+      throw new AgentDeliveryVerificationError("AGENT_DELIVERY_INVALID_RESULT", `Result for step ${step.id} is missing its ${step.kind === "text" ? "text" : "asset"} payload.`);
+    }
+    if (execution.nodeRuns) {
+      const expectedNodeId = execution.nodeIdsByStepId?.[step.id] ?? (typeof delivery.lineage?.nodeId === "string" ? delivery.lineage.nodeId : undefined);
+      const node = expectedNodeId ? execution.nodeRuns.find((candidate) => candidate.nodeId === expectedNodeId) : undefined;
+      if (!node) throw new AgentDeliveryVerificationError("AGENT_DELIVERY_NODE_MISSING", `No node delivery evidence was found for step ${step.id}.`);
+      if (!completedNodeStatuses.has(String(node.status))) throw new AgentDeliveryVerificationError("AGENT_DELIVERY_NODE_NOT_COMPLETED", `Node delivery for step ${step.id} is not complete.`);
+    }
+  }
+  return results;
+}
+
 export class AgentRuntimeService {
   constructor(private readonly dependencies: AgentRuntimeServiceDependencies) {}
 
@@ -56,7 +104,7 @@ export class AgentRuntimeService {
     if (!stored.execution?.runId || !session.flowId) return publicAgentTurn(turn);
     const run = await this.dependencies.execution.get(ctx, { flowId: session.flowId, runId: stored.execution.runId });
     const nodes = run.nodeRuns ?? [];
-    if (run.workflowRun.status === "succeeded" && nodes.length) {
+    if (run.workflowRun.status === "succeeded") {
       const groupId = stored.resultGroupId ?? await this.dependencies.repository.saveResultGroup(ctx, { sessionId, turnId, runId: stored.execution.runId, status: "ready", idempotencyKey: `group:${stored.execution.runId}` });
       const existing = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
       const existingKeys = new Set(existing.map(item => `${item.kind}:${item.label}`));
@@ -72,7 +120,17 @@ export class AgentRuntimeService {
         await this.dependencies.repository.saveResultRef(ctx, { resultGroupId: groupId, runId: stored.execution.runId, assetId, contentText, kind: step.kind, label: step.label, sourceRefs: step.referenceIds, lineage: { sessionId, turnId, stepId: step.id, nodeId }, idempotencyKey: `result:${stored.execution.runId}:${step.id}` });
       }
       const results = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
-      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => ({ id: item.id, label: item.label, kind: item.kind, assetId: item.assetId ?? undefined, runId: item.runId ?? undefined, status: item.status === "ready" ? "ready" : "failed", sourceRefs: item.sourceRefs, contentText: item.contentText ?? undefined, placedNodeId: item.placedNodeId ?? undefined })) }] })));
+      try {
+        verifyAgentDeliveryGroup(results, stored.requirement?.steps ?? [], {
+          workflowStatus: run.workflowRun.status,
+          nodeRuns: nodes.map((node) => ({ nodeId: node.nodeId, status: node.status })),
+          nodeIdsByStepId: stored.execution.nodeIds,
+        });
+      } catch (error) {
+        if (error instanceof AgentDeliveryVerificationError) return publicAgentTurn(await this.fail(ctx, turn, error));
+        throw error;
+      }
+      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => ({ id: item.id, label: item.label, kind: item.kind, assetId: item.assetId ?? undefined, runId: item.runId ?? undefined, status: item.status === "ready" ? "ready" : "failed", ...(item.sourceRefs.length ? { sourceRefs: item.sourceRefs } : {}), contentText: item.contentText ?? undefined, placedNodeId: item.placedNodeId ?? undefined })) }] })));
     }
     return publicAgentTurn(turn);
   }
@@ -152,7 +210,7 @@ export class AgentRuntimeService {
                 assetId: item.assetId ?? undefined,
                 runId: item.runId ?? undefined,
                 status: item.status === "ready" || item.status === "placed" ? "ready" : "failed",
-                sourceRefs: item.sourceRefs,
+                ...(item.sourceRefs.length ? { sourceRefs: item.sourceRefs } : {}),
                 contentText: item.contentText ?? undefined,
                 placedNodeId: item.placedNodeId ?? undefined,
               })),

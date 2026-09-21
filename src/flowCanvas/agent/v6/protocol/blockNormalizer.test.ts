@@ -76,6 +76,27 @@ describe("normalizeBlocks", () => {
     });
   });
 
+  it("keeps canonical image and text results when they have no input references", () => {
+    const serverBlock = [{
+      type: "result_group",
+      id: "group",
+      results: [
+        { id: "first", label: "首帧", kind: "image", assetId: "asset-1", sourceRefs: [] },
+        { id: "last", label: "尾帧", kind: "image", assetId: "asset-2", sourceRefs: [] },
+        { id: "prompt", label: "视频提示词", kind: "text", contentText: "camera moves forward", sourceRefs: [] },
+      ],
+    }];
+
+    expect(normalizeBlocks(serverBlock)[0]).toMatchObject({
+      type: "result_group",
+      results: expect.arrayContaining([
+        expect.objectContaining({ id: "first" }),
+        expect.objectContaining({ id: "last" }),
+        expect.objectContaining({ id: "prompt" }),
+      ]),
+    });
+  });
+
   it("caps text, list items, and table dimensions", () => {
     const long = "x".repeat(10_000);
     const [paragraph, list, table] = normalizeBlocks([

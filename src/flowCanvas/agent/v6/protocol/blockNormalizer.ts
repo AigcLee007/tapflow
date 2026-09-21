@@ -50,9 +50,9 @@ function result(value: unknown): ResultRef | undefined {
   const refId = raw.refId === undefined ? undefined : id(raw.refId);
   const runId = raw.runId === undefined ? undefined : id(raw.runId);
   const placedNodeId = raw.placedNodeId === undefined ? undefined : id(raw.placedNodeId);
-  const sourceRefs = raw.sourceRefs === undefined ? undefined : array(raw.sourceRefs).map(id);
-  const uploadedAssetIds = raw.uploadedAssetIds === undefined ? undefined : array(raw.uploadedAssetIds).map(id);
-  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.runId !== undefined && !runId) || (raw.placedNodeId !== undefined && !placedNodeId) || (raw.sourceRefs !== undefined && (!sourceRefs?.length || sourceRefs.some((value) => !value))) || (raw.uploadedAssetIds !== undefined && (!uploadedAssetIds?.length || uploadedAssetIds.some((value) => !value)))) return undefined;
+  const sourceRefs = raw.sourceRefs === undefined ? undefined : Array.isArray(raw.sourceRefs) ? array(raw.sourceRefs).map(id) : undefined;
+  const uploadedAssetIds = raw.uploadedAssetIds === undefined ? undefined : Array.isArray(raw.uploadedAssetIds) ? array(raw.uploadedAssetIds).map(id) : undefined;
+  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.runId !== undefined && !runId) || (raw.placedNodeId !== undefined && !placedNodeId) || (raw.sourceRefs !== undefined && (!Array.isArray(raw.sourceRefs) || sourceRefs?.some((value) => !value))) || (raw.uploadedAssetIds !== undefined && (!Array.isArray(raw.uploadedAssetIds) || uploadedAssetIds?.some((value) => !value)))) return undefined;
   return {
     id: resultId,
     label: resultLabel,
