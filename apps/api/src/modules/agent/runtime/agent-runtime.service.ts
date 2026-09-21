@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { normalizeConversationBlocks, type AgentContextSnapshot, type ConversationBlock } from "./agent-protocol.js";
 import type { AgentRuntimeContext, AgentRuntimeRepository, AgentRuntimeResultRef, AgentRuntimeSession, AgentRuntimeStateInput, AgentRuntimeTurn } from "./agent-runtime.repository.js";
 import type { AgentPlannedStep, AgentRequirementPlanner, AgentRequirementPlan } from "./agent-requirement-planner.js";
@@ -11,7 +11,8 @@ export type AgentTurnResponse = Omit<AgentRuntimeTurn, "planJson" | "idempotency
 export type AgentRuntimeTurnInput = { prompt: string; contextSnapshot: AgentContextSnapshot; idempotencyKey: string };
 type Quote = Awaited<ReturnType<AgentExecutionAdapter["quote"]>>;
 type Execution = { key: string; runId?: string; nodeIds?: Record<string, string> };
-type RuntimePlan = { requirement?: AgentRequirementPlan; answers?: Record<string, string | string[]>; steps?: AgentExecutionStep[]; quote?: Quote; execution?: Execution; context?: AgentContextSnapshot; resultGroupId?: string };
+type ResultActionPlan = { action: "variant" | "edit"; sourceResultId: string; sourceAssetId?: string; instruction: string };
+type RuntimePlan = { requirement?: AgentRequirementPlan; answers?: Record<string, string | string[]>; steps?: AgentExecutionStep[]; quote?: Quote; execution?: Execution; context?: AgentContextSnapshot; resultGroupId?: string; resultAction?: ResultActionPlan };
 export type AgentRuntimeServiceDependencies = {
   repository: AgentRuntimeRepository; planner: Pick<AgentRequirementPlanner, "plan"> & { understand?: (...args: never[]) => Promise<unknown> };
   context: Pick<AgentRuntimeContextService, "assemble" | "models" | "resolveSteps" | "placementGraph">;
@@ -104,14 +105,17 @@ export class AgentRuntimeService {
     if (!stored.execution?.runId || !session.flowId) return publicAgentTurn(turn);
     const run = await this.dependencies.execution.get(ctx, { flowId: session.flowId, runId: stored.execution.runId });
     const nodes = run.nodeRuns ?? [];
-    if (run.workflowRun.status === "succeeded") {
+    if (run.workflowRun.status === "failed" || run.workflowRun.status === "canceled" || run.workflowRun.status === "cancelled") {
+      return publicAgentTurn(await this.fail(ctx, turn, new Error(run.workflowRun.status === "canceled" || run.workflowRun.status === "cancelled" ? "AGENT_EXECUTION_CANCELLED" : "AGENT_EXECUTION_FAILED")));
+    }
+    if (run.workflowRun.status === "succeeded" || run.workflowRun.status === "completed") {
       const groupId = stored.resultGroupId ?? await this.dependencies.repository.saveResultGroup(ctx, { sessionId, turnId, runId: stored.execution.runId, status: "ready", idempotencyKey: `group:${stored.execution.runId}` });
       const existing = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
       const existingKeys = new Set(existing.map(item => `${item.kind}:${item.label}`));
       for (const step of stored.requirement?.steps ?? []) {
         const nodeId = stored.execution.nodeIds?.[step.id];
         const node = nodes.find(item => item.nodeId === nodeId);
-        if (!node || node.status !== "succeeded") continue;
+        if (!node || !completedNodeStatuses.has(String(node.status))) continue;
         const output = node.outputJson ?? {};
         const assets = Array.isArray(output.assets) ? output.assets : [];
         const assetId = typeof output.assetId === "string" ? output.assetId : (assets[0] && typeof assets[0] === "object" && typeof (assets[0] as Record<string, unknown>).assetId === "string" ? (assets[0] as Record<string, unknown>).assetId as string : null);
@@ -130,7 +134,21 @@ export class AgentRuntimeService {
         if (error instanceof AgentDeliveryVerificationError) return publicAgentTurn(await this.fail(ctx, turn, error));
         throw error;
       }
-      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => ({ id: item.id, label: item.label, kind: item.kind, assetId: item.assetId ?? undefined, runId: item.runId ?? undefined, status: item.status === "ready" ? "ready" : "failed", ...(item.sourceRefs.length ? { sourceRefs: item.sourceRefs } : {}), contentText: item.contentText ?? undefined, placedNodeId: item.placedNodeId ?? undefined })) }] })));
+      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => this.resultBlock(item)) }] })));
+    }
+    if (run.workflowRun.status === "pending" || run.workflowRun.status === "queued" || run.workflowRun.status === "running") {
+      const progress = (stored.requirement?.steps ?? []).map((step) => {
+        const node = nodes.find(item => item.nodeId === stored.execution?.nodeIds?.[step.id]);
+        const status: "pending" | "running" | "completed" | "failed" = node?.status === "succeeded" || node?.status === "completed" ? "completed" : node?.status === "failed" || node?.status === "canceled" || node?.status === "cancelled" ? "failed" : node?.status === "running" ? "running" : "pending";
+        return { id: step.id, label: step.label, status };
+      });
+      const blocks = [{ type: "progress" as const, id: "execution-progress", steps: progress }];
+      try {
+        return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "executing", executionState: "running", pendingDecision: pending(turn, "execution-progress", ["cancel_execution"]), blocks })));
+      } catch (error) {
+        if (error instanceof Error && error.message === "AGENT_STATE_VERSION_CONFLICT") return publicAgentTurn(await this.dependencies.repository.getTurn(ctx, sessionId, turnId));
+        throw error;
+      }
     }
     return publicAgentTurn(turn);
   }
@@ -183,14 +201,18 @@ export class AgentRuntimeService {
       }
       if (input.type === "retry_execution") {
         if (stored.execution) {
-          turn = await complete({ phase: "executing", executionState: "queued", pendingDecision: null });
+          turn = await complete({ phase: "executing", executionState: "queued", pendingDecision: null, planJson: { ...stored, execution: { key: `${stored.execution.key}:retry:${claim.decision.id}` } } });
           return publicAgentTurn(await this.start(ctx, session, turn));
         }
         return publicAgentTurn(await this.plan(ctx, session, turn, stored.answers ?? {}, claim.decision.id));
       }
       if (input.type === "result_action") {
+        const resultIds = [...new Set(input.payload.resultIds)];
+        if ((input.payload.action === "edit" || input.payload.action === "variant") && resultIds.length !== 1) throw new Error("AGENT_RESULT_ACTION_SINGLE");
+        const scopedResults = await this.dependencies.repository.getResultRefsForTurn(ctx, { sessionId, turnId, resultIds });
+        if (scopedResults.some(result => result.status === "failed")) throw new Error("AGENT_RESULT_NOT_READY");
         if (input.payload.action === "place") {
-          const result = await this.dependencies.repository.getResultRef(ctx, input.payload.resultIds[0]!);
+          const result = scopedResults[0]!;
           if (!session.flowId) throw new Error("AGENT_CONTEXT_SCOPE_CONFLICT");
           const placement = await this.dependencies.context.placementGraph(ctx, session, result);
           const placed = await this.dependencies.repository.placeResultAtomic(ctx, { resultId: result.id, placedNodeId: placement.placedNodeId, expectedGraphRevision: placement.expectedGraphRevision, graph: placement.graph });
@@ -217,6 +239,64 @@ export class AgentRuntimeService {
             }],
           }));
         }
+        if (input.payload.action === "select" || input.payload.action === "reference") {
+          const now = new Date().toISOString();
+          for (const result of scopedResults) {
+            const lineage = {
+              ...result.lineage,
+              ...(input.payload.action === "select" ? { selected: true, selectedAt: now } : { referenced: true, referencedAt: now }),
+            };
+            await this.dependencies.repository.updateResultRef(ctx, {
+              resultId: result.id,
+              sessionId,
+              turnId,
+              ...(input.payload.action === "select" ? { status: "selected" } : {}),
+              lineage,
+            });
+          }
+          const results = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
+          return publicAgentTurn(await complete({
+            phase: "presenting_results",
+            executionState: "completed",
+            pendingDecision: pending(turn, "results", ["result_action"]),
+            blocks: [{ type: "result_group", id: stored.resultGroupId, results: results.map(item => this.resultBlock(item)) }],
+          }));
+        }
+        if (input.payload.action === "variant" || input.payload.action === "edit") {
+          const source = scopedResults[0]!;
+          const instruction = input.payload.instruction?.trim() || (input.payload.action === "variant"
+            ? "生成一个新的变体，保留原结果的核心内容并探索新的视觉方向。"
+            : "继续编辑这个结果，进行明确的局部修改并保留未修改部分。");
+          await complete({
+            phase: "presenting_results",
+            executionState: "completed",
+            pendingDecision: pending(turn, "results", ["result_action"]),
+          });
+          const context = {
+            ...turn.contextSnapshot,
+            refs: [
+              ...turn.contextSnapshot.refs.filter(ref => ref.refId !== source.id),
+              ...(source.assetId ? [{ refId: source.id, source: "asset" as const, label: source.label, assetId: source.assetId }] : []),
+            ],
+          };
+          const prompt = `${input.payload.action === "variant" ? "生成变体" : "继续编辑"}「${source.label}」${source.contentText ? `（原文：${source.contentText}）` : ""}：${instruction}`;
+          const actionKey = createHash("sha256").update(`${input.payload.action}:${source.id}:${instruction}`).digest("hex").slice(0, 32);
+          const nextTurn = await this.dependencies.repository.createTurnIdempotent(ctx, {
+            sessionId,
+            prompt,
+            contextSnapshot: context,
+            graphRevision: turn.graphRevision,
+            idempotencyKey: `result-action:${claim.decision.id}:${actionKey}`,
+          });
+          if (nextTurn.stateVersion > 0 || nextTurn.blocks.length) return publicAgentTurn(nextTurn);
+          turn = nextTurn;
+          return publicAgentTurn(await this.plan(ctx, session, nextTurn, {}, undefined, {
+            action: input.payload.action,
+            sourceResultId: source.id,
+            ...(source.assetId ? { sourceAssetId: source.assetId } : {}),
+            instruction,
+          }));
+        }
         return publicAgentTurn(await complete({ phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]) }));
       }
       throw new Error("AGENT_RESULT_ACTION_REQUIRES_RESULT_CONTROLLER");
@@ -237,7 +317,22 @@ export class AgentRuntimeService {
     }
   }
 
-  private async plan(ctx: AgentServiceContext, session: AgentRuntimeSession, turn: AgentRuntimeTurn, answers: Record<string, string | string[]>, decisionId?: string): Promise<AgentRuntimeTurn> {
+  private resultBlock(result: AgentRuntimeResultRef) {
+    const status: "selected" | "ready" | "failed" = result.status === "selected" ? "selected" : result.status === "ready" || result.status === "placed" ? "ready" : "failed";
+    return {
+      id: result.id,
+      label: result.label,
+      kind: result.kind,
+      assetId: result.assetId ?? undefined,
+      runId: result.runId ?? undefined,
+      status,
+      ...(result.sourceRefs.length ? { sourceRefs: result.sourceRefs } : {}),
+      contentText: result.contentText ?? undefined,
+      placedNodeId: result.placedNodeId ?? undefined,
+    };
+  }
+
+  private async plan(ctx: AgentServiceContext, session: AgentRuntimeSession, turn: AgentRuntimeTurn, answers: Record<string, string | string[]>, decisionId?: string, resultAction?: ResultActionPlan): Promise<AgentRuntimeTurn> {
     const context = await this.dependencies.context.assemble(ctx, session, turn.contextSnapshot);
     const models = await this.dependencies.context.models(ctx);
     const requirement = await this.dependencies.planner.plan(ctx, { prompt: turn.prompt, contextSnapshot: context, answers, previousPlan: storedPlan(turn).requirement ?? null, models });
@@ -246,7 +341,7 @@ export class AgentRuntimeService {
     let patch: Partial<AgentRuntimeStateInput>;
     if (requirement.questions.length) {
       blocks.push({ type: "question_set", id: "questions", questions: requirement.questions });
-      patch = { phase: "waiting_for_input", executionState: "idle", blocks, pendingDecision: pending(turn, "questions", ["answer_question", "revise_plan"]), planJson: { requirement, answers, context } };
+      patch = { phase: "waiting_for_input", executionState: "idle", blocks, pendingDecision: pending(turn, "questions", ["answer_question", "revise_plan"]), planJson: { requirement, answers, context, ...(resultAction ? { resultAction } : {}) } };
     } else {
       if (!session.flowId) throw new Error("AGENT_CONTEXT_SCOPE_CONFLICT");
       const steps = await this.dependencies.context.resolveSteps(ctx, requirement, context);
@@ -255,7 +350,7 @@ export class AgentRuntimeService {
       const modelNames = [...new Set(quote.steps.map(step => step.modelDisplayName).filter(Boolean))].join("、");
       blocks.push({ type: "plan", id: "plan", summary: requirement.understanding + (modelNames ? " 使用模型：" + modelNames + "。" : ""), deliverables: requirement.steps.map(step => ({ id: step.id, label: step.label, kind: step.kind, quantity: 1 })), quantity: steps.length, estimatedCredits: quote.credits, references: context.refs.map(ref => ref.refId), capabilities: [...new Set(steps.map(step => step.kind + ".generate"))], writes: ["素材库", "会话结果"], requiresConfirmation: true });
       blocks.push({ type: "confirmation", id: "approval", text: "确认按此计划生成并保存结果，完成后可选择放入画布。", costCredits: quote.credits, quantity: steps.length, writes: ["素材库", "会话结果"], confirmLabel: "确认生成", reviseLabel: "修改计划" });
-      patch = { phase: "waiting_for_confirmation", executionState: "idle", blocks, pendingDecision: pending(turn, "approval", ["approve_plan", "revise_plan", "edit_brief"]), planJson: { requirement, answers, context, steps, quote } };
+      patch = { phase: "waiting_for_confirmation", executionState: "idle", blocks, pendingDecision: pending(turn, "approval", ["approve_plan", "revise_plan", "edit_brief"]), planJson: { requirement, answers, context, steps, quote, ...(resultAction ? { resultAction } : {}) } };
     }
     const next = state(turn, { ...patch, status: "planned", blocks: normalizeConversationBlocks(blocks) });
     return decisionId ? this.dependencies.repository.completeDecision(ctx, { ...next, decisionId }) : this.dependencies.repository.saveTurnStateCAS(ctx, next);

@@ -7,10 +7,15 @@ function harness() {
   let turn: any = { id: "turn", sessionId: "session", prompt: "咖啡海报", contextSnapshot: snapshot, graphRevision: 4, stateVersion: 0, planJson: {}, phase: "understanding", executionState: "idle", blocks: [], pendingDecision: null, idempotencyKey: "turn-key", status: "pending" };
   const repository = {
     getSession: vi.fn().mockResolvedValue({ id: "session", ...snapshot, mode: "manual_confirmation" }),
-    createTurnIdempotent: vi.fn(async () => turn), getTurn: vi.fn(async () => turn),
-    saveTurnStateCAS: vi.fn(async (_ctx, state) => { if (state.expectedStateVersion !== turn.stateVersion) throw new Error("AGENT_STATE_VERSION_CONFLICT"); turn = { ...turn, ...state, stateVersion: turn.stateVersion + 1 }; return turn; }),
+    createTurnIdempotent: vi.fn(async (_ctx, input) => {
+      if (!input.idempotencyKey.startsWith("result-action:")) return turn;
+      turn = { ...turn, id: "next-turn", sessionId: "session", prompt: input.prompt, contextSnapshot: input.contextSnapshot, graphRevision: input.graphRevision, idempotencyKey: input.idempotencyKey, stateVersion: 0, blocks: [], pendingDecision: null, planJson: {}, phase: "understanding", executionState: "idle" };
+      return turn;
+    }), getTurn: vi.fn(async () => turn),
+    saveTurnStateCAS: vi.fn(async (_ctx, state) => { if (state.expectedStateVersion !== turn.stateVersion) throw new Error("AGENT_STATE_VERSION_CONFLICT"); turn = { ...turn, ...state, id: state.turnId, stateVersion: turn.stateVersion + 1 }; return turn; }),
     beginDecision: vi.fn(async (_ctx, input) => { turn = { ...turn, stateVersion: turn.stateVersion + 1, pendingDecision: null }; return { decision: { id: "row", resultState: "pending", ...input }, turn, replay: false }; }),
     completeDecision: vi.fn(async (_ctx, state) => { turn = { ...turn, ...state, stateVersion: turn.stateVersion + 1 }; return turn; }),
+    getResultRef: vi.fn(), getResultRefsForTurn: vi.fn(), updateResultRef: vi.fn(), listResultRefs: vi.fn().mockResolvedValue([]),
   };
   const planner = { plan: vi.fn().mockResolvedValue(plan) };
   const context = { assemble: vi.fn().mockResolvedValue(snapshot), models: vi.fn().mockResolvedValue([]), resolveSteps: vi.fn().mockResolvedValue([{ stepId: "poster", kind: "image", prompt: "咖啡海报", routeKey: "internal" }]) };
@@ -67,5 +72,49 @@ describe("Agent runtime orchestration", () => {
     const pending = h.getTurn().pendingDecision;
     await h.service.submitDecision(ctx, "session", "turn", { decisionId: pending.id, blockId: pending.blockId, graphRevision: 4, idempotencyKey: "answer-one", type: "answer_question", payload: { answers: { subject: "机器人" } } });
     expect(h.planner.plan.mock.calls[1][1]).toMatchObject({ answers: { subject: "机器人" } });
+  });
+
+  it("persists selection and reference actions only for results in the current turn", async () => {
+    const h = harness();
+    const result = { id: "result-1", resultGroupId: "group", assetId: "asset-1", runId: "run", kind: "image", label: "首帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };
+    h.repository.getResultRefsForTurn.mockImplementation(async (_ctx, input) => {
+      expect(input).toEqual({ sessionId: "session", turnId: "turn", resultIds: ["result-1"] });
+      return [result];
+    });
+    h.repository.updateResultRef.mockResolvedValue({ ...result, status: "selected", lineage: { selected: true } });
+    h.repository.listResultRefs.mockResolvedValue([{ ...result, status: "selected", lineage: { selected: true } }]);
+    h.getTurn().pendingDecision = { id: "decision", blockId: "results", graphRevision: 4, allowedTypes: ["result_action"] };
+    h.getTurn().blocks = [{ type: "result_group", id: "results", results: [{ id: "result-1", label: "首帧", kind: "image", status: "ready", assetId: "asset-1" }] }];
+    await h.service.submitDecision(ctx, "session", "turn", { decisionId: "decision", blockId: "results", graphRevision: 4, idempotencyKey: "select-result", type: "result_action", payload: { action: "select", resultIds: ["result-1"] } });
+    expect(h.repository.updateResultRef).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant" }), expect.objectContaining({ resultId: "result-1", sessionId: "session", turnId: "turn", status: "selected" }));
+  });
+
+  it("persists reference actions without granting them a different result scope", async () => {
+    const h = harness();
+    const result = { id: "result-1", resultGroupId: "group", assetId: "asset-1", runId: "run", kind: "image", label: "尾帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };
+    h.repository.getResultRefsForTurn.mockImplementation(async (_ctx, input) => {
+      expect(input).toEqual({ sessionId: "session", turnId: "turn", resultIds: ["result-1"] });
+      return [result];
+    });
+    h.repository.updateResultRef.mockResolvedValue({ ...result, lineage: { referenced: true } });
+    h.repository.listResultRefs.mockResolvedValue([{ ...result, lineage: { referenced: true } }]);
+    h.getTurn().pendingDecision = { id: "decision", blockId: "results", graphRevision: 4, allowedTypes: ["result_action"] };
+    h.getTurn().blocks = [{ type: "result_group", id: "results", results: [{ id: "result-1", label: "尾帧", kind: "image", status: "ready", assetId: "asset-1" }] }];
+    await h.service.submitDecision(ctx, "session", "turn", { decisionId: "decision", blockId: "results", graphRevision: 4, idempotencyKey: "reference-result", type: "result_action", payload: { action: "reference", resultIds: ["result-1"] } });
+    expect(h.repository.updateResultRef).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant" }), expect.objectContaining({ resultId: "result-1", sessionId: "session", turnId: "turn", lineage: expect.objectContaining({ referenced: true }) }));
+  });
+
+  it("creates a new quoted planning turn for edit and variant actions", async () => {
+    const h = harness();
+    const result = { id: "result-1", resultGroupId: "group", assetId: "asset-1", runId: "run", kind: "image", label: "首帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };
+    h.repository.getResultRefsForTurn.mockResolvedValue([result]);
+    h.getTurn().pendingDecision = { id: "decision", blockId: "results", graphRevision: 4, allowedTypes: ["result_action"] };
+    h.getTurn().blocks = [{ type: "result_group", id: "results", results: [{ id: "result-1", label: "首帧", kind: "image", status: "ready", assetId: "asset-1" }] }];
+    const response = await h.service.submitDecision(ctx, "session", "turn", { decisionId: "decision", blockId: "results", graphRevision: 4, idempotencyKey: "variant-result", type: "result_action", payload: { action: "variant", resultIds: ["result-1"], instruction: "换成黄昏光线" } });
+    expect(h.repository.createTurnIdempotent).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant" }), expect.objectContaining({ prompt: expect.stringContaining("换成黄昏光线"), contextSnapshot: expect.objectContaining({ refs: expect.arrayContaining([expect.objectContaining({ assetId: "asset-1" })]) }) }));
+    expect(h.execution.quote).toHaveBeenCalled();
+    expect(response.turnId).toBe("next-turn");
+    expect(response.phase).toBe("waiting_for_confirmation");
+    expect(response.pendingDecision).toMatchObject({ allowedTypes: expect.arrayContaining(["approve_plan"]) });
   });
 });

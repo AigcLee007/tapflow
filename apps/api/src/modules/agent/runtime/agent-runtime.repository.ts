@@ -304,12 +304,35 @@ export class AgentRuntimeRepository {
       return mapResult((await client.query("INSERT INTO agent_result_refs(tenant_id,result_group_id,asset_id,run_id,idempotency_key,kind,label,source_refs_json,lineage_json,status,content_text) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11) RETURNING *", [ctx.tenantId, input.resultGroupId, input.assetId ?? null, runId, key, input.kind, input.label, json(sourceRefs), json(input.lineage ?? {}), input.status ?? "ready", input.contentText ?? null])).rows[0]);
     }, this.pool);
   }
-  async getResultRef(ctx: AgentRuntimeContext, resultId: string): Promise<AgentRuntimeResultRef> {
+  async getResultRef(ctx: AgentRuntimeContext, resultId: string, scope?: { sessionId: string; turnId: string }): Promise<AgentRuntimeResultRef> {
     return withTenantTransaction(ctx, async client => {
       const row = (await client.query("SELECT * FROM agent_result_refs WHERE tenant_id=$1::uuid AND id=$2::uuid", [ctx.tenantId, resultId])).rows[0];
       if (!row) fail("AGENT_RESULT_NOT_FOUND");
-      await this.requireGroup(client, ctx, row.result_group_id);
+      const { group } = await this.requireGroup(client, ctx, row.result_group_id);
+      if (scope && (group.session_id !== scope.sessionId || group.turn_id !== scope.turnId)) fail("AGENT_RESULT_SCOPE_CONFLICT");
       return mapResult(row);
+    }, this.pool);
+  }
+
+  async getResultRefsForTurn(ctx: AgentRuntimeContext, input: { sessionId: string; turnId: string; resultIds: string[] }): Promise<AgentRuntimeResultRef[]> {
+    return withTenantTransaction(ctx, async client => {
+      await requireSession(client, ctx, input.sessionId);
+      await requireTurn(client, ctx, input.sessionId, input.turnId);
+      const rows = (await client.query("SELECT r.* FROM agent_result_refs r JOIN agent_result_groups g ON g.tenant_id=r.tenant_id AND g.id=r.result_group_id WHERE r.tenant_id=$1::uuid AND g.session_id=$2::uuid AND g.turn_id=$3::uuid AND r.id=ANY($4::uuid[]) ORDER BY array_position($4::uuid[], r.id)", [ctx.tenantId, input.sessionId, input.turnId, input.resultIds])).rows;
+      if (rows.length !== input.resultIds.length) fail("AGENT_RESULT_SCOPE_CONFLICT");
+      return rows.map(mapResult);
+    }, this.pool);
+  }
+
+  async updateResultRef(ctx: AgentRuntimeContext, input: { resultId: string; sessionId?: string; turnId?: string; status?: string; lineage?: Record<string, unknown> }): Promise<AgentRuntimeResultRef> {
+    assertStorage(input.lineage);
+    return withTenantTransaction(ctx, async client => {
+      const row = (await client.query("SELECT * FROM agent_result_refs WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE", [ctx.tenantId, input.resultId])).rows[0];
+      if (!row) fail("AGENT_RESULT_NOT_FOUND");
+      const { group } = await this.requireGroup(client, ctx, row.result_group_id);
+      if ((input.sessionId && group.session_id !== input.sessionId) || (input.turnId && group.turn_id !== input.turnId)) fail("AGENT_RESULT_SCOPE_CONFLICT");
+      const updated = (await client.query("UPDATE agent_result_refs SET status=COALESCE($3,status),lineage_json=CASE WHEN $4::jsonb IS NULL THEN lineage_json ELSE lineage_json || $4::jsonb END WHERE tenant_id=$1::uuid AND id=$2::uuid RETURNING *", [ctx.tenantId, input.resultId, input.status ?? null, input.lineage ? json(input.lineage) : null])).rows[0];
+      return mapResult(updated);
     }, this.pool);
   }
   async listResultRefs(ctx: AgentRuntimeContext, sessionId: string, turnId?: string): Promise<AgentRuntimeResultRef[]> {
