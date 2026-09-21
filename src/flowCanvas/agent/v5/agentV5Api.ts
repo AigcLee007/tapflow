@@ -23,7 +23,7 @@ export type AgentV5TurnInput = {
 
 function normalizeResponse(value: unknown): AgentV5TurnResponse {
   const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const phase = typeof record.phase === "string" && ["idle", "understanding", "waiting_for_choice", "drafting_brief", "waiting_for_confirmation", "executing", "presenting_results", "refining", "failed"].includes(record.phase)
+  const phase = typeof record.phase === "string" && ["idle", "understanding", "waiting_for_input", "waiting_for_choice", "drafting_brief", "waiting_for_confirmation", "executing", "presenting_results", "refining", "failed", "recoverable_error"].includes(record.phase)
     ? record.phase as AgentV5Phase
     : "understanding";
   return {
@@ -36,11 +36,22 @@ function normalizeResponse(value: unknown): AgentV5TurnResponse {
 }
 
 export function submitAgentV5Turn(sessionId: string, input: AgentV5TurnInput) {
-  return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/v5-turns`, input).then(normalizeResponse);
+  const source = input.contextSnapshot ?? {};
+  const refs = Array.isArray((source as Record<string, unknown>).refs) ? (source as Record<string, unknown>).refs : (input.referenceContext?.items ?? []).map((item) => ({ refId: item.refId, source: item.kind === "upload" ? "upload" : item.kind === "canvas_node" ? "canvas" : "asset", assetId: item.assetId, nodeId: item.nodeId, label: item.label }));
+  const contextSnapshot = { projectId: typeof (source as Record<string, unknown>).projectId === "string" ? (source as Record<string, unknown>).projectId : input.snapshot.projectId, flowId: typeof (source as Record<string, unknown>).flowId === "string" ? (source as Record<string, unknown>).flowId : input.snapshot.flowId, graphRevision: typeof (source as Record<string, unknown>).graphRevision === "number" ? (source as Record<string, unknown>).graphRevision : 0, refs, skillIds: [], appIds: [], modelKey: input.modelKey ?? null };
+  return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/turns`, { contextSnapshot, idempotencyKey: `turn-${Date.now()}`, prompt: input.prompt }).then(normalizeResponse);
 }
 
 export function submitAgentV5Decision(sessionId: string, turnId: string, decision: Record<string, unknown>) {
-  return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/v5-turns/${encodeURIComponent(turnId)}/decisions`, { decision }).then(normalizeResponse);
+  const type = decision.type === "confirm" ? "approve_plan" : decision.type === "cancel" ? "cancel_execution" : decision.type === "select_choice" ? "answer_question" : decision.type === "update_brief" ? "edit_brief" : decision.type === "result_action" || decision.type === "refine" || typeof decision.action === "string" ? "result_action" : "revise_plan";
+  const resultAction = decision.action === "place" || decision.action === "select" || decision.action === "reference" || decision.action === "variant" || decision.action === "edit" ? decision.action : "variant";
+  const resultIds = Array.isArray(decision.resultIds) ? decision.resultIds.filter((value): value is string => typeof value === "string") : typeof decision.resultId === "string" ? [decision.resultId] : [];
+  const payload = type === "approve_plan" || type === "cancel_execution" ? {} : type === "answer_question" ? { answers: { [String(decision.questionId ?? "answer")]: Array.isArray(decision.optionIds) ? decision.optionIds[0] : "" } } : type === "edit_brief" ? { instruction: `${String(decision.field ?? "")}: ${String(decision.value ?? "")}` } : type === "result_action" ? { action: resultAction, resultIds, ...(typeof decision.prompt === "string" ? { instruction: decision.prompt } : {}) } : { instruction: typeof decision.prompt === "string" ? decision.prompt : "修改计划" };
+  return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}/decisions`, { graphRevision: typeof decision.graphRevision === "number" ? decision.graphRevision : 0, idempotencyKey: typeof decision.idempotencyKey === "string" ? decision.idempotencyKey : `decision-${Date.now()}`, type, payload }).then(normalizeResponse);
+}
+
+export function getCanonicalAgentTurn(sessionId: string, turnId: string) {
+  return apiGet<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}`).then(normalizeResponse);
 }
 
 export function updateAgentV5Mode(sessionId: string, mode: AgentExecutionMode) {

@@ -18,6 +18,9 @@ describe("normalizeBlocks", () => {
         label: "结果一",
         assetId: "asset-1",
         nodeId: "node-1",
+        kind: "text",
+        contentText: "可直接复制的视频提示词",
+        sourceRefs: ["frame-1", "frame-2"],
         status: "ready",
         route: "internal-route",
         credential: "encrypted-secret",
@@ -28,7 +31,7 @@ describe("normalizeBlocks", () => {
     expect(block).toEqual({
       type: "result_group",
       title: "结果",
-      results: [{ id: "r1", label: "结果一", assetId: "asset-1", nodeId: "node-1", status: "ready" }],
+      results: [{ id: "r1", label: "结果一", kind: "text", contentText: "可直接复制的视频提示词", assetId: "asset-1", nodeId: "node-1", sourceRefs: ["frame-1", "frame-2"], status: "ready" }],
     });
   });
 

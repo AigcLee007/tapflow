@@ -13,7 +13,7 @@ describe("agentV6Api contract adapter", () => {
     apiPost.mockReset();
   });
 
-  it("uses existing history/events and V5/V2 endpoints instead of invented V6 routes", async () => {
+  it("uses canonical history, turn, decision, and mode endpoints", async () => {
     apiGet.mockResolvedValueOnce({ session: { id: "s", title: "x", projectId: null, flowId: null, mode: "manual_confirmation" }, turns: [], messages: [] });
     apiGet.mockResolvedValueOnce({ events: [] });
     apiPost.mockResolvedValue({ blocks: [], phase: "waiting_for_choice", executionState: "idle", sessionId: "s", turnId: "t" });
@@ -34,12 +34,12 @@ describe("agentV6Api contract adapter", () => {
     expect(paths.some((path) => /v6-(history|turns|mode|cancel)/.test(path))).toBe(false);
     expect(apiGet.mock.calls[0]?.[0]).toContain("/agent/sessions/s/history");
     expect(apiGet.mock.calls[1]?.[0]).toContain("/agent/sessions/s/events?afterSeq=3");
-    expect(apiPost.mock.calls.map((call) => call[0])).toContain("/agent/sessions/s/v5-turns");
-    expect(apiPost.mock.calls.map((call) => call[0])).toContain("/agent/sessions/s/cancel");
-    expect(apiPatch.mock.calls[0]?.[0]).toBe("/agent/sessions/s/v5-mode");
+    expect(apiPost.mock.calls.map((call) => call[0])).toContain("/agent/sessions/s/turns");
+    expect(apiPost.mock.calls.map((call) => call[0])).toContain("/agent/sessions/s/turns/t/decisions");
+    expect(apiPatch.mock.calls[0]?.[0]).toBe("/agent/sessions/s/mode");
   });
 
-  it("posts confirmation as an allowlisted V5 decision", async () => {
+  it("posts confirmation as an allowlisted canonical decision", async () => {
     apiPost.mockResolvedValue({ blocks: [], phase: "executing", executionState: "queued", sessionId: "s", turnId: "t" });
     await agentV6Api.confirmExecution("s", "t", {
       projectId: null,
@@ -49,7 +49,8 @@ describe("agentV6Api contract adapter", () => {
       idempotencyKey: "confirm-1",
       payload: { type: "confirm", providerSecret: "must-drop" },
     });
-    expect(apiPost.mock.calls[0]?.[1]).toEqual({ projectId: null, flowId: null, graphRevision: 0, decision: { type: "confirm" } });
+    expect(apiPost.mock.calls[0]?.[0]).toBe("/agent/sessions/s/turns/t/decisions");
+    expect(apiPost.mock.calls[0]?.[1]).toMatchObject({ graphRevision: 0, type: "approve_plan", payload: {} });
   });
 
   it("normalizes a confirmation response with its pending decision", async () => {
@@ -136,8 +137,8 @@ describe("agentV6Api contract adapter", () => {
     await agentV6Api.cancelTurn("s", { sessionId: "s", turnId: "turn-2", projectId: "p", flowId: "f", graphRevision: 2, idempotencyKey: "cancel-2", reason: "stop" });
 
     expect(apiPost.mock.calls[0]).toEqual([
-      "/agent/sessions/s/cancel",
-      { turnId: "turn-2", projectId: "p", flowId: "f", graphRevision: 2, idempotencyKey: "cancel-2", reason: "stop" },
+      "/agent/sessions/s/turns/turn-2/decisions",
+      { graphRevision: 2, idempotencyKey: "cancel-2", type: "cancel_execution", payload: {} },
     ]);
   });
 });

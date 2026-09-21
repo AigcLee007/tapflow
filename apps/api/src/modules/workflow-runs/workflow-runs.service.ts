@@ -42,7 +42,7 @@ import { assertDraftGraphSafe, normalizeDraftGraph } from "../flows/flows.servic
 
 type PgPool = Pool;
 
-type WorkflowRunContext = {
+export type WorkflowRunContext = {
   ipHash?: string | null;
   requestId?: string | null;
   tenantId: string;
@@ -139,9 +139,26 @@ type RouteRuntimeContext = {
     supportedVideoWorkflows: string[];
   };
   modelKey: string;
+  modelDisplayName?: string;
+  bindingFingerprint?: string;
+  modality?: string;
+  modelStatus?: string;
+  providerStatus?: string;
   providerKey: string;
   requireExactPricing?: boolean;
   routeKey: string;
+};
+
+export type AgentWorkflowGraphInput = { graph: FlowGraph; graphRevision: number };
+export type AgentWorkflowRunInput = AgentWorkflowGraphInput & {
+  idempotencyKey: string;
+  expectedQuoteFingerprint?: string;
+  maxApprovedCredits?: number;
+};
+export type AgentWorkflowQuote = {
+  credits: number;
+  fingerprint: string;
+  nodes: Array<{ nodeId: string; credits: number; modelKey: string; modelDisplayName: string }>;
 };
 
 type WorkflowRunRecord = {
@@ -943,6 +960,42 @@ export class WorkflowRunsService {
     runId: string;
     status: string;
   }> {
+    return this.createWorkflowRunInternal(context, flowId, input);
+  }
+
+  // Server-only entry. The HTTP workflow body must never supply this graph.
+  async createAgentWorkflowRun(context: WorkflowRunContext, flowId: string, input: AgentWorkflowRunInput) {
+    if (!context.userId) throw new WorkflowRunsApiError(401, "AUTH_REQUIRED", "Authentication is required.");
+    if (!input.idempotencyKey?.trim() || input.idempotencyKey.length > 240) {
+      throw new WorkflowRunsApiError(400, "AGENT_EXECUTION_KEY_REQUIRED", "A stable execution key is required.");
+    }
+    if ((!input.expectedQuoteFingerprint || !/^[a-f0-9]{64}$/i.test(input.expectedQuoteFingerprint))
+      && !(Number.isFinite(input.maxApprovedCredits) && input.maxApprovedCredits! >= 0)) {
+      throw new WorkflowRunsApiError(400, "AGENT_APPROVAL_REQUIRED", "An approved quote or server-owned credit limit is required.");
+    }
+    return this.createWorkflowRunInternal(context, flowId, {
+      idempotencyKey: input.idempotencyKey,
+      input: { agentExecution: { graphChecksum: checksumGraph(input.graph), graphRevision: input.graphRevision } },
+    }, input);
+  }
+
+  async quoteAgentWorkflowRun(context: WorkflowRunContext, flowId: string, input: AgentWorkflowGraphInput): Promise<AgentWorkflowQuote> {
+    return withTenantTransaction(context, async (client) => {
+      await this.validateAgentGraphContext(client, context, flowId, input);
+      const compiled = this.compileDraftGraph(normalizeDraftGraph(input.graph));
+      const routes = await this.loadRouteRuntimeContexts(client, context.tenantId, compiled.compiledGraph.nodes);
+      const pricing = await this.loadActivePricing(client);
+      const membership = await this.loadMembershipDiscount(client, context.tenantId);
+      return this.buildAgentQuote(context, flowId, input.graphRevision, compiled.compiledGraph, compiled.checksum, routes, pricing, membership);
+    }, this.pool);
+  }
+
+  private async createWorkflowRunInternal(
+    context: WorkflowRunContext,
+    flowId: string,
+    input: { idempotencyKey?: string; input?: Record<string, unknown> },
+    agentInput?: AgentWorkflowRunInput,
+  ): Promise<{ runId: string; status: string }> {
     if (!context.userId) {
       throw new WorkflowRunsApiError(401, "AUTH_REQUIRED", "Authentication is required to run a workflow");
     }
@@ -969,7 +1022,9 @@ export class WorkflowRunsService {
     try {
       createdRun = await withTenantTransaction(context, async (client) => {
         const runtimeStartedAt = Date.now();
-        const runtimeFlow = runMode === "target_node"
+        const runtimeFlow = agentInput
+          ? await this.getAgentFlowRuntime(client, context, flowId, agentInput)
+          : runMode === "target_node"
           ? await this.getTargetNodeFlowRuntimeWithoutFlowRowLock(client, context, flowId, targetNodeId)
           : await this.getCurrentFlowRuntimeOrCreateSnapshot(client, context, flowId);
         this.logCreateRunDiagnostic(
@@ -1123,6 +1178,11 @@ export class WorkflowRunsService {
           );
 
           if (existing.rows[0]) {
+            if (agentInput && (existing.rows[0].flow_id !== flowId
+              || existing.rows[0].created_by !== context.userId
+              || JSON.stringify(existing.rows[0].input_json?.agentExecution) !== JSON.stringify(runInput.agentExecution))) {
+              throw new WorkflowRunsApiError(409, "AGENT_EXECUTION_IDEMPOTENCY_CONFLICT", "This execution key belongs to a different Agent plan.");
+            }
             return {
               enqueuePayloads: [],
               flowRowLockUsed: runMode !== "target_node",
@@ -1159,6 +1219,15 @@ export class WorkflowRunsService {
 
         const pricingStartedAt = Date.now();
         const pricingRows = await this.loadActivePricing(client);
+        const agentMembership = agentInput ? await this.loadMembershipDiscount(client, context.tenantId) : null;
+        if (agentInput && agentMembership) {
+          const quote = this.buildAgentQuote(context, flowId, agentInput.graphRevision, runtimeFlow.compiled_graph_json,
+            runtimeFlow.graph_checksum!, routeContexts, pricingRows, agentMembership);
+          if ((agentInput.expectedQuoteFingerprint && agentInput.expectedQuoteFingerprint !== quote.fingerprint)
+            || (agentInput.maxApprovedCredits !== undefined && quote.credits > agentInput.maxApprovedCredits)) {
+            throw new WorkflowRunsApiError(409, "AGENT_QUOTE_CHANGED", "The execution quote changed. Review the plan again.");
+          }
+        }
         this.logCreateRunDiagnostic(
           {
             flowId,
@@ -1264,7 +1333,7 @@ export class WorkflowRunsService {
 
         const payloadsToEnqueue: NodeExecuteJobPayload[] = [];
         const nodeRunIds: string[] = [];
-        const membership = await this.loadMembershipDiscount(client, context.tenantId);
+        const membership = agentMembership ?? await this.loadMembershipDiscount(client, context.tenantId);
 
         for (const node of nodesToRun) {
           const isEntryNode =
@@ -1994,6 +2063,11 @@ export class WorkflowRunsService {
     const result = await client.query<{
       model_capabilities: Record<string, unknown>;
       model_key: string;
+      model_display_name: string;
+      model_status: string;
+      provider_status: string;
+      route_modality: string;
+      route_binding: Record<string, unknown>;
       provider_key: string;
       request_config: Record<string, unknown>;
       route_key: string;
@@ -2004,6 +2078,16 @@ export class WorkflowRunsService {
           route.route_key,
           provider.key AS provider_key,
           model.model_key,
+          model.display_name AS model_display_name,
+          model.status AS model_status,
+          provider.status AS provider_status,
+          route.modality AS route_modality,
+          jsonb_build_object('id', route.id, 'updatedAt', route.updated_at,
+            'providerId', route.provider_id, 'modelId', route.model_id,
+            'credentialId', route.credential_id, 'connectionId', route.connection_id,
+            'upstreamModel', route.upstream_model, 'apiMode', route.api_mode,
+            'requestPath', route.request_path, 'baseUrl', route.base_url_override,
+            'requestConfig', route.request_config) AS route_binding,
           COALESCE(model.capabilities, '{}'::jsonb) AS model_capabilities,
           COALESCE(route.request_config, '{}'::jsonb) AS request_config,
           route.tenant_id::text AS tenant_id
@@ -2031,6 +2115,11 @@ export class WorkflowRunsService {
           requestConfig: row.request_config,
         }),
         modelKey: row.model_key || "default",
+        modelDisplayName: row.model_display_name || row.model_key || "Model",
+        bindingFingerprint: createHash("sha256").update(JSON.stringify(row.route_binding ?? {})).digest("hex"),
+        modality: row.route_modality,
+        modelStatus: row.model_status,
+        providerStatus: row.provider_status,
         providerKey: row.provider_key || "default",
         requireExactPricing: row.request_config?.requireExactPricing === true,
         routeKey: row.route_key,
@@ -2085,6 +2174,125 @@ export class WorkflowRunsService {
     }
 
     return row;
+  }
+
+  private async validateAgentGraphContext(
+    client: PoolClient, context: WorkflowRunContext, flowId: string, input: AgentWorkflowGraphInput,
+  ): Promise<{ id: string; status: string; project_id: string }> {
+    if (!context.userId) throw new WorkflowRunsApiError(401, "AUTH_REQUIRED", "Authentication is required.");
+    if (!Number.isSafeInteger(input.graphRevision) || input.graphRevision < 0) {
+      throw new WorkflowRunsApiError(400, "AGENT_GRAPH_REVISION_REQUIRED", "A valid graph revision is required.");
+    }
+    const graph = normalizeDraftGraph(input.graph);
+    assertDraftGraphSafe(graph);
+    this.compileDraftGraph(graph);
+    if (graph.nodes.length > 100 || graph.edges.length > 300) {
+      throw new WorkflowRunsApiError(400, "AGENT_GRAPH_LIMIT", "The execution plan is too large.");
+    }
+    const forbidden = /^(?:apiKey|api_key|authorization|credential|credentialId|encryptedSecret|encrypted_secret|nonce|authTag|auth_tag|password|secret|referenceUploadId)$/i;
+    const inspect = (value: unknown, depth = 0): void => {
+      if (depth > 12) throw new WorkflowRunsApiError(400, "AGENT_GRAPH_UNSAFE", "The execution plan is too deeply nested.");
+      if (typeof value === "string" && (/^(?:https?:|data:|blob:)/i.test(value.trim()) || /[?&]x-amz-signature=/i.test(value))) {
+        throw new WorkflowRunsApiError(400, "AGENT_GRAPH_UNSAFE", "Execution references must use stable asset IDs.");
+      }
+      if (Array.isArray(value)) value.forEach((item) => inspect(item, depth + 1));
+      else if (isRecord(value)) for (const [key, item] of Object.entries(value)) {
+        if (forbidden.test(key)) throw new WorkflowRunsApiError(400, "AGENT_GRAPH_UNSAFE", "Secrets and temporary references are not valid execution inputs.");
+        inspect(item, depth + 1);
+      }
+    };
+    inspect(graph);
+    const flowResult = await client.query<{ id: string; status: string; project_id: string }>(`
+      SELECT flows.id::text AS id, flows.status, flows.project_id::text AS project_id
+      FROM flows JOIN projects ON projects.id = flows.project_id AND projects.tenant_id = flows.tenant_id
+      WHERE flows.id = $1::uuid AND flows.tenant_id = $2::uuid AND projects.created_by = $3::uuid
+        AND flows.created_by = $3::uuid AND flows.deleted_at IS NULL AND projects.deleted_at IS NULL
+      FOR UPDATE OF flows
+    `, [flowId, context.tenantId, context.userId]);
+    const flow = flowResult.rows[0];
+    if (!flow) throw new WorkflowRunsApiError(404, "FLOW_NOT_FOUND", "The owned project canvas was not found.");
+    const draft = await client.query<{ revision: number }>(`
+      SELECT revision FROM flow_drafts WHERE flow_id = $1::uuid AND tenant_id = $2::uuid FOR UPDATE
+    `, [flowId, context.tenantId]);
+    if (!draft.rows[0] || draft.rows[0].revision !== input.graphRevision) {
+      throw new WorkflowRunsApiError(409, "AGENT_GRAPH_REVISION_CONFLICT", "The canvas changed. Refresh the Agent context.");
+    }
+    const assets = new Map<string, string>();
+    for (const node of graph.nodes) {
+      if (!["image.asset", "image.generate", "text.generate", "video.generate"].includes(String(node.type))) {
+        throw new WorkflowRunsApiError(422, "AGENT_NODE_UNSUPPORTED", "The execution plan contains an unsupported capability.");
+      }
+      const data = isRecord(node.data) ? node.data : {};
+      if (node.type === "image.asset") {
+        if (!readTrimmedString(data.assetId)) throw new WorkflowRunsApiError(422, "AGENT_REFERENCE_NOT_FOUND", "The reference asset is missing.");
+        assets.set(String(data.assetId), "image");
+      }
+      for (const id of [data.assetId, data.sourceAssetId, ...(Array.isArray(data.assetIds) ? data.assetIds : [])]) {
+        if (typeof id === "string") assets.set(id, "image");
+      }
+      const params = isRecord(data.params) ? data.params : {};
+      const video = isRecord(params.videoGeneration) ? params.videoGeneration : {};
+      for (const reference of Array.isArray(video.referenceInputs) ? video.referenceInputs : []) {
+        if (!isRecord(reference) || !isRecord(reference.source)) continue;
+        const source = reference.source;
+        if (source.kind === "asset") assets.set(String(source.id), String(reference.mediaKind));
+        else if (source.kind === "upstream" && !graph.edges.some((edge) => edge.source === source.id && edge.target === node.id)) {
+          throw new WorkflowRunsApiError(422, "AGENT_REFERENCE_NOT_FOUND", "A video input is not connected to its source step.");
+        }
+      }
+    }
+    if (assets.size > 0) {
+      if ([...assets.keys()].some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
+        throw new WorkflowRunsApiError(400, "AGENT_REFERENCE_NOT_FOUND", "A stable asset ID is required.");
+      }
+      const result = await client.query<{ id: string; kind: string; status: string; project_id: string | null }>(`
+        SELECT id::text AS id, kind, status, project_id::text AS project_id FROM assets
+        WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[]) AND deleted_at IS NULL
+          AND (project_id = $3::uuid OR (project_id IS NULL AND owner_user_id = $4::uuid))
+      `, [context.tenantId, [...assets.keys()], flow.project_id, context.userId]);
+      for (const [assetId, kind] of assets) {
+        const asset = result.rows.find((item) => item.id === assetId);
+        if (!asset || asset.kind !== kind || asset.status !== "available" || (asset.project_id && asset.project_id !== flow.project_id)) {
+          throw new WorkflowRunsApiError(422, "AGENT_REFERENCE_NOT_FOUND", "An execution reference is unavailable or outside this project.");
+        }
+      }
+    }
+    return flow;
+  }
+
+  private async getAgentFlowRuntime(client: PoolClient, context: WorkflowRunContext, flowId: string, input: AgentWorkflowGraphInput): Promise<FlowRuntimeRecord> {
+    const flow = await this.validateAgentGraphContext(client, context, flowId, input);
+    const compiled = this.compileDraftGraph(normalizeDraftGraph(input.graph));
+    const version = await this.createUnlockedRunSnapshotVersion(client, context, flowId, compiled.graph, compiled.compiledGraph, compiled.checksum);
+    return {
+      flow_id: flowId, flow_status: flow.status, current_version_id: version.id, draft_revision: input.graphRevision,
+      compiled_graph_json: compiled.compiledGraph, graph_checksum: compiled.checksum, graph_source: "snapshot",
+    };
+  }
+
+  private buildAgentQuote(
+    context: WorkflowRunContext, flowId: string, graphRevision: number, workflow: CompiledWorkflow, checksum: string,
+    routes: Map<string, RouteRuntimeContext>, prices: PricingRow[], membership: ReturnType<typeof resolveMembershipDiscount>,
+  ): AgentWorkflowQuote {
+    const bindings: unknown[] = [];
+    const nodes = workflow.nodes.filter((node) => Boolean(UNIT_BY_NODE_TYPE[node.type])).map((node) => {
+      const route = routes.get(resolveEffectiveRouteKey(node));
+      if (!route || route.modality !== node.type.split(".")[0] || route.providerStatus !== "active" || route.modelStatus !== "active") {
+        throw new WorkflowRunsApiError(422, "AGENT_ROUTE_UNAVAILABLE", "A selected model route is unavailable or incompatible.");
+      }
+      assertTextImageInputsSupportedByRuntimeGraph({ node, routeContext: route, workflow });
+      assertNodeRouteSupportsRuntimeRequest({ node, routeContext: route, compiledGraph: workflow });
+      const pricing = this.estimateNodeReserveCents(node, routes, prices);
+      if (pricing.amountCents <= 0) throw new WorkflowRunsApiError(422, "PRICING_NOT_FOUND", "An execution step has no active pricing.");
+      const credits = applyMembershipDiscount(pricing.amountCents, membership);
+      bindings.push({ nodeId: node.id, route, pricing, credits });
+      return { nodeId: node.id, credits, modelKey: route.modelKey, modelDisplayName: route.modelDisplayName ?? route.modelKey };
+    });
+    if (nodes.length === 0) throw new WorkflowRunsApiError(422, "AGENT_EXECUTION_EMPTY", "The plan has no generation steps.");
+    return {
+      credits: nodes.reduce((total, node) => total + node.credits, 0), nodes,
+      fingerprint: createHash("sha256").update(JSON.stringify({ tenantId: context.tenantId, userId: context.userId, flowId, graphRevision, checksum, membership, bindings })).digest("hex"),
+    };
   }
 
   private logCreateRunDiagnostic(fields: Record<string, unknown>, message: string): void {

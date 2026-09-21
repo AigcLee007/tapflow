@@ -37,6 +37,8 @@ import type { AgentBlockAction as AgentV6BlockAction } from "./v6/protocol/Block
 import type { AgentV6Phase, ConversationBlock } from "./v6/protocol/conversationTypes";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
 import { MenuSelect } from "../../components/menu/MenuSelect";
+import { getFlowDraft } from "../services/flowProjectApi";
+import { applyServerDraftToCanvas } from "./canvasAgentOps";
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -147,7 +149,7 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
 }
 
 function toAgentV6Phase(value: string): AgentV6Phase {
-  const phases: AgentV6Phase[] = ["idle", "understanding", "waiting_for_choice", "drafting_brief", "waiting_for_confirmation", "executing", "verifying", "presenting_results", "refining", "failed"];
+  const phases: AgentV6Phase[] = ["idle", "understanding", "waiting_for_input", "waiting_for_choice", "drafting_brief", "waiting_for_confirmation", "executing", "verifying", "presenting_results", "refining", "failed", "recoverable_error"];
   return phases.includes(value as AgentV6Phase) ? value as AgentV6Phase : "understanding";
 }
 
@@ -156,6 +158,7 @@ function CanvasAgentV6Panel(props: CanvasAgentPanelProps) {
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
   const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
   const [prompt, setPrompt] = React.useState("");
+  const [resultReferences, setResultReferences] = React.useState<AgentReferenceChip[]>([]);
   const [history, setHistory] = React.useState<Array<{ id: string; title: string; date: string; updatedAt?: string }>>([]);
   const [models, setModels] = React.useState<Array<{ modelKey: string; displayName: string }>>([]);
   const selectedReferenceKey = useFlowCanvasStore((state) =>
@@ -169,7 +172,10 @@ function CanvasAgentV6Panel(props: CanvasAgentPanelProps) {
         })),
     ),
   );
-  const references = React.useMemo(() => buildSelectedCanvasReferenceChips(), [selectedReferenceKey]);
+  const references = React.useMemo(
+    () => [...buildSelectedCanvasReferenceChips(), ...resultReferences].slice(0, AGENT_REFERENCE_LIMIT),
+    [resultReferences, selectedReferenceKey],
+  );
 
   React.useEffect(() => {
     void getAgentImageRunSettings().then((response) => setModels(response.models)).catch(() => setModels([]));
@@ -202,9 +208,28 @@ function CanvasAgentV6Panel(props: CanvasAgentPanelProps) {
     } else if (action.type === "confirm_execution") {
       void session.submitDecision({ type: "confirm" });
     } else if (action.type === "refine_result" || action.type === "variant_result") {
-      void session.submitDecision({ type: "refine", resultId: action.resultId });
+      void session.submitDecision({ type: "result_action", resultIds: [action.resultId], action: action.type === "variant_result" ? "variant" : "edit" });
+    } else if (action.type === "place_result") {
+      void session.submitDecision({ type: "result_action", resultIds: [action.resultId], action: "place" }).then(async () => {
+        const flowId = useFlowCanvasStore.getState().backendFlowId;
+        if (!flowId) return;
+        try {
+          const draft = await getFlowDraft(flowId);
+          applyServerDraftToCanvas({ draft, highlightedNodeIds: [`agent-result-${action.resultId}`] });
+        } catch { /* the durable placement remains recoverable on next refresh */ }
+      });
+    } else if (action.type === "select_result") {
+      void session.submitDecision({ type: "result_action", resultIds: [action.resultId], action: "select" });
+    } else if (action.type === "set_reference") {
+      const result = session.results.find((item) => item.id === action.resultId);
+      if (result?.assetId) {
+        setResultReferences((current) => current.some((item) => item.assetId === result.assetId)
+          ? current
+          : [...current, { id: `agent-result-${result.id}`, kind: "artifact", label: result.label, assetId: result.assetId, refId: `agent-result-${result.id}` }].slice(0, AGENT_REFERENCE_LIMIT));
+      }
+      void session.submitDecision({ type: "result_action", resultIds: [action.resultId], action: "reference" });
     }
-  }, [session.submitDecision]);
+  }, [session.results, session.submitDecision]);
 
   return (
     <AgentWorkspace
@@ -220,9 +245,9 @@ function CanvasAgentV6Panel(props: CanvasAgentPanelProps) {
       onHistorySelect={(sessionId) => { void session.openSession(sessionId); }}
       onModeChange={session.setExecutionMode}
       onModelChange={() => undefined}
-      onNewConversation={session.newConversation}
+      onNewConversation={() => { setResultReferences([]); session.newConversation(); }}
       onPromptChange={setPrompt}
-      onRemoveReference={() => undefined}
+      onRemoveReference={(id) => setResultReferences((current) => current.filter((reference) => reference.id !== id))}
       onRename={() => undefined}
       onSend={async (nextPrompt) => {
         setPrompt("");

@@ -39,7 +39,7 @@ describe("agent V5 block normalization", () => {
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({ type: "result_group" });
-    if (blocks[0]?.type === "result_group") {
+      if (blocks[0]?.type === "result_group") {
       expect(blocks[0].results).toHaveLength(12);
       expect(blocks[0].results[0]).toEqual({
         id: "result-0",
@@ -49,6 +49,30 @@ describe("agent V5 block normalization", () => {
     }
     expect(JSON.stringify(blocks)).not.toContain("signed.example");
     expect(JSON.stringify(blocks)).not.toContain("apiKey");
+  });
+
+  it("keeps the canonical result fields required for safe local rendering", () => {
+    const blocks = normalizeAgentV5Blocks([{
+      type: "result_group",
+      results: [{
+        id: "prompt-1",
+        label: "首尾帧视频提示词",
+        kind: "text",
+        contentText: "镜头从广角缓慢推进，主体从静止过渡到起飞。",
+        sourceRefs: ["frame-1", "frame-2"],
+      }],
+    }]);
+
+    expect(blocks).toEqual([{
+      type: "result_group",
+      results: [{
+        id: "prompt-1",
+        label: "首尾帧视频提示词",
+        kind: "text",
+        contentText: "镜头从广角缓慢推进，主体从静止过渡到起飞。",
+        sourceRefs: ["frame-1", "frame-2"],
+      }],
+    }]);
   });
 
   it("drops unknown block types and raw HTML fields", () => {

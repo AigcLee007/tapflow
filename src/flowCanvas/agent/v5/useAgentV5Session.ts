@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useFlowCanvasStore } from "../../store/flowCanvasStore";
 import { buildCanvasAgentSnapshot } from "../canvasAgentSnapshot";
 import { createAgentSession, getAgentSessionHistory } from "../canvasAgentApi";
 import type { AgentReferenceContext } from "../agentReferenceContext";
 import { normalizeAgentV5Blocks } from "./agentV5Blocks";
-import { submitAgentV5Decision, submitAgentV5Turn, updateAgentV5Mode, type AgentV5TurnResponse } from "./agentV5Api";
+import { getCanonicalAgentTurn, submitAgentV5Decision, submitAgentV5Turn, updateAgentV5Mode, type AgentV5TurnResponse } from "./agentV5Api";
 import { initialAgentV5State, reduceAgentV5State } from "./agentV5State";
 import type { AgentDecision, AgentExecutionMode, AgentV5Phase, AgentV5State, ConversationBlock, ResultRef } from "./agentV5Types";
 
@@ -23,6 +23,7 @@ type AgentV5HistoryTurn = {
 const PHASES = new Set<AgentV5Phase>([
   "idle",
   "understanding",
+  "waiting_for_input",
   "waiting_for_choice",
   "drafting_brief",
   "waiting_for_confirmation",
@@ -30,6 +31,7 @@ const PHASES = new Set<AgentV5Phase>([
   "presenting_results",
   "refining",
   "failed",
+  "recoverable_error",
 ]);
 
 function buildSessionTitle(prompt: string) {
@@ -173,6 +175,20 @@ export function useAgentV5Session() {
       turnId: latestTurn?.id,
     }));
   }, []);
+
+  useEffect(() => {
+    if (!sessionId || !state.turnId || state.phase !== "executing") return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await getCanonicalAgentTurn(sessionId, state.turnId!);
+        if (!cancelled) applyTurnResponse({ ...response, sessionId, turnId: state.turnId! });
+      } catch { /* transient worker/API delay; the next poll retries */ }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [applyTurnResponse, sessionId, state.phase, state.turnId]);
 
   const newConversation = useCallback(() => {
     turnBlockCountsRef.current.clear();

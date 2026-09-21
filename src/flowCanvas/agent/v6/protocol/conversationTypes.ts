@@ -6,6 +6,7 @@ export const AGENT_V6_ID_MAX_LENGTH = 128;
 export type AgentV6Phase =
   | "idle"
   | "understanding"
+  | "waiting_for_input"
   | "waiting_for_choice"
   | "drafting_brief"
   | "waiting_for_confirmation"
@@ -13,7 +14,8 @@ export type AgentV6Phase =
   | "verifying"
   | "presenting_results"
   | "refining"
-  | "failed";
+  | "failed"
+  | "recoverable_error";
 
 export type AgentExecutionMode = "auto" | "manual_confirmation";
 export type AgentExecutionState = "idle" | "running" | "verifying" | "completed" | "failed";
@@ -23,7 +25,7 @@ export type BriefField = { label: string; value: string };
 export type ProgressStepStatus = "pending" | "running" | "completed" | "failed";
 export type ProgressStep = { id: string; label: string; status: ProgressStepStatus; detail?: string };
 export type ResultStatus = "ready" | "selected" | "failed";
-export type ResultRef = { id: string; label: string; assetId?: string; nodeId?: string; refId?: string; uploadedAssetIds?: string[]; status?: ResultStatus };
+export type ResultRef = { id: string; label: string; kind?: "image" | "video" | "text"; contentText?: string; assetId?: string; nodeId?: string; refId?: string; runId?: string; placedNodeId?: string; sourceRefs?: string[]; uploadedAssetIds?: string[]; status?: ResultStatus };
 
 export type ConfirmationPlan = {
   title?: string;

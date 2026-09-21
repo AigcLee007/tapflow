@@ -52,7 +52,10 @@ const blocks: AgentV6StreamBlock[] = [
     type: "result_group",
     id: "results-1",
     title: "生成结果",
-    results: [{ id: "result-1", label: "方案 A", assetId: "asset-1" }],
+    results: [
+      { id: "result-1", label: "方案 A", kind: "image", assetId: "asset-1" },
+      { id: "result-2", label: "视频提示词", kind: "text", contentText: "镜头从广角缓慢推进，主体从静止过渡到起飞。" },
+    ],
   },
 ];
 
@@ -66,6 +69,7 @@ describe("ConversationStream", () => {
     expect(screen.getByRole("group", { name: "目标人群" })).toBeTruthy();
     expect(screen.getByRole("table", { name: "方案对比" })).toBeTruthy();
     expect(document.querySelector(".agent-v5-card")).toBeNull();
+    expect(screen.getByTestId("agent-result-text-result-2").textContent).toContain("镜头从广角缓慢推进");
   });
 
   it("emits typed choice, question, brief, confirmation, progress, and result actions", () => {

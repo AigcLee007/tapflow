@@ -1,6 +1,6 @@
 ﻿# Project Record
 
-Last updated: 2026-09-09
+Last updated: 2026-09-21
 
 ## 2026-09-09 - Agent V6 Task 8 delivery verification contract
 
@@ -6884,3 +6884,17 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added V6 panel integration coverage and updated the existing panel contract tests from the removed V5 window expectation to the V6 workspace expectation. The Vitest command must exclude repository worktrees/review copies; otherwise those copies are discovered and make the run appear hung.
 - Local validation passed: V6 frontend suite 13 files / 143 tests, V6 workspace/protocol suite 12 files / 133 tests, API V6 suite 3 files / 15 passed with 1 skipped, Worker workflow-runtime 1 file / 16 tests, DB suite 22 files / 55 passed with 38 skipped, and `npm run build`.
 - Existing non-blocking build warnings remain for Browserslist freshness, CSS utility parsing, mixed static/dynamic imports, and large chunks. Authenticated staging browser acceptance has not been run in this environment; V6 rollout outside staging remains unapproved.
+## 2026-09-21 - Canonical Agent Runtime rebuild
+
+- Replaced the canonical runtime scaffold with a general structured requirement planner backed by the server text route. Planner output is bounded and validated, carries user answers and stable canvas/asset references, resolves product models server-side, and fails closed when the planner, model, route, reference, graph revision, or pricing is unavailable.
+- Added migration `000084_agent_runtime_rebuild.sql` and durable repository coverage for immutable turn idempotency, state-version and draft-revision CAS, atomic snapshots/events, durable decision claims/replay, execution leases, result lineage, tenant ownership/RLS, and atomic result placement.
+- Added server-only `AgentExecutionAdapter` around WorkflowRunsService. It creates an immutable execution graph, binds the approved quote fingerprint, reuses reserve/settle/refund/Worker paths, supports independent image/text steps and structured first/last-frame video references, and never accepts provider or route assertions from the browser.
+- Canonical `/api/v2/agent` session/turn/decision routes now use the runtime. The existing V5/V6 client adapter translates to the canonical endpoints for the mounted panel, and the client polls durable execution state until result groups are available.
+- Worker Agent runs are result-first: generated outputs are saved as assets/results and are not auto-written into the live draft. Canvas placement remains an explicit result action with graph CAS and lineage.
+- Focused validation in the isolated worktree: API runtime/planner/context/decision/wire tests 16 passed; persistence/execution tests 26 passed with 1 local database skip; API build, Worker build, frontend build, and Worker write-back regression passed. Full authenticated browser/provider/S3/BullMQ acceptance remains pending because this environment has no configured live staging services.
+
+## 2026-09-21 - Canonical Agent result delivery closure
+
+- Result groups now retain typed image, video, and text deliveries. Text outputs are shown in the conversation, while image/video previews request a temporary asset URL only when the user asks to preview; no URL is persisted in the graph or Agent protocol.
+- Result actions now use the canonical decision endpoint. Explicit placement atomically appends a lineage-bearing canvas node under draft revision CAS, reloads the authoritative draft in the canvas, and returns the placed state so the action cannot be repeated.
+- The default client adapter now uses canonical turn, decision, and mode endpoints. Focused result/UI and canonical API tests pass; API and frontend production builds pass. Authenticated browser acceptance with the real API, Worker, S3, billing, and configured provider is still the release gate.

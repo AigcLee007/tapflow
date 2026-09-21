@@ -12,7 +12,7 @@ export const AGENT_PROTOCOL_MAX_IDS = AGENT_PROTOCOL_MAX_REFS;
 
 export const agentPhaseSchema = z.enum([
   "idle", "understanding", "waiting_for_input", "planning", "waiting_for_confirmation",
-  "executing", "verifying", "presenting_results", "refining", "failed", "cancelled",
+  "executing", "verifying", "presenting_results", "refining", "failed", "cancelled", "recoverable_error",
 ]);
 export type AgentPhase = z.infer<typeof agentPhaseSchema>;
 
@@ -97,6 +97,7 @@ const confirmationSchema = z.object({
 const progressStepSchema = z.object({ id: idSchema, label: nonEmptyText(), status: z.enum(["pending", "running", "completed", "failed"]), detail: nonEmptyText().optional() }).strict();
 const progressSchema = z.object({ type: z.literal("progress"), ...common, steps: z.array(progressStepSchema).max(64) }).strict();
 const resultSchema = z.object({
+  contentText: nonEmptyText().optional(), placedNodeId: idSchema.optional(),
   id: idSchema, label: nonEmptyText(), kind: z.enum(["image", "video", "text"]).optional(), assetId: idSchema.optional(), refId: idSchema.optional(), runId: idSchema.optional(), status: z.enum(["pending", "ready", "selected", "failed"]).optional(), sourceRefs: z.array(idSchema).max(24).optional(),
 }).strict();
 const resultGroupSchema = z.object({ type: z.literal("result_group"), ...common, results: z.array(resultSchema).max(AGENT_PROTOCOL_MAX_RESULTS) }).strict();
@@ -126,7 +127,8 @@ function isUnsafeString(value: string): boolean {
   return /^https?:\/\//i.test(lower) && /[?&](x-amz-|signature|expires|token|sig|se|sv|st|sp)[^=]*=/i.test(lower);
 }
 
-function assertSafeValue(value: unknown, code: AgentProtocolError["code"], seen = new Set<object>()): void {
+function assertSafeValue(value: unknown, code: AgentProtocolError["code"], seen = new Set<object>(), depth = 0): void {
+  if (depth > 16) throw new AgentProtocolError(code);
   if (typeof value === "string") {
     if (isUnsafeString(value)) throw new AgentProtocolError(code);
     return;
@@ -137,21 +139,21 @@ function assertSafeValue(value: unknown, code: AgentProtocolError["code"], seen 
   const ctor = (value as { constructor?: { name?: string } }).constructor?.name;
   if (ctor === "File" || ctor === "Blob" || ctor === "FileList") throw new AgentProtocolError(code);
   if (Array.isArray(value)) {
-    for (const item of value) assertSafeValue(item, code, seen);
+    for (const item of value) assertSafeValue(item, code, seen, depth + 1);
   } else {
     for (const [key, item] of Object.entries(value)) {
       if (/^(provider|credential|authorization|base64|secret|api[_-]?key|signed[_-]?url|preview[_-]?url|data[_-]?url)$/i.test(key)) throw new AgentProtocolError(code);
-      assertSafeValue(item, code, seen);
+      assertSafeValue(item, code, seen, depth + 1);
     }
   }
   seen.delete(value);
 }
 
 /** Truncate user-visible block text before applying the strict wire schema. */
-function truncateBlockText(value: unknown): unknown {
-  if (typeof value === "string") return value.trim().slice(0, AGENT_PROTOCOL_TEXT_MAX);
-  if (Array.isArray(value)) return value.map(truncateBlockText);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, truncateBlockText(item)]));
+function truncateBlockText(value: unknown, field = ""): unknown {
+  if (typeof value === "string") return /^(text|title|prompt|label|summary|value|detail|message|risk|contentText|confirmLabel|reviseLabel)$/.test(field) ? value.trim().slice(0, AGENT_PROTOCOL_TEXT_MAX) : value;
+  if (Array.isArray(value)) return value.map(item => truncateBlockText(item, field));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, truncateBlockText(item, key)]));
   return value;
 }
 

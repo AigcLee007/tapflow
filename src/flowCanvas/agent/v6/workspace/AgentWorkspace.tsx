@@ -39,7 +39,7 @@ export type AgentWorkspaceProps = {
 
 type AgentWorkspaceLayer = "history" | "capability" | "mode" | "model" | null;
 
-const phaseLabels: Record<AgentV6Phase, string> = { idle: "准备中", understanding: "理解中", waiting_for_choice: "等待选择", drafting_brief: "整理 Brief", waiting_for_confirmation: "等待确认", executing: "执行中", verifying: "校验中", presenting_results: "展示结果", refining: "优化中", failed: "需要处理" };
+const phaseLabels: Record<AgentV6Phase, string> = { idle: "准备中", understanding: "理解中", waiting_for_input: "等待补充", waiting_for_choice: "等待选择", drafting_brief: "整理 Brief", waiting_for_confirmation: "等待确认", executing: "执行中", verifying: "校验中", presenting_results: "展示结果", refining: "优化中", failed: "需要处理", recoverable_error: "需要处理" };
 
 export function AgentWorkspace({ blocks, title, phase, prompt, references, history, historyLoading, historyNow, model, modelOptions, mode = "auto", busy = false, onNewConversation, onRename, onHistorySelect, onPromptChange, onRemoveReference, onSend, onCancel, onCapability, onModeChange, onModelChange, onCollapse, onBlockAction = () => undefined }: AgentWorkspaceProps) {
   const [activeLayer, setActiveLayer] = useState<AgentWorkspaceLayer>(null);

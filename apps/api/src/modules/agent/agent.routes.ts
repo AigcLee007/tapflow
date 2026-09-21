@@ -45,6 +45,7 @@ import { formatAgentToolEvent } from "./agent-tool-events.js";
 import { projectAgentRuntimeCapabilities } from "./agent-runtime-identity.js";
 import { AgentV6Orchestrator, type AgentV6ServicePort } from "./v6/agent-v6-orchestrator.js";
 import { agentV6DecisionSchema, agentV6TurnSchema, type AgentV6DecisionInput, type AgentV6TurnInput } from "./v6/agent-v6-schemas.js";
+import { agentRuntimeCreateSessionSchema, agentRuntimeSessionFilterSchema, agentRuntimeTurnSchema, agentRuntimeDecisionSchema, agentRuntimeModeSchema } from "./runtime/agent-runtime.schemas.js";
 
 function sendError(
   request: FastifyRequest,
@@ -88,6 +89,7 @@ function getAgentContext(request: FastifyRequest) {
   return {
     tenantId: request.ctx.tenantId,
     userId: request.ctx.userId,
+    permissions: request.ctx.permissions,
   };
 }
 
@@ -185,8 +187,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     },
     async (request, reply) => {
       try {
-        const body = parseBody<CreateAgentSessionInput>(request, createAgentSessionSchema);
-        return reply.code(201).send(await app.agentService.createSession(getAgentContext(request), body));
+        const body = agentRuntimeCreateSessionSchema.parse(request.body);
+        return reply.code(201).send(await app.canonicalAgentRuntime.createSession(getAgentContext(request), body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -229,8 +231,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     },
     async (request, reply) => {
       try {
-        const query = parseQuery<ListAgentSessionsQuery>(request, listAgentSessionsQuerySchema);
-        return reply.send(await app.agentService.listSessions(getAgentContext(request), query));
+        const query = agentRuntimeSessionFilterSchema.parse(request.query);
+        return reply.send(await app.canonicalAgentRuntime.listSessions(getAgentContext(request), query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -245,11 +247,35 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const scope = parseQuery<AgentSessionScopeInput>(request, agentSessionScopeSchema);
-        return reply.send(await app.agentService.getSession(getAgentContext(request), params.sessionId, scope));
+        return reply.send(await app.canonicalAgentRuntime.getSession(getAgentContext(request), params.sessionId));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
+    },
+  );
+
+  app.patch(
+    "/api/v2/agent/sessions/:sessionId/mode",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = agentRuntimeModeSchema.parse(request.body);
+        return reply.send(await app.canonicalAgentRuntime.updateSession(getAgentContext(request), params.sessionId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v2/agent/sessions/:sessionId/turns/:turnId",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
+        return reply.send(await app.canonicalAgentRuntime.refreshExecution(getAgentContext(request), params.sessionId, params.turnId));
+      } catch (error) { return handleRouteError(error, request, reply); }
     },
   );
 
@@ -261,8 +287,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const scope = parseQuery<AgentSessionScopeInput>(request, agentSessionScopeSchema);
-        return reply.send(await app.agentService.getSessionHistory(getAgentContext(request), params.sessionId, scope));
+        const query = z.object({ limit: z.coerce.number().int().min(1).max(100).optional(), cursor: z.string().optional() }).parse(request.query);
+        return reply.send(await app.canonicalAgentRuntime.getHistory(getAgentContext(request), params.sessionId, query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -279,12 +305,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
         return reply.send(
-          await app.agentService.getSessionEvents(
-            getAgentContext(request),
-            params.sessionId,
-            query.afterSeq ?? 0,
-            query,
-          ),
+          await app.canonicalAgentRuntime.getEvents(getAgentContext(request), params.sessionId, query.afterSeq ?? 0),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
@@ -345,8 +366,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const body = parseBody<CreateAgentTurnInput>(request, createAgentTurnSchema);
-        return reply.code(201).send(await app.agentService.createTurn(getAgentContext(request), params.sessionId, body));
+        const body = agentRuntimeTurnSchema.parse(request.body);
+        return reply.code(201).send(await app.canonicalAgentRuntime.submitTurn(getAgentContext(request), params.sessionId, body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -361,6 +382,18 @@ export function registerAgentRoutes(app: FastifyInstance): void {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const body = parseBody<CreateAgentV5TurnInput>(request, createAgentV5TurnSchema);
         return reply.code(201).send(await app.agentService.createV5Turn(getAgentContext(request), params.sessionId, body));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
+    "/api/v2/agent/sessions/:sessionId/turns/:turnId/decisions",
+    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
+        const body = agentRuntimeDecisionSchema.parse(request.body);
+        return reply.send(await app.canonicalAgentRuntime.submitDecision(getAgentContext(request), params.sessionId, params.turnId, body));
       } catch (error) { return handleRouteError(error, request, reply); }
     },
   );

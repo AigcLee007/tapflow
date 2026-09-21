@@ -14,13 +14,15 @@ export const AGENT_V5_ID_MAX_LENGTH = 200;
 export type AgentV5Phase =
   | "idle"
   | "understanding"
+  | "waiting_for_input"
   | "waiting_for_choice"
   | "drafting_brief"
   | "waiting_for_confirmation"
   | "executing"
   | "presenting_results"
   | "refining"
-  | "failed";
+  | "failed"
+  | "recoverable_error";
 
 /** The two user-facing execution modes exposed by the V5 composer. */
 export type AgentExecutionMode = "auto" | "manual_confirmation";
@@ -60,8 +62,14 @@ export type ResultStatus = "ready" | "selected" | "failed";
 export type ResultRef = {
   id: string;
   label: string;
+  kind?: "image" | "video" | "text";
+  contentText?: string;
   assetId?: string;
   nodeId?: string;
+  refId?: string;
+  runId?: string;
+  placedNodeId?: string;
+  sourceRefs?: string[];
   status?: ResultStatus;
 };
 
@@ -152,7 +160,8 @@ export type AgentDecision =
   | { type: "invoke_app"; appId: string; decisionId?: string }
   | { type: "execute_app"; appId: string; decisionId?: string }
   | { type: "select_result"; resultId: string }
-  | { type: "refine"; resultId?: string; prompt?: string };
+  | { type: "refine"; resultId?: string; prompt?: string; action?: "place" | "select" | "reference" | "variant" | "edit" }
+  | { type: "result_action"; action: "place" | "select" | "reference" | "variant" | "edit"; resultIds: string[]; prompt?: string; graphRevision?: number; idempotencyKey?: string };
 
 export type AgentV5State = {
   phase: AgentV5Phase;

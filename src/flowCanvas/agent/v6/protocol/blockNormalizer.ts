@@ -43,17 +43,27 @@ function result(value: unknown): ResultRef | undefined {
   const resultLabel = label(raw.label);
   const statuses = ["ready", "selected", "failed"] as const;
   const status = statuses.includes(raw.status as typeof statuses[number]) ? raw.status as ResultRef["status"] : undefined;
+  const kind = raw.kind === "image" || raw.kind === "video" || raw.kind === "text" ? raw.kind : undefined;
+  const contentText = typeof raw.contentText === "string" ? text(raw.contentText) : undefined;
   const assetId = raw.assetId === undefined ? undefined : id(raw.assetId);
   const nodeId = raw.nodeId === undefined ? undefined : id(raw.nodeId);
   const refId = raw.refId === undefined ? undefined : id(raw.refId);
+  const runId = raw.runId === undefined ? undefined : id(raw.runId);
+  const placedNodeId = raw.placedNodeId === undefined ? undefined : id(raw.placedNodeId);
+  const sourceRefs = raw.sourceRefs === undefined ? undefined : array(raw.sourceRefs).map(id);
   const uploadedAssetIds = raw.uploadedAssetIds === undefined ? undefined : array(raw.uploadedAssetIds).map(id);
-  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.uploadedAssetIds !== undefined && (!uploadedAssetIds?.length || uploadedAssetIds.some((value) => !value)))) return undefined;
+  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.runId !== undefined && !runId) || (raw.placedNodeId !== undefined && !placedNodeId) || (raw.sourceRefs !== undefined && (!sourceRefs?.length || sourceRefs.some((value) => !value))) || (raw.uploadedAssetIds !== undefined && (!uploadedAssetIds?.length || uploadedAssetIds.some((value) => !value)))) return undefined;
   return {
     id: resultId,
     label: resultLabel,
+    ...(kind ? { kind } : {}),
+    ...(contentText ? { contentText } : {}),
     ...(assetId ? { assetId } : {}),
     ...(nodeId ? { nodeId } : {}),
     ...(refId ? { refId } : {}),
+    ...(runId ? { runId } : {}),
+    ...(placedNodeId ? { placedNodeId } : {}),
+    ...(sourceRefs?.length ? { sourceRefs } : {}),
     ...(uploadedAssetIds ? { uploadedAssetIds } : {}),
     ...(status ? { status } : {}),
   };

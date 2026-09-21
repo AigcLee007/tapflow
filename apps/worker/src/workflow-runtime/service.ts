@@ -3348,6 +3348,12 @@ export class WorkflowNodeExecutionService {
     currentNodeRun: NodeRunRecord,
     outputJson: Record<string, unknown>,
   ): Promise<void> {
+    // Agent runs use an immutable server-side execution graph. Results are
+    // delivered to the Agent result group first and may be placed through the
+    // explicit canvas CAS action; never auto-write them to the live draft.
+    if (isPlainObject(workflowRun.input_json?.agentExecution)) {
+      return;
+    }
     const patch = this.buildDraftOutputPatch(currentNode, workflowRun, runtimeFlow, currentNodeRun, outputJson);
     if (!patch) {
       return;
