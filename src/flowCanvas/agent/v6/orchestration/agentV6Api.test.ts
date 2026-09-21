@@ -95,15 +95,23 @@ describe("agentV6Api contract adapter", () => {
     });
   });
 
-  it("sends the requested mode when creating a session", async () => {
+  it("defers the requested mode until after strict canonical session creation", async () => {
     apiPost.mockResolvedValue({ id: "s", title: "x", projectId: "p", flowId: "f", executionMode: "auto" });
 
     await agentV6Api.createSession({ projectId: "p", flowId: "f", graphRevision: 0, title: "x", mode: "auto" });
 
     expect(apiPost.mock.calls[0]).toEqual([
       "/agent/sessions",
-      { title: "x", projectId: "p", flowId: "f", mode: "auto" },
+      { title: "x", projectId: "p", flowId: "f" },
     ]);
+  });
+
+  it("refreshes a running canonical turn through its result-projection endpoint", async () => {
+    apiGet.mockResolvedValueOnce({ blocks: [], phase: "presenting_results", executionState: "completed", sessionId: "s", turnId: "t", graphRevision: 4 });
+
+    await agentV6Api.refreshTurn("s", "t", { projectId: "p", flowId: "f", graphRevision: 4 });
+
+    expect(apiGet.mock.calls[0]?.[0]).toBe("/agent/sessions/s/turns/t");
   });
 
   it("normalizes real history executionMode and carries the replay cursor", async () => {

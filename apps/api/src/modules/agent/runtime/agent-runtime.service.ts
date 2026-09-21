@@ -72,7 +72,7 @@ export class AgentRuntimeService {
         await this.dependencies.repository.saveResultRef(ctx, { resultGroupId: groupId, runId: stored.execution.runId, assetId, contentText, kind: step.kind, label: step.label, sourceRefs: step.referenceIds, lineage: { sessionId, turnId, stepId: step.id, nodeId }, idempotencyKey: `result:${stored.execution.runId}:${step.id}` });
       }
       const results = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
-      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: null, planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => ({ id: item.id, label: item.label, kind: item.kind, assetId: item.assetId ?? undefined, runId: item.runId ?? undefined, status: item.status === "ready" ? "ready" : "failed", sourceRefs: item.sourceRefs, contentText: item.contentText ?? undefined, placedNodeId: item.placedNodeId ?? undefined })) }] })));
+      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => ({ id: item.id, label: item.label, kind: item.kind, assetId: item.assetId ?? undefined, runId: item.runId ?? undefined, status: item.status === "ready" ? "ready" : "failed", sourceRefs: item.sourceRefs, contentText: item.contentText ?? undefined, placedNodeId: item.placedNodeId ?? undefined })) }] })));
     }
     return publicAgentTurn(turn);
   }
@@ -135,12 +135,13 @@ export class AgentRuntimeService {
           const result = await this.dependencies.repository.getResultRef(ctx, input.payload.resultIds[0]!);
           if (!session.flowId) throw new Error("AGENT_CONTEXT_SCOPE_CONFLICT");
           const placement = await this.dependencies.context.placementGraph(ctx, session, result);
-          await this.dependencies.repository.placeResultAtomic(ctx, { resultId: result.id, placedNodeId: placement.placedNodeId, expectedGraphRevision: placement.expectedGraphRevision, graph: placement.graph });
+          const placed = await this.dependencies.repository.placeResultAtomic(ctx, { resultId: result.id, placedNodeId: placement.placedNodeId, expectedGraphRevision: placement.expectedGraphRevision, graph: placement.graph });
           const results = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
           return publicAgentTurn(await complete({
             phase: "presenting_results",
             executionState: "completed",
-            pendingDecision: null,
+            graphRevision: placed.graphRevision,
+            pendingDecision: pending({ ...turn, graphRevision: placed.graphRevision }, "results", ["result_action"]),
             blocks: [{
               type: "result_group",
               id: stored.resultGroupId,
@@ -158,7 +159,7 @@ export class AgentRuntimeService {
             }],
           }));
         }
-        return publicAgentTurn(await complete({ phase: "presenting_results", executionState: "completed", pendingDecision: null }));
+        return publicAgentTurn(await complete({ phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]) }));
       }
       throw new Error("AGENT_RESULT_ACTION_REQUIRES_RESULT_CONTROLLER");
     } catch (error) { return publicAgentTurn(await this.fail(ctx, turn, error, decisionCompleted ? undefined : claim.decision.id)); }
@@ -170,6 +171,7 @@ export class AgentRuntimeService {
     if (!questions.length || Object.keys(answers).some(id => !questions.some(question => question.id === id))) throw new Error("AGENT_ANSWER_INVALID");
     for (const question of questions) {
       const answer = answers[question.id];
+      if (answer === undefined) continue;
       const values = Array.isArray(answer) ? answer : answer ? [answer] : [];
       if (question.required && !values.length) throw new Error("AGENT_ANSWER_REQUIRED");
       if (question.kind !== "multiple" && Array.isArray(answer)) throw new Error("AGENT_ANSWER_INVALID");

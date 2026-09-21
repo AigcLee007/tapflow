@@ -7,7 +7,7 @@ import { CanvasAgentPanel } from "./CanvasAgentPanel";
 
 const mockGetAgentImageRunSettings = vi.fn();
 const mockListAgentSkills = vi.fn();
-const mockListAgentV5Sessions = vi.fn();
+const mockListSessions = vi.fn();
 const mockSession = {
   blocks: [{ text: "请先选择产品方向。", type: "paragraph" as const }],
   error: null,
@@ -27,12 +27,12 @@ vi.mock("./canvasAgentApi", () => ({
   listAgentSkills: (...args: unknown[]) => mockListAgentSkills(...args),
 }));
 
-vi.mock("./v5/agentV5Api", () => ({
-  listAgentV5Sessions: (...args: unknown[]) => mockListAgentV5Sessions(...args),
+vi.mock("./v6/orchestration/agentV6Api", () => ({
+  agentV6Api: { listSessions: (...args: unknown[]) => mockListSessions(...args) },
 }));
 
-vi.mock("./v5/useAgentV5Session", () => ({
-  useAgentV5Session: () => mockSession,
+vi.mock("./runtime/useAgentRuntime", () => ({
+  useAgentRuntime: () => mockSession,
 }));
 
 function renderPanel() {
@@ -50,7 +50,7 @@ describe("CanvasAgentPanel V6 integration", () => {
     useFlowCanvasStore.getState().newProject();
     mockGetAgentImageRunSettings.mockReset().mockResolvedValue({ models: [] });
     mockListAgentSkills.mockReset().mockResolvedValue([]);
-    mockListAgentV5Sessions.mockReset().mockResolvedValue([{
+    mockListSessions.mockReset().mockResolvedValue([{
       createdAt: "2026-09-06T00:00:00Z",
       flowId: null,
       id: "session-history-1",

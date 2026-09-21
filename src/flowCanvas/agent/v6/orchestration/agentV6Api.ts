@@ -1,6 +1,7 @@
 import { apiGet, apiPatch, apiPost } from "../../../../services/v2HttpClient";
 import type { CanvasAgentSnapshot } from "../../canvasAgentTypes";
 import type { AgentReferenceContext } from "../../agentReferenceContext";
+import type { AgentContextSnapshot } from "../../runtime/agentProtocol";
 import type { AgentDecision, AgentExecutionMode, AgentV6Phase, ConfirmationPlan, ConversationState } from "../protocol/conversationTypes";
 import { normalizeBlocks } from "../protocol/blockNormalizer";
 import { initialConversationState } from "../protocol/conversationReducer";
@@ -18,7 +19,7 @@ export type AgentV6Response = {
 export type AgentV6History = { session: AgentV6Session; responses: AgentV6Response[]; lastSeq: number; replayCursor: string | null };
 export type AgentV6DurableEvent = { id: string; seq: number; sessionId?: string; projectId?: string | null; flowId?: string | null; eventType: string; eventJson: Record<string, unknown> };
 export type AgentV6EventsResponse = { events: AgentV6DurableEvent[]; lastSeq: number; replayCursor: string | null; resyncRequired?: boolean };
-export type AgentV6TurnInput = AgentV6Scope & { prompt: string; idempotencyKey: string; mode?: AgentExecutionMode; modelKey?: string | null; contextSnapshot?: ConversationState["contextSnapshot"]; referenceContext?: AgentReferenceContext; snapshot?: CanvasAgentSnapshot };
+export type AgentV6TurnInput = AgentV6Scope & { prompt: string; idempotencyKey: string; mode?: AgentExecutionMode; modelKey?: string | null; contextSnapshot?: AgentContextSnapshot; referenceContext?: AgentReferenceContext; snapshot?: CanvasAgentSnapshot };
 export type AgentV6DecisionInput = AgentV6Scope & { type: string; payload?: Record<string, unknown>; idempotencyKey: string; [key: string]: unknown };
 export type AgentV6CancelInput = AgentV6Scope & { sessionId: string; turnId: string; idempotencyKey: string; reason?: string };
 export type AgentV6CancelResponse = { cancelled: boolean; turnId?: string; response?: AgentV6Response };
@@ -28,6 +29,7 @@ export type AgentV6Api = {
   listSessions(input: AgentV6Scope): Promise<AgentV6Session[]>;
   getSession(sessionId: string, input: AgentV6Scope): Promise<AgentV6Session>;
   getHistory(sessionId: string, input: AgentV6Scope): Promise<AgentV6History>;
+  refreshTurn(sessionId: string, turnId: string, input: AgentV6Scope): Promise<AgentV6Response>;
   listEvents(sessionId: string, input?: { projectId?: string | null; flowId?: string | null; afterSeq?: number }): Promise<AgentV6EventsResponse>;
   submitTurn(sessionId: string, input: AgentV6TurnInput): Promise<AgentV6Response>;
   submitDecision(sessionId: string, turnId: string, input: AgentV6DecisionInput): Promise<AgentV6Response>;
@@ -51,14 +53,8 @@ function defaultSnapshot(input: AgentV6TurnInput): CanvasAgentSnapshot {
   return { edges: [], flowId: input.flowId, nodeOutputs: {}, nodes: [], projectId: input.projectId, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 } };
 }
 function defaultContext(input: AgentV6TurnInput) {
-  if (input.contextSnapshot && "refs" in input.contextSnapshot) return input.contextSnapshot;
-  const source = input.contextSnapshot as Record<string, unknown> | undefined;
-  const refs = Array.isArray(source?.assetRefs)
-    ? source.assetRefs.flatMap((item) => {
-        const value = asRecord(item);
-        return typeof value.assetId === "string" ? [{ refId: typeof value.refId === "string" ? value.refId : `asset-${value.assetId}`, source: "asset" as const, assetId: value.assetId, label: typeof value.label === "string" ? value.label : "画布素材" }] : [];
-      })
-    : [];
+  if (input.contextSnapshot) return input.contextSnapshot;
+  const refs = (input.referenceContext?.items ?? []).flatMap((item) => item.refId && item.label ? [{ refId: item.refId, source: item.kind === "canvas_node" ? "canvas" as const : item.kind === "upload" ? "upload" as const : "asset" as const, ...(item.nodeId ? { nodeId: item.nodeId } : {}), ...(item.assetId ? { assetId: item.assetId } : {}), label: item.label }] : []);
   return { projectId: input.projectId, flowId: input.flowId, refs, skillIds: [], appIds: [], modelKey: input.modelKey ?? null, graphRevision: input.graphRevision };
 }
 function safeDecision(value: unknown): Record<string, unknown> | null {
@@ -152,14 +148,46 @@ function toHistoryResponse(turn: Record<string, unknown>, session: AgentV6Sessio
   return normalizeResponse({ sessionId: session.id, projectId: session.projectId, flowId: session.flowId, turnId: turn.id, phase: turn.phase ?? turn.conversationPhase, executionState: turn.executionState, mode: session.mode, graphRevision: turn.graphRevision, blocks: turn.blocks ?? turn.blocksJson, plan: turn.plan ?? turn.planJson, error: asRecord(turn.errorJson).message }, { ...session, sessionId: session.id, turnId: typeof turn.id === "string" ? turn.id : undefined, graphRevision: typeof turn.graphRevision === "number" ? turn.graphRevision : 0 });
 }
 
+function canonicalDecisionRequest(input: AgentV6DecisionInput) {
+  const source = asRecord(input.payload);
+  const type = input.type === "confirm" ? "approve_plan"
+    : input.type === "cancel" ? "cancel_execution"
+      : input.type === "select_choice" ? "answer_question"
+        : input.type === "update_brief" ? "edit_brief"
+          : input.type === "refine" ? "result_action"
+            : input.type;
+  if (!new Set(["answer_question", "edit_brief", "approve_plan", "revise_plan", "result_action", "cancel_execution", "retry_execution"]).has(type)) {
+    throw new Error("AGENT_RUNTIME_UNSAFE_DECISION");
+  }
+  const payload = type === "approve_plan" || type === "cancel_execution" || type === "retry_execution"
+    ? {}
+    : type === "answer_question"
+      ? (source.answers && typeof source.answers === "object" ? { answers: source.answers } : { answers: { [typeof source.questionId === "string" ? source.questionId : "answer"]: Array.isArray(source.optionIds) ? source.optionIds[0] : source.answer ?? "" } })
+      : type === "result_action"
+        ? { action: source.action === "place" || source.action === "select" || source.action === "reference" || source.action === "variant" || source.action === "edit" ? source.action : "variant", resultIds: Array.isArray(source.resultIds) ? source.resultIds.filter((value): value is string => typeof value === "string") : typeof source.resultId === "string" ? [source.resultId] : [], ...(typeof source.instruction === "string" ? { instruction: source.instruction } : typeof source.prompt === "string" ? { instruction: source.prompt } : {}) }
+        : { instruction: typeof source.instruction === "string" ? source.instruction : typeof source.prompt === "string" ? source.prompt : "修改计划" };
+  return { type, payload };
+}
+
 export const agentV6Api: AgentV6Api = {
-  createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), projectId: input.projectId, flowId: input.flowId, mode: input.mode ?? "manual_confirmation" })),
+  createSession: async (input) => normalizeSession(await apiPost<unknown>("/agent/sessions", { ...(input.title ? { title: input.title } : {}), projectId: input.projectId, flowId: input.flowId })),
   listSessions: async (input) => { const query = sessionQuery(input); const raw = await apiGet<unknown>(`/agent/sessions${query ? `?${query}` : ""}`); return Array.isArray(raw) ? raw.map(normalizeSession) : []; },
   getSession: async (sessionId, input) => { const query = sessionQuery(input); return normalizeSession(await apiGet<unknown>(`${sessionPath(sessionId)}${query ? `?${query}` : ""}`)); },
   getHistory: async (sessionId, input) => { const query = sessionQuery(input); const source = asRecord(await apiGet<unknown>(`${sessionPath(sessionId)}/history${query ? `?${query}` : ""}`)); const session = normalizeSession(source.session); const turns = Array.isArray(source.turns) ? source.turns : []; return { session, responses: turns.map((turn) => toHistoryResponse(asRecord(turn), session)), lastSeq: typeof source.lastSeq === "number" ? source.lastSeq : 0, replayCursor: normalizeCursor(source.replayCursor) }; },
+  refreshTurn: async (sessionId, turnId, input) => normalizeResponse(await apiGet<unknown>(`${sessionPath(sessionId)}/turns/${encodeURIComponent(turnId)}`), { ...input, sessionId, turnId }),
   listEvents: async (sessionId, input) => { const query = new URLSearchParams(); if (input?.projectId) query.set("projectId", input.projectId); if (input?.flowId) query.set("flowId", input.flowId); if (input?.afterSeq !== undefined) query.set("afterSeq", String(Math.max(0, Math.floor(input.afterSeq)))); const suffix = query.toString(); const raw = await apiGet<AgentV6EventsResponse>(`${sessionPath(sessionId)}/events${suffix ? `?${suffix}` : ""}`); return { events: Array.isArray(raw.events) ? raw.events.flatMap((event) => { const normalized = normalizeDurableEvent(event); return normalized ? [normalized] : []; }) : [], lastSeq: typeof raw.lastSeq === "number" ? raw.lastSeq : 0, replayCursor: normalizeCursor(raw.replayCursor), ...(raw.resyncRequired ? { resyncRequired: true } : {}) }; },
   submitTurn: async (sessionId, input) => normalizeResponse(await apiPost<unknown>(`${sessionPath(sessionId)}/turns`, { contextSnapshot: defaultContext(input), idempotencyKey: input.idempotencyKey || `turn-${Date.now()}`, prompt: input.prompt }), input),
-  submitDecision: async (sessionId, turnId, input) => { const decision = safeDecision(input.payload ?? input); if (!decision) throw new Error("AGENT_V6_UNSAFE_DECISION"); const canonicalType = decision.type === "confirm" ? "approve_plan" : decision.type === "cancel" ? "cancel_execution" : decision.type === "select_choice" ? "answer_question" : decision.type === "update_brief" ? "edit_brief" : decision.type === "refine" ? "result_action" : "revise_plan"; const source = decision as Record<string, unknown>; const pending = source as Record<string, unknown>; const payload = canonicalType === "approve_plan" || canonicalType === "cancel_execution" ? {} : canonicalType === "answer_question" ? { answers: { [typeof source.questionId === "string" ? source.questionId : "answer"]: Array.isArray(source.optionIds) ? source.optionIds[0] : "" } } : canonicalType === "edit_brief" ? { instruction: `${String(source.field ?? "")}: ${String(source.value ?? "")}` } : canonicalType === "result_action" ? { action: "variant", resultIds: typeof source.resultId === "string" ? [source.resultId] : [] } : { instruction: typeof source.prompt === "string" ? source.prompt : "修改计划" }; const decisionId = typeof input.decisionId === "string" ? input.decisionId : typeof pending.decisionId === "string" ? pending.decisionId : "legacy-decision"; const blockId = typeof input.blockId === "string" ? input.blockId : typeof pending.blockId === "string" ? pending.blockId : canonicalType === "approve_plan" ? "approval" : "questions"; return normalizeResponse(await apiPost<unknown>(`${sessionPath(sessionId)}/turns/${encodeURIComponent(turnId)}/decisions`, { decisionId, blockId, graphRevision: input.graphRevision, idempotencyKey: input.idempotencyKey, type: canonicalType, payload }), input); },
+  submitDecision: async (sessionId, turnId, input) => {
+    const decision = canonicalDecisionRequest(input);
+    return normalizeResponse(await apiPost<unknown>(`${sessionPath(sessionId)}/turns/${encodeURIComponent(turnId)}/decisions`, {
+      ...(typeof input.decisionId === "string" ? { decisionId: input.decisionId } : {}),
+      ...(typeof input.blockId === "string" ? { blockId: input.blockId } : {}),
+      graphRevision: input.graphRevision,
+      idempotencyKey: input.idempotencyKey,
+      type: decision.type,
+      payload: decision.payload,
+    }), input);
+  },
   confirmExecution: (sessionId, turnId, input) => agentV6Api.submitDecision(sessionId, turnId, { ...input, type: "confirm", payload: { type: "confirm" } }),
   setMode: async (sessionId, input) => normalizeSession(await apiPatch<unknown>(`${sessionPath(sessionId)}/mode`, { mode: input.mode })),
   cancelTurn: async (sessionId, input) => {

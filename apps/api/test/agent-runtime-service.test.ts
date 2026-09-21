@@ -57,4 +57,15 @@ describe("Agent runtime orchestration", () => {
     expect(h.planner.plan.mock.calls[1][1]).toMatchObject({ answers: { subject: "机器人" } });
     expect(h.execution.start).not.toHaveBeenCalled();
   });
+  it("accepts one answer from a multi-question clarification round and replans for the remaining answers", async () => {
+    const h = harness();
+    h.planner.plan.mockResolvedValueOnce({ ...plan, steps: [], questions: [
+      { id: "subject", prompt: "主体", kind: "text", required: true },
+      { id: "ratio", prompt: "比例", kind: "single", required: true, options: [{ id: "vertical", label: "9:16" }] },
+    ] });
+    await h.service.submitTurn(ctx, "session", { prompt: "画张图", contextSnapshot: snapshot, idempotencyKey: "turn-key" });
+    const pending = h.getTurn().pendingDecision;
+    await h.service.submitDecision(ctx, "session", "turn", { decisionId: pending.id, blockId: pending.blockId, graphRevision: 4, idempotencyKey: "answer-one", type: "answer_question", payload: { answers: { subject: "机器人" } } });
+    expect(h.planner.plan.mock.calls[1][1]).toMatchObject({ answers: { subject: "机器人" } });
+  });
 });
