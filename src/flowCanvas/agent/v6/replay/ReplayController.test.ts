@@ -42,6 +42,22 @@ describe("Agent V6 replay controller", () => {
     expect(state.sessionId).toBe("session-1");
   });
 
+  it("keeps multiple turns and restores older graph revisions", () => {
+    const controller = new ReplayController({ ...scope, graphRevision: 8 });
+    const state = controller.restore({
+      session: { id: "session-1", title: "历史", projectId: "project-1", flowId: "flow-1", mode: "manual_confirmation" },
+      responses: [
+        { ...liveResponse, turnId: "turn-1", graphRevision: 2, phase: "understanding", blocks: [{ type: "paragraph", text: "第一轮" }] },
+        { ...liveResponse, turnId: "turn-2", graphRevision: 3, phase: "presenting_results", blocks: [{ type: "result_group", id: "results", results: [{ id: "result-2", label: "第二轮结果" }] }] },
+      ], lastSeq: 0, replayCursor: null,
+    });
+    expect(state.sessionId).toBe("session-1");
+    expect(state.blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "paragraph", text: "第一轮" }),
+      expect.objectContaining({ type: "result_group", id: "results" }),
+    ]));
+  });
+
   it("can restore a later durable snapshot without requiring earlier history rows", () => {
     const controller = new ReplayController(scope);
     const state = controller.restore({

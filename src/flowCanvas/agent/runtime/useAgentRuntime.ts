@@ -46,6 +46,7 @@ function contextFromReferences(scope: AgentV6Scope, options: SubmitTextOptions):
       source,
       ...(item.nodeId ? { nodeId: item.nodeId } : {}),
       ...(item.assetId ? { assetId: item.assetId } : {}),
+      ...(item.role ? { role: item.role } : {}),
       label: item.label,
     }];
   });
@@ -56,7 +57,7 @@ function responseState(current: ReplayState, response: AgentV6Response, scope: A
   return applyResponse(current, response, scope);
 }
 
-export function useAgentRuntime() {
+export function useAgentRuntime(initialSessionId?: string | null) {
   const [state, setState] = useState<ReplayState>(() => createReplayState(scopeFromCanvas()));
   const [sessionTitle, setSessionTitle] = useState("新对话");
   const [busy, setBusy] = useState(false);
@@ -71,6 +72,9 @@ export function useAgentRuntime() {
     if (created.mode !== state.mode) await agentV6Api.setMode(created.id, { ...scope, mode: state.mode });
     setSessionTitle(created.title);
     setState((current) => ({ ...current, sessionId: created.id, mode: created.mode }));
+    const url = new URL(window.location.href);
+    url.searchParams.set("agentSession", created.id);
+    window.history.replaceState(window.history.state, "", url);
     return created.id;
   }, [state.mode, state.sessionId]);
 
@@ -136,7 +140,15 @@ export function useAgentRuntime() {
   const newConversation = useCallback(() => {
     setSessionTitle("新对话");
     setState(createReplayState(scopeFromCanvas()));
+    const url = new URL(window.location.href);
+    url.searchParams.delete("agentSession");
+    window.history.replaceState(window.history.state, "", url);
   }, []);
+
+  useEffect(() => {
+    const sessionId = initialSessionId ?? new URLSearchParams(window.location.search).get("agentSession");
+    if (sessionId && sessionId !== state.sessionId) void openSession(sessionId);
+  }, [initialSessionId, openSession, state.sessionId]);
 
   const setExecutionMode = useCallback((mode: AgentExecutionMode) => {
     setState((current) => ({ ...current, mode }));

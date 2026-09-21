@@ -46,7 +46,7 @@ function toPhase(value: string): AgentV6Phase {
 
 /** The default Agent entry only uses the neutral canonical Runtime controller. */
 export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
-  const runtime = useAgentRuntime();
+  const runtime = useAgentRuntime(props.initialSessionId);
   const backendFlowId = useFlowCanvasStore((state) => state.backendFlowId);
   const backendProjectId = useFlowCanvasStore((state) => state.backendProjectId);
   const selectedKey = useFlowCanvasStore((state) => state.nodes.filter((node) => node.selected).map((node) => `${node.id}:${node.data.assetId ?? ""}`).join(","));
@@ -106,10 +106,6 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
       updatedAt: item.updatedAt,
     })))).catch(() => setHistory([]));
   }, [backendFlowId, backendProjectId, props.open, runtime.sessionId]);
-
-  React.useEffect(() => {
-    if (props.open && props.initialSessionId) void runtime.openSession(props.initialSessionId);
-  }, [props.initialSessionId, props.open, runtime.openSession]);
 
   const modelOptions = React.useMemo(() => models.map((item) => ({ label: item.displayName, value: item.modelKey })), [models]);
   const handleBlockAction = React.useCallback((action: AgentBlockAction) => {
