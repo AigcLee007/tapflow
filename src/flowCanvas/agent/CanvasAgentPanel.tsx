@@ -12,6 +12,8 @@ import type { AgentReferenceChip } from "./v6/workspace/AgentReferenceChips";
 import { applyServerDraftToCanvas } from "./canvasAgentOps";
 import { getFlowDraft } from "../services/flowProjectApi";
 import { useFlowCanvasStore } from "../store/flowCanvasStore";
+import { uploadAssetFile } from "../../assets/assetApi";
+import type { AgentReferenceRole } from "./runtime/agentProtocol";
 
 type CanvasAgentPanelProps = {
   initialSessionId?: string | null;
@@ -54,7 +56,37 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
   const [modelLocked, setModelLocked] = React.useState(false);
   const [history, setHistory] = React.useState<Array<{ id: string; title: string; date: string; updatedAt?: string }>>([]);
   const [resultReferences, setResultReferences] = React.useState<AgentReferenceChip[]>([]);
-  const references = React.useMemo(() => [...selectedReferenceChips(), ...resultReferences].slice(0, AGENT_REFERENCE_LIMIT), [resultReferences, selectedKey]);
+  const [canvasReferences, setCanvasReferences] = React.useState<AgentReferenceChip[]>([]);
+  const [referenceRoles, setReferenceRoles] = React.useState<Record<string, AgentReferenceRole | undefined>>({});
+  const [removedReferenceIds, setRemovedReferenceIds] = React.useState<Set<string>>(() => new Set());
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const references = React.useMemo(() => {
+    const selected = selectedReferenceChips().filter((reference) => !removedReferenceIds.has(reference.id));
+    const all = [...selected, ...canvasReferences, ...resultReferences];
+    const seen = new Set<string>();
+    return all.flatMap((reference) => {
+      if (seen.has(reference.id)) return [];
+      seen.add(reference.id);
+      return [{ ...reference, ...(referenceRoles[reference.id] ? { role: referenceRoles[reference.id] } : {}) }];
+    }).slice(0, AGENT_REFERENCE_LIMIT);
+  }, [canvasReferences, referenceRoles, removedReferenceIds, resultReferences, selectedKey]);
+
+  const addUploadedFiles = React.useCallback(async (files: FileList | null) => {
+    const selected = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (!selected.length) return;
+    try {
+      const uploaded = await Promise.all(selected.map((file) => uploadAssetFile({ file, kind: "image", projectId: backendProjectId ?? null })));
+      setResultReferences((current) => [...current, ...uploaded.map((asset, index) => ({
+        id: `upload-${asset.id}`,
+        kind: "upload" as const,
+        label: asset.originalFilename || `上传图片 ${index + 1}`,
+        assetId: asset.id,
+        refId: `upload-${asset.id}`,
+      }))].slice(0, AGENT_REFERENCE_LIMIT));
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [backendProjectId]);
 
   React.useEffect(() => {
     if (!props.open) return;
@@ -84,7 +116,7 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
     if (action.type === "answer_question") {
       void runtime.submitDecision({ type: "answer_question", questionId: action.blockId, answer: action.value });
     } else if (action.type === "select_choice") {
-      const answer = action.optionIds[0] ?? "";
+      const answer = action.optionIds.length > 1 ? action.optionIds : (action.optionIds[0] ?? "");
       if (action.blockId === "recovery") void runtime.submitDecision(answer === "retry" ? { type: "retry_execution" } : { type: "revise_plan", instruction: "修改计划" });
       else void runtime.submitDecision({ type: "answer_question", questionId: action.blockId, answer });
     } else if (action.type === "confirm_execution") {
@@ -115,7 +147,9 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
   }, [props.onServerDraftApplied, runtime]);
 
   if (!props.open) return null;
-  return <AgentWorkspace
+  return <>
+  <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => { void addUploadedFiles(event.currentTarget.files); }} />
+  <AgentWorkspace
     blocks={runtime.blocks}
     busy={runtime.phase === "understanding" || runtime.phase === "executing" || runtime.phase === "verifying"}
     history={history}
@@ -123,14 +157,22 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
     modelOptions={modelOptions}
     onBlockAction={handleBlockAction}
     onCancel={() => { void runtime.submitDecision({ type: "cancel_execution" }); }}
-    onCapability={() => undefined}
+    onCapability={(capability) => {
+      if (capability === "upload") fileInputRef.current?.click();
+      if (capability === "canvas") setCanvasReferences((current) => [...current, ...selectedReferenceChips()].slice(0, AGENT_REFERENCE_LIMIT));
+    }}
     onCollapse={props.onClose}
-    onHistorySelect={(sessionId) => { setResultReferences([]); void runtime.openSession(sessionId); }}
+    onHistorySelect={(sessionId) => { setResultReferences([]); setCanvasReferences([]); setRemovedReferenceIds(new Set()); void runtime.openSession(sessionId); }}
     onModeChange={runtime.setExecutionMode}
     onModelChange={(next) => { if (!modelLocked) setModel(next); }}
-    onNewConversation={() => { setResultReferences([]); setModelLocked(false); runtime.newConversation(); }}
+    onNewConversation={() => { setResultReferences([]); setCanvasReferences([]); setRemovedReferenceIds(new Set()); setModelLocked(false); runtime.newConversation(); }}
     onPromptChange={setPrompt}
-    onRemoveReference={(id) => setResultReferences((current) => current.filter((item) => item.id !== id))}
+    onRemoveReference={(id) => {
+      setRemovedReferenceIds((current) => new Set(current).add(id));
+      setResultReferences((current) => current.filter((item) => item.id !== id));
+      setCanvasReferences((current) => current.filter((item) => item.id !== id));
+    }}
+    onRoleChange={(id, role) => setReferenceRoles((current) => ({ ...current, [id]: role }))}
     onRename={() => undefined}
     onSend={async (text) => {
       setPrompt("");
@@ -141,5 +183,6 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
     prompt={prompt}
     references={references}
     title={runtime.sessionTitle}
-  />;
+  />
+  </>;
 }

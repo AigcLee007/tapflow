@@ -8,7 +8,7 @@ import { applyResponse, createReplayState, restoreHistory, type ReplayState } fr
 import type { AgentExecutionMode, ConversationBlock, ResultRef } from "../v6/protocol/conversationTypes";
 
 export type AgentRuntimeDecision =
-  | { type: "answer_question"; answer: string; questionId?: string }
+  | { type: "answer_question"; answer: string | string[]; questionId?: string }
   | { type: "approve_plan" }
   | { type: "cancel_execution" }
   | { type: "retry_execution" }
