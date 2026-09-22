@@ -325,7 +325,10 @@ export class AgentRuntimeRepository {
         if (prior.result_group_id !== input.resultGroupId || prior.asset_id !== (input.assetId ?? null) || prior.run_id !== runId || prior.kind !== input.kind || prior.label !== input.label || prior.content_text !== (input.contentText ?? null) || !same(prior.source_refs_json, sourceRefs) || !same(prior.lineage_json, input.lineage ?? {})) fail("AGENT_RESULT_IDEMPOTENCY_CONFLICT");
         return mapResult(prior);
       }
-      return mapResult((await client.query("INSERT INTO agent_result_refs(tenant_id,result_group_id,asset_id,run_id,idempotency_key,kind,label,source_refs_json,lineage_json,status,content_text) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11) RETURNING *", [ctx.tenantId, input.resultGroupId, input.assetId ?? null, runId, key, input.kind, input.label, json(sourceRefs), json(input.lineage ?? {}), input.status ?? "ready", input.contentText ?? null])).rows[0]);
+      const stepId = typeof input.lineage?.stepId === "string" ? input.lineage.stepId : null;
+      const attemptNo = typeof input.lineage?.attemptNo === "number" && Number.isInteger(input.lineage.attemptNo) ? input.lineage.attemptNo : 1;
+      const sourceRunId = typeof input.lineage?.sourceRunId === "string" ? input.lineage.sourceRunId : null;
+      return mapResult((await client.query("INSERT INTO agent_result_refs(tenant_id,result_group_id,asset_id,run_id,step_id,attempt_no,source_run_id,idempotency_key,kind,label,source_refs_json,lineage_json,status,content_text) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7::uuid,$8,$9,$10,$11::jsonb,$12::jsonb,$13,$14) RETURNING *", [ctx.tenantId, input.resultGroupId, input.assetId ?? null, runId, stepId, attemptNo, sourceRunId, key, input.kind, input.label, json(sourceRefs), json(input.lineage ?? {}), input.status ?? "ready", input.contentText ?? null])).rows[0]);
     }, this.pool);
   }
   async getResultRef(ctx: AgentRuntimeContext, resultId: string, scope?: { sessionId: string; turnId: string }): Promise<AgentRuntimeResultRef> {
