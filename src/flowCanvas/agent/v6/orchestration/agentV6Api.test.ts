@@ -95,14 +95,14 @@ describe("agentV6Api contract adapter", () => {
     });
   });
 
-  it("defers the requested mode until after strict canonical session creation", async () => {
+  it("passes the requested mode through canonical session creation", async () => {
     apiPost.mockResolvedValue({ id: "s", title: "x", projectId: "p", flowId: "f", executionMode: "auto" });
 
     await agentV6Api.createSession({ projectId: "p", flowId: "f", graphRevision: 0, title: "x", mode: "auto" });
 
     expect(apiPost.mock.calls[0]).toEqual([
       "/agent/sessions",
-      { title: "x", projectId: "p", flowId: "f" },
+      { title: "x", projectId: "p", flowId: "f", mode: "auto" },
     ]);
   });
 

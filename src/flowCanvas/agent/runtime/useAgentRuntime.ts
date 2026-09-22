@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFlowCanvasStore } from "../../store/flowCanvasStore";
 import type { AgentReferenceContext } from "../agentReferenceContext";
 import type { AgentContextSnapshot } from "./agentProtocol";
-import { agentV6Api, type AgentV6Response, type AgentV6Scope } from "../v6/orchestration/agentV6Api";
+import { agentRuntimeApi, type AgentRuntimeResponse as AgentV6Response, type AgentRuntimeScope as AgentV6Scope } from "./agentRuntimeApi";
 import { applyResponse, createReplayState, restoreHistory, type ReplayState } from "../v6/replay/ReplayState";
 import type { AgentExecutionMode, ConversationBlock, ResultRef } from "../v6/protocol/conversationTypes";
 import type { BriefField } from "../v6/protocol/conversationTypes";
@@ -68,8 +68,8 @@ export function useAgentRuntime(initialSessionId?: string | null) {
 
   const ensureSession = useCallback(async (prompt: string, scope: AgentV6Scope) => {
     if (state.sessionId) return state.sessionId;
-    const created = await agentV6Api.createSession({ ...scope, title: buildTitle(prompt), mode: state.mode });
-    if (created.mode !== state.mode) await agentV6Api.setMode(created.id, { ...scope, mode: state.mode });
+    const created = await agentRuntimeApi.createSession({ ...scope, title: buildTitle(prompt), mode: state.mode });
+    if (created.mode !== state.mode) await agentRuntimeApi.setMode(created.id, { ...scope, mode: state.mode });
     setSessionTitle(created.title);
     setState((current) => ({ ...current, sessionId: created.id, mode: created.mode }));
     const url = new URL(window.location.href);
@@ -85,7 +85,7 @@ export function useAgentRuntime(initialSessionId?: string | null) {
     const scope = scopeFromCanvas();
     try {
       const sessionId = await ensureSession(text, scope);
-      const response = await agentV6Api.submitTurn(sessionId, {
+      const response = await agentRuntimeApi.submitTurn(sessionId, {
         ...scope,
         prompt: text,
         idempotencyKey: createIdempotencyKey("turn"),
@@ -115,7 +115,7 @@ export function useAgentRuntime(initialSessionId?: string | null) {
           ? { instruction: decision.instruction }
         : {};
     try {
-      const response = await agentV6Api.submitDecision(state.sessionId, state.turnId, {
+      const response = await agentRuntimeApi.submitDecision(state.sessionId, state.turnId, {
         ...scope,
         type: decision.type,
         payload,
@@ -133,7 +133,7 @@ export function useAgentRuntime(initialSessionId?: string | null) {
   const openSession = useCallback(async (sessionId: string) => {
     const scope = scopeFromCanvas();
     try {
-      const history = await agentV6Api.getHistory(sessionId, scope);
+      const history = await agentRuntimeApi.getHistory(sessionId, scope);
       setSessionTitle(history.session.title);
       setState(restoreHistory(history, scope));
       const url = new URL(window.location.href);
@@ -160,13 +160,13 @@ export function useAgentRuntime(initialSessionId?: string | null) {
 
   const setExecutionMode = useCallback((mode: AgentExecutionMode) => {
     setState((current) => ({ ...current, mode }));
-    if (state.sessionId) void agentV6Api.setMode(state.sessionId, { ...scopeFromCanvas(), mode }).catch(() => undefined);
+    if (state.sessionId) void agentRuntimeApi.setMode(state.sessionId, { ...scopeFromCanvas(), mode }).catch(() => undefined);
   }, [state.sessionId]);
 
   const renameSession = useCallback(async (title: string) => {
     const next = title.trim();
     if (!next || !state.sessionId) return;
-    const session = await agentV6Api.renameSession(state.sessionId, { ...scopeFromCanvas(), title: next });
+    const session = await agentRuntimeApi.renameSession(state.sessionId, { ...scopeFromCanvas(), title: next });
     setSessionTitle(session.title);
   }, [state.sessionId]);
 
@@ -176,7 +176,7 @@ export function useAgentRuntime(initialSessionId?: string | null) {
     const refresh = async () => {
       try {
         const scope = scopeFromCanvas();
-        const latest = await agentV6Api.refreshTurn(state.sessionId!, state.turnId!, scope);
+        const latest = await agentRuntimeApi.refreshTurn(state.sessionId!, state.turnId!, scope);
         if (!disposed) apply(latest, scope);
       } catch { /* transient worker/API delay; the next poll retries */ }
     };
