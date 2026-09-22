@@ -2,6 +2,12 @@
 
 Last updated: 2026-09-21
 
+## 2026-09-21 - Administration console v3 pushed for staging validation
+
+- Committed the isolated `codex/admin-console-v3` implementation as `b600d799` and pushed it to `origin/codex/admin-console-v3` for staging-only validation. The branch contains the platform access model, scoped console queries, provider request telemetry, payment/refund hardening, migrations `000084`-`000095`, frontend console pages, and focused regression coverage.
+- Fresh validation before push: frontend build, API/Worker/DB/AI Gateway builds; API focused tests 160 passed with 3 database-environment skips; frontend console/admin tests 88 passed; AI Gateway Core focused tests 78 passed; DB wallet/migration tests 30 passed; `git diff --cached --check` passed.
+- The branch is pushed but remains short of full acceptance: asynchronous exports, performance/P95 measurements, real PostgreSQL/RLS/concurrent-refund checks, and three-role multi-tenant authenticated browser acceptance remain pending. Staging deployment is blocked until the target SSH host/user and usable authentication are available; no server migration or restart has been run.
+
 ## 2026-09-21 - Administration console completion review
 
 - Reviewed the uncommitted `codex/admin-console-v3` implementation against the accepted plan. The console is not acceptance-complete: refund recovery, concurrent spending during refunds, reliable payment audit, ledger debit semantics, history access, filters, and request traffic classification require further work. Findings and evidence: `docs/ADMIN_CONSOLE_V3_COMPLETION_REVIEW.md`.
