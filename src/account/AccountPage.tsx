@@ -21,6 +21,7 @@ import {
   BILLING_ROUTE,
 } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
+import { hasPlatformCapability } from "../auth/productRoles";
 
 function InfoCard({
   label,
@@ -61,8 +62,12 @@ function membershipDiscount(plan?: string | null) {
 }
 
 export function AccountPage() {
-  const { loading, logout, permissions, refreshMe, tenant, user } = useAuth();
-  const canManageProviderSettings = permissions.includes("admin:system");
+  const { loading, logout, permissions, refreshMe, roles, tenant, user } = useAuth();
+  const access = { permissions, roles };
+  const canManageOperations = hasPlatformCapability(access, "platform:console:access");
+  const canReadModels = hasPlatformCapability(access, "platform:models:read");
+  const canReadConnections = hasPlatformCapability(access, "platform:connections:read");
+  const canManageProviderSettings = hasPlatformCapability(access, "platform:integrations:manage");
 
   if (loading && !user) {
     return (
@@ -146,11 +151,15 @@ export function AccountPage() {
         </div>
       </div>
 
-      {canManageProviderSettings ? (
+      {canManageOperations ? (
         <section className="rounded border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-semibold text-white">管理员工具</h2>
-            <p className="text-sm text-slate-500">管理模型配置、供应商连接、初始化模板和运营后台。</p>
+            <p className="text-sm text-slate-500">
+              {canManageProviderSettings
+                ? "管理模型配置、供应商连接、初始化模板和运营后台。"
+                : "管理运营后台，查看巡检结果。"}
+            </p>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <button
@@ -163,36 +172,42 @@ export function AccountPage() {
               <Shield size={18} />
               <span className="text-sm font-semibold">运营后台</span>
             </button>
-            <button
-              className="flex min-h-24 flex-col items-start justify-between rounded border border-sky-300/25 bg-sky-500/10 p-4 text-left text-sky-100 hover:bg-sky-500/20"
-              onClick={() => {
-                window.location.assign(ACCOUNT_AI_SETTINGS_ROUTE);
-              }}
-              type="button"
-            >
-              <Sparkles size={18} />
-              <span className="text-sm font-semibold">模型中心</span>
-            </button>
-            <button
-              className="flex min-h-24 flex-col items-start justify-between rounded border border-white/10 bg-black/20 p-4 text-left text-slate-100 hover:bg-white/[0.06]"
-              onClick={() => {
-                window.location.assign(ACCOUNT_PROVIDER_SETTINGS_ROUTE);
-              }}
-              type="button"
-            >
-              <Settings2 size={18} />
-              <span className="text-sm font-semibold">Provider Connections</span>
-            </button>
-            <button
-              className="flex min-h-24 flex-col items-start justify-between rounded border border-white/10 bg-black/20 p-4 text-left text-slate-100 hover:bg-white/[0.06]"
-              onClick={() => {
-                window.location.assign(ACCOUNT_TEMPLATE_LIBRARY_ROUTE);
-              }}
-              type="button"
-            >
-              <Boxes size={18} />
-              <span className="text-sm font-semibold">Template Library</span>
-            </button>
+            {canReadModels ? (
+                <button
+                  className="flex min-h-24 flex-col items-start justify-between rounded border border-sky-300/25 bg-sky-500/10 p-4 text-left text-sky-100 hover:bg-sky-500/20"
+                  onClick={() => {
+                    window.location.assign(ACCOUNT_AI_SETTINGS_ROUTE);
+                  }}
+                  type="button"
+                >
+                  <Sparkles size={18} />
+                  <span className="text-sm font-semibold">模型中心</span>
+                </button>
+            ) : null}
+            {canReadConnections ? (
+                <button
+                  className="flex min-h-24 flex-col items-start justify-between rounded border border-white/10 bg-black/20 p-4 text-left text-slate-100 hover:bg-white/[0.06]"
+                  onClick={() => {
+                    window.location.assign(ACCOUNT_PROVIDER_SETTINGS_ROUTE);
+                  }}
+                  type="button"
+                >
+                  <Settings2 size={18} />
+                  <span className="text-sm font-semibold">Provider Connections</span>
+                </button>
+            ) : null}
+            {canManageProviderSettings ? (
+                <button
+                  className="flex min-h-24 flex-col items-start justify-between rounded border border-white/10 bg-black/20 p-4 text-left text-slate-100 hover:bg-white/[0.06]"
+                  onClick={() => {
+                    window.location.assign(ACCOUNT_TEMPLATE_LIBRARY_ROUTE);
+                  }}
+                  type="button"
+                >
+                  <Boxes size={18} />
+                  <span className="text-sm font-semibold">Template Library</span>
+                </button>
+            ) : null}
             <button
               className="flex min-h-24 flex-col items-start justify-between rounded border border-white/10 bg-black/20 p-4 text-left text-slate-100 hover:bg-white/[0.06]"
               onClick={() => {

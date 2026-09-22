@@ -1,3 +1,4 @@
+import { resolvePlatformCapabilities } from "../src/modules/platform-access/platform-access.policy.js";
 import { describe, expect, test, vi } from "vitest";
 
 import { AiGatewayAdminService } from "../src/modules/ai-gateway/ai-gateway.service.js";
@@ -24,6 +25,8 @@ function routeUpdateHarness() {
   const client = {
     query: vi.fn(async (sql: string, args?: unknown[]) => {
       queries.push(sql);
+      if (sql.includes("app.current_platform_role()")) return { rows: [{ role_key: "platform_super_admin" }] };
+      if (sql.includes("INSERT INTO audit_logs")) return { rows: [{ id: routeId, created_at: "now" }] };
       if (sql.includes("FROM ai_routes") && sql.includes("WHERE id = $1::uuid")) return { rows: [existing] };
       if (sql.includes("FROM ai_models")) return { rows: [{ id: modelId, provider_id: providerId, model_key: "new-family", modality: "image" }] };
       if (sql.includes("FROM api_credentials")) return { rows: [{ id: credentialId }] };
@@ -54,14 +57,14 @@ test.each([
   ["default", { isDefault: true }], ["rate limit", { rateLimit: { requests: 3 } }], ["status", { status: "inactive" }],
 ])("invalidates tested revision for runtime update: %s", async (_label, input) => {
   const harness = routeUpdateHarness();
-  const route = await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null }, routeId, input as never);
+  const route = await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") }, routeId, input as never);
   expect(harness.getUpdateArgs().at(-1)).toBe(true);
   expect(route.status).toBe("inactive");
 });
 
 test("preserves tested revision for labels and admin notes only", async () => {
   const harness = routeUpdateHarness();
-  const route = await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null }, routeId,
+  const route = await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") }, routeId,
     { routeLabel: "Friendly", internalLabel: "Internal", adminNotes: "Note" });
   expect(harness.getUpdateArgs().at(-1)).toBe(false);
   expect(route.status).toBe("active");
@@ -69,14 +72,14 @@ test("preserves tested revision for labels and admin notes only", async () => {
 
 test("preserves tested revision when nested runtime config keys are only reordered", async () => {
   const harness = routeUpdateHarness();
-  await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null }, routeId,
+  await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") }, routeId,
     { requestConfig: { apiMode: "sync", model: "upstream", path: "/generate" } });
   expect(harness.getUpdateArgs().at(-1)).toBe(false);
 });
 
 test("credential assignment takes a compatible lock against deletion", async () => {
   const harness = routeUpdateHarness();
-  await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null }, routeId, { credentialId });
+  await harness.service.updateRoute({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") }, routeId, { credentialId });
   expect(harness.getQueries().some((sql) => sql.includes("FROM api_credentials") && sql.includes("FOR KEY SHARE"))).toBe(true);
 });
 
@@ -99,7 +102,7 @@ test("credential deletion is blocked with sanitized referencing routes", async (
     release: vi.fn(),
   };
   const service = new AiGatewayAdminService({ credentialVault: {}, pool: { connect: async () => client } } as never);
-  const error = await service.deleteCredential({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null },
+  const error = await service.deleteCredential({ tenantId: "11111111-1111-1111-1111-111111111111", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") },
     "22222222-2222-2222-2222-222222222222").catch((value) => value);
   expect(error).toMatchObject({ code: "CREDENTIAL_IN_USE", statusCode: 409,
     details: { routes: [{ id: "44444444-4444-4444-4444-444444444444", key: "image.safe", label: "Line one" }] } });

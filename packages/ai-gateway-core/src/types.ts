@@ -1,3 +1,4 @@
+import type { ProviderRequestObserver } from "./provider-request-telemetry.js";
 import type { VideoAspectRatio, VideoGenerationMode, VideoResolution } from "./video-generation-contract.js";
 
 export type TextMessage = {
@@ -106,6 +107,7 @@ export type PollTaskRequest = {
 };
 
 export type ProviderCallContext = {
+  onProviderRequest?: ProviderRequestObserver;
   apiKey: string;
   baseUrl: string;
   modelKey: string;
@@ -177,6 +179,7 @@ export type AiGatewayMediaResult = {
 };
 
 export type ResolvedRoute = {
+  onProviderRequest?: ProviderRequestObserver;
   baseUrl: string;
   credential: {
     authTag: Buffer | null;

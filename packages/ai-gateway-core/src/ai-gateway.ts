@@ -454,6 +454,7 @@ export class AiGateway {
       adapter,
       context: {
         apiKey,
+        onProviderRequest: route.onProviderRequest,
         adapterKind,
         baseUrl: route.baseUrl,
         modelKey,

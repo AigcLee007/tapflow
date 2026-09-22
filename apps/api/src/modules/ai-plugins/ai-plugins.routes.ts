@@ -50,6 +50,7 @@ function getTenantContext(request: FastifyRequest) {
   }
 
   return {
+    permissions: request.ctx.permissions,
     ipHash: request.ctx.ipHash,
     requestId: request.ctx.requestId,
     tenantId: request.ctx.tenantId,
@@ -93,8 +94,8 @@ function handleRouteError(
 }
 
 export function registerAiPluginAdminRoutes(app: FastifyInstance): void {
-  const authHandlers = [requireAuth, requireTenant];
-  const systemAdminHandlers = [...authHandlers, requirePermission("admin:system")];
+  const authHandlers = [requireAuth, requireTenant, requirePermission("platform:console:access")];
+  const systemAdminHandlers = [...authHandlers, requirePermission("platform:connections:manage")];
 
   app.get(
     "/api/v2/admin/ai/plugins",

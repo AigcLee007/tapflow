@@ -1,6 +1,35 @@
 ﻿# Project Record
 
-Last updated: 2026-09-09
+Last updated: 2026-09-21
+
+## 2026-09-21 - Administration console completion review
+
+- Reviewed the uncommitted `codex/admin-console-v3` implementation against the accepted plan. The console is not acceptance-complete: refund recovery, concurrent spending during refunds, reliable payment audit, ledger debit semantics, history access, filters, and request traffic classification require further work. Findings and evidence: `docs/ADMIN_CONSOLE_V3_COMPLETION_REVIEW.md`.
+- This review supersedes overbroad progress claims below: the user-detail ledger only exposes the default seven-day window; global route tests still require workspace context; claiming `refund_pending` alone does not guarantee reconciliation recovery or freeze credits. Remaining work includes correctness fixes and task tracing, not just exports and acceptance.
+- Fresh frontend and API builds passed. Focused API tests passed 102/102, focused UI tests 11/11, and the independent wallet-payment review passed 4/4 existing tests. Four actual database tests were skipped; Docker's Linux engine pipe is unavailable. No current full-suite, real database concurrency, or authenticated browser acceptance claim is made.
+- Review only: business code was not changed, committed, pushed, or deployed. The review report and this running record were updated.
+
+## 2026-09-21 - Administration console implementation in isolated worktree (in progress)
+
+- User confirmed implementation of the reviewed upgrade. Work is isolated on `codex/admin-console-v3` in `.worktrees/admin-console-v3`; unrelated main-worktree changes are preserved. No commit, push, server deployment, or production data operation has occurred.
+- Implemented independent `platform_operator` / `platform_super_admin` assignments, per-request capability resolution, explicit owner-only bootstrap, versioned grant/revoke APIs, atomic role audit and session revocation. Retired automatic `ADMIN_EMAILS` elevation and tenant-derived platform capabilities. Migrations 84/85 are local changes only and require a reviewed bootstrap before authorization cutover.
+- Added scoped platform database transactions and replaced the permissive Gateway writes from migration 20. Ordinary operators are not given the broad system-admin database flag. Gateway routes and services now separate reads, operational route fields, and sensitive connection/pricing/publication writes.
+- Unified frontend role checks, added the same-app administration sidebar and canonical page addresses, legacy URL redirects, and independent platform-role management. Limited overview results are labeled accurately pending the planned full aggregation API.
+- User/usage/task queries now cover the explicitly authorized platform scope. Membership usage is restricted to the billed user rather than all members of a tenant. Platform task views omit private output and raw error payloads. User status mutations require a reason, recheck target role under the assignment lock, revoke sessions, and atomically audit.
+- Verified current role migrations, RLS and last-super concurrency against a disposable local PostgreSQL container with a non-BYPASSRLS runtime role. The focused root permission/scope suite passed 40 tests. API build passed before the latest payment-reader integration; rerun final builds/tests before marking this phase accepted.
+- Completed server-paged self/platform usage, task, call and ledger views with signed cursors and frozen query windows. The user detail page now reads its full wallet ledger through the platform-scoped query API instead of relying on its old ten-row summary.
+- Added physical provider-request telemetry (operation, attempt, HTTP outcome, traffic class and execution correlation) and surfaced it in the operations call list, detail view and overview. Historical aggregate rows remain explicitly labeled and are excluded from physical-request success-rate calculations.
+- Added the read-only `/admin/audit` UI for platform audit events. Operators see their authorized operational audit records; super administrators also see sensitive role-assignment records.
+- Operators may test and operate existing cross-workspace routes without a selected creator workspace. Sensitive connection, credential, model and pricing changes remain super-administrator-only.
+- Refund initiation now atomically claims an eligible paid order as `refund_pending` before the external provider request. A timeout stays in the reconciler's existing pending state, while repeated administrator clicks receive a conflict instead of submitting a second provider refund.
+- Updated old prompt, flow-template and redeem-code test fixtures to model the new database-verified platform roles rather than retired `system_admin`/`admin:system` authority. Focused frontend/API suites and the API/frontend builds pass. Final remaining acceptance work is exports, performance/browser acceptance and staging generation/settlement smoke tests; no deployment or production-data operation has occurred.
+
+## 2026-09-21 - New API reference administration console upgrade plan
+
+- Audited the current creator/account, operations, AI Gateway, personal-wallet, user-management, call-log, and authorization code paths against the current migrations and project records. Existing Gateway/model configuration and personal-wallet work is treated as completed infrastructure to reuse.
+- Added `docs/superpowers/plans/2026-09-21-admin-console-upgrade.md` with current-state evidence, a fixed New API source reference, three-role navigation and capability boundaries, usage/task/call/ledger semantics, API/data changes, phased delivery, acceptance, migration, and Docker Compose v2 rollout/rollback guidance.
+- The user confirmed that administrators are platform operators managing ordinary users, usage, and routes across the platform; super administrators retain sensitive configuration. The plan separates this identity from tenant membership roles and documents existing UI/API permission and query-scope inconsistencies.
+- Planning only: no runtime, migration, secret, server configuration, or deployment changes were made. `npm run build` passed with existing build warnings. Production data, authenticated browser flows, and database-backed authorization behavior were not exercised in this research task.
 
 ## 2026-09-09 - Agent V6 Task 8 delivery verification contract
 
@@ -6884,3 +6913,28 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added V6 panel integration coverage and updated the existing panel contract tests from the removed V5 window expectation to the V6 workspace expectation. The Vitest command must exclude repository worktrees/review copies; otherwise those copies are discovered and make the run appear hung.
 - Local validation passed: V6 frontend suite 13 files / 143 tests, V6 workspace/protocol suite 12 files / 133 tests, API V6 suite 3 files / 15 passed with 1 skipped, Worker workflow-runtime 1 file / 16 tests, DB suite 22 files / 55 passed with 38 skipped, and `npm run build`.
 - Existing non-blocking build warnings remain for Browserslist freshness, CSS utility parsing, mixed static/dynamic imports, and large chunks. Authenticated staging browser acceptance has not been run in this environment; V6 rollout outside staging remains unapproved.
+
+## 2026-09-21 - Admin Console V3 Defect Fixes
+
+- Added migration `000090_wallet_reserve_excludes_refund_hold.sql` so a payment grant held during an in-flight refund cannot be selected by subsequent wallet reserves. The refund claim/release and provider notification paths now keep the grant hold aligned with the payment state.
+- Separated platform overview physical requests from `admin_test` route checks and exposed both request totals/success rates in the overview projection and UI. Added a database regression fixture for the separation.
+- Extended platform audit filters with `from`/`to` datetime controls, URL-persisted filters/cursors, and visible coverage/snapshot ranges.
+- Payment refund tests now exercise the platform transaction/audit path and explicit provider rejection release. Focused API, DB, and UI tests/builds pass where local infrastructure is available. Docker/Postgres-backed concurrency/RLS validation and authenticated browser acceptance remain pending; no production deployment was run.
+
+## 2026-09-21 - Admin Console Follow-up Review
+
+- Follow-up finance review found and fixed a refund expiry race: `000092_wallet_expire_excludes_refund_hold.sql` prevents expiry from consuming a grant held by an unresolved refund.
+- Payment reconciliation now resets its running guard when database connection acquisition fails and logs asynchronous scheduler failures instead of creating unhandled rejections.
+- Added runtime-role ACL grants to refund-related function replacement migrations so role-separated deployments retain API execution privileges.
+- Provider query audit now covers pending and provider-cancelled responses in the same platform transaction as any cancellation update. Audit filters also resync on browser history navigation.
+- Added focused reconciler and provider-query tests. Real PostgreSQL migration/concurrency/RLS and authenticated browser acceptance are still pending because the local Docker engine is unavailable.
+
+## 2026-09-21 - Admin Console Final Re-review
+
+- 修正最后一个前端回归断言，使概览页按当前“用户请求成功率基于物理上游请求”文案验证；控制台相关前端测试 13/13 通过，包含个人控制台、用户钱包、调用/用量/任务筛选、平台审计、平台角色与路由权限页面。
+- API 平台权限、控制台查询、支付/退款、对账器、旧线路统计定向测试 146 项通过，15 项数据库环境依赖测试因本机 Docker PostgreSQL 不可用而跳过；数据库钱包定向测试 5/5 通过。
+- `npm run build` 和 `git diff --check` 通过。构建仍有既有 Browserslist、混合动态导入和大 chunk 警告，没有发现新的编译或 whitespace 错误。
+- 复核确认之前列出的 P1/P2 资金、账本、筛选、遥测来源、快照和线路统计问题均已在代码中修复，并有对应定向测试或 SQL 回归覆盖。尚未完成的内容仍是计划范围的后续交付：任务时间线/同次执行尝试集合、完整诊断投影、P95/性能基准、异步导出，以及真实 PostgreSQL RLS/并发和三类身份浏览器验收。
+- 额外发现并修复一个权限边界：旧 `ai_routes`/`ai_model_catalog` 运营者 UPDATE policy 只检查角色、未检查 `platform_scope`，普通租户事务可能直接改动允许运营字段；新增 `000093_platform_scope_write_policies.sql` 收紧为 `platform:routes:write`，并补数据库权限回归断言。
+- 终审补齐三处 P2 语义问题：Workbench 线路/模型关联加入 `asOf` 时间条件；个人/管理员钱包摘要从可用积分、到期提示和活跃 grant 统计中排除 `refund_hold`；平台用户详情增加明确的跨租户成员只读 policy；物理请求的空 actor/source 不再回退或误归类到 workflow。
+- 本轮仍未提交、推送或部署；不能把未执行的真实数据库、并发、生产或登录浏览器验收描述为已通过。

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 
 import {
   requireAuth,
@@ -91,6 +92,9 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
   if (error instanceof AdminApiError) {
     return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
   }
+  if (error instanceof PlatformTransactionError) {
+    return sendError(request, reply, error.statusCode, error.code, error.message);
+  }
 
   request.log.error(
     {
@@ -108,8 +112,11 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
 export function registerAdminRoutes(app: FastifyInstance): void {
   const adminHandlers = [
     requireAuth,
-    requireTenant,
-    requirePermission("admin:system"),
+    requirePermission("platform:console:access"),
+  ];
+  const contentAdminHandlers = [
+    ...adminHandlers,
+    requirePermission("platform:content:manage"),
   ];
   const authenticatedTenantHandlers = [
     requireAuth,
@@ -179,7 +186,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/users/:userId/grant-credits",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:billing:adjust")],
     },
     async (request, reply) => {
       try {
@@ -207,7 +214,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/users/:userId/adjust-credits",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:billing:adjust")],
     },
     async (request, reply) => {
       try {
@@ -232,7 +239,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/users/:userId/status",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:users:operate")],
     },
     async (request, reply) => {
       try {
@@ -240,6 +247,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         const body = parseBody<AdminUpdateUserStatusInput>(request, adminUpdateUserStatusSchema);
         return reply.send(
           await app.adminService.updateUserStatus(request.ctx, {
+            reason: body.reason,
             status: body.status,
             targetUserId: params.userId,
           }),
@@ -253,7 +261,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/users/:userId/membership-tier",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:billing:adjust")],
     },
     async (request, reply) => {
       try {
@@ -276,7 +284,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/users/:userId/role",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:roles:manage")],
     },
     async (request, reply) => {
       try {
@@ -313,7 +321,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/redeem-codes",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:billing:adjust")],
     },
     async (request, reply) => {
       try {
@@ -343,7 +351,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.delete(
     "/api/v2/admin/redeem-codes/:codeId",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:billing:adjust")],
     },
     async (request, reply) => {
       try {
@@ -359,7 +367,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/users/:userId/reset-password",
     {
-      preHandler: adminHandlers,
+      preHandler: [...adminHandlers, requirePermission("platform:roles:manage")],
     },
     async (request, reply) => {
       try {
@@ -380,7 +388,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/announcements",
     {
-      preHandler: adminHandlers,
+      preHandler: contentAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -395,7 +403,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/announcements",
     {
-      preHandler: adminHandlers,
+      preHandler: contentAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -410,7 +418,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/announcements/:announcementId",
     {
-      preHandler: adminHandlers,
+      preHandler: contentAdminHandlers,
     },
     async (request, reply) => {
       try {
@@ -426,7 +434,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   app.delete(
     "/api/v2/admin/announcements/:announcementId",
     {
-      preHandler: adminHandlers,
+      preHandler: contentAdminHandlers,
     },
     async (request, reply) => {
       try {

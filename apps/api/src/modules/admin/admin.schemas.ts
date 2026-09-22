@@ -1,8 +1,12 @@
 import { z } from "zod";
 
 export const adminUsersQuerySchema = z.object({
+  cursor: z.string().max(4096).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
   query: z.string().trim().max(200).optional(),
+  status: z.enum(["active", "disabled"]).optional(),
+  tenantId: z.string().uuid().optional(),
+  platformRole: z.enum(["platform_operator", "platform_super_admin", "none"]).optional(),
 });
 
 export const adminUserParamsSchema = z.object({
@@ -12,7 +16,7 @@ export const adminUserParamsSchema = z.object({
 export const adminGrantCreditsSchema = z.object({
   credits: z.coerce.number().int().positive().max(1_000_000_000),
   expiresAt: z.string().datetime().optional(),
-  idempotencyKey: z.string().trim().min(1).max(255).optional(),
+  idempotencyKey: z.string().trim().min(1).max(255),
   reason: z.string().trim().min(1).max(500),
   tenantId: z.string().uuid(),
   validityDays: z.coerce.number().int().positive().max(3650).optional(),
@@ -23,18 +27,19 @@ export const adminGrantCreditsSchema = z.object({
 export const adminAdjustCreditsSchema = z.object({
   credits: z.coerce.number().int().positive().max(1_000_000_000),
   direction: z.enum(["add", "subtract"]),
-  idempotencyKey: z.string().trim().min(1).max(255).optional(),
+  idempotencyKey: z.string().trim().min(1).max(255),
   reason: z.string().trim().min(1).max(500),
   tenantId: z.string().uuid(),
 });
 
 export const adminUpdateUserStatusSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
   status: z.enum(["active", "disabled"]),
 });
 
 export const adminUpdateMembershipTierSchema = z.object({
   expiresAt: z.string().datetime().optional(),
-  tenantId: z.string().uuid().optional(),
+  tenantId: z.string().uuid(),
   tier: z.enum(["standard", "silver", "gold", "platinum"]),
 });
 
@@ -61,7 +66,7 @@ export const adminResetPasswordSchema = z.object({
 });
 
 export const adminUpdateUserRoleSchema = z.object({
-  roleKey: z.enum(["system_admin", "tenant_admin", "flow_developer"]),
+  roleKey: z.enum(["tenant_admin", "flow_developer"]),
   tenantId: z.string().uuid(),
 });
 

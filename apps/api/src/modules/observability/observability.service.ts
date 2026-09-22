@@ -1,5 +1,6 @@
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 import type { Pool } from "pg";
+import { withPlatformTransaction } from "../../http/platform-transaction.js";
 
 import type {
   QueueHealthResponse,
@@ -9,7 +10,7 @@ import type {
 type PgPool = Pool;
 
 type ObservabilityContext = {
-  tenantId: string;
+  tenantId?: string | null;
   userId: string | null;
 };
 
@@ -105,7 +106,7 @@ export class ObservabilityService {
       },
     }));
 
-    const workflowRuns = await withTenantTransaction(context, async (client) => {
+    const workflowRuns = await withPlatformTransaction(this.pool, context, "platform:console:access", async (client) => {
       const result = await client.query<{
         failed_count: number;
         total_count: number;
@@ -122,9 +123,9 @@ export class ObservabilityService {
         failed: result.rows[0]?.failed_count ?? 0,
         total: result.rows[0]?.total_count ?? 0,
       };
-    }, this.pool);
+    });
 
-    const payments = await this.withPlatformMetricsTransaction(async (client) => {
+    const payments = await withPlatformTransaction(this.pool, context, "platform:console:access", async (client) => {
       const result = await client.query<{
         average_paid_latency_ms: string | null;
         paid_last_24_hours: number;
@@ -160,19 +161,4 @@ export class ObservabilityService {
     };
   }
 
-  private async withPlatformMetricsTransaction<T>(fn: (client: import("pg").PoolClient) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query("SELECT set_config('app.tenant_id', '', true)");
-      await client.query("SELECT set_config('app.user_id', '', true)");
-      await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
-      const result = await fn(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw error;
-    } finally { client.release(); }
-  }
 }

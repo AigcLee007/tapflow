@@ -4,6 +4,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import type { Pool, PoolClient } from "pg";
 import sharp from "sharp";
+import { setPlatformContext } from "../../http/platform-transaction.js";
 
 import {
   type PromptAdminInput,
@@ -215,7 +216,7 @@ async function withPromptTransaction<T>(
 ): Promise<T> {
   return withTenantTransaction(context, async (client) => {
     if (systemAdmin) {
-      await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+      await setPlatformContext(client, context, "platform:content:manage");
     }
     return callback(client);
   }, pool);

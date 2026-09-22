@@ -45,6 +45,7 @@ export type AdminWalletSummary = Pick<
 >;
 
 export type AdminUser = {
+  platformRole?: string | null;
   createdAt: string;
   displayName: string | null;
   email: string;
@@ -56,9 +57,14 @@ export type AdminUser = {
   wallet: AdminUserWallet;
 };
 
+export type AdminUserLedgerPage = import("../services/v2ConsoleApi").ConsolePage<import("../services/v2ConsoleApi").ConsoleActivity>;
+
 export type AdminUsersResponse = {
   items: AdminUser[];
   query: string;
+  nextCursor?: string | null;
+  hasMore?: boolean;
+  asOf?: string;
 };
 
 export type AdminGrantCreditsResponse = {
@@ -188,7 +194,7 @@ export type AdminAiRouteStats = {
 };
 
 export type AdminRechargePlan = { id: string; key: string; name: string; amountCents: number; credits: number; currency: string; validityDays: number; sortOrder: number; active: boolean; createdAt: string; updatedAt: string };
-export type AdminWalletPayment = { id: string; userEmail: string | null; planKey: string; amountCents: number; credits: number; status: string; merchantOrderId: string; createdAt: string; paidAt: string | null; expiresAtSnapshot: string | null; eligible: boolean };
+export type AdminWalletPayment = { id: string; userEmail: string | null; planKey: string; planNameSnapshot?: string; currency?: string; amountCents: number; credits: number; status: string; merchantOrderId: string; createdAt: string; paidAt: string | null; expiresAtSnapshot: string | null; eligible: boolean };
 
 export const listAdminRechargePlans = () => apiGet<AdminRechargePlan[]>("/admin/billing/recharge-plans");
 export const createAdminRechargePlan = (input: Omit<AdminRechargePlan, "id" | "currency" | "createdAt" | "updatedAt"> & { reason: string }) => apiPost<AdminRechargePlan>("/admin/billing/recharge-plans", input);
@@ -230,12 +236,14 @@ export type AdminWorkflowRunDetail = {
   workflowRun: AdminWorkflowRun;
 };
 
-export function searchAdminUsers(query: string, limit = 20): Promise<AdminUsersResponse> {
+export type AdminUserFilters = { cursor?: string; status?: "active" | "disabled"; platformRole?: "platform_operator" | "platform_super_admin" | "none"; tenantId?: string };
+export function searchAdminUsers(query: string, limit = 20, filters: AdminUserFilters = {}): Promise<AdminUsersResponse> {
   const params = new URLSearchParams();
   if (query.trim()) {
     params.set("query", query.trim());
   }
   params.set("limit", String(limit));
+  for (const [key,value] of Object.entries(filters)) if (value) params.set(key,value);
   return apiGet<AdminUsersResponse>(`/admin/users?${params.toString()}`);
 }
 
@@ -243,9 +251,16 @@ export function getAdminUser(userId: string): Promise<AdminUser> {
   return apiGet<AdminUser>(`/admin/users/${userId}`);
 }
 
+export function listAdminUserLedger(userId: string, input: import("../console/consoleQuery").ConsoleQuery): Promise<AdminUserLedgerPage> {
+  const params = new URLSearchParams();
+  for (const [key,value] of Object.entries(input)) if (value !== undefined && value !== "") params.set(key,String(value));
+  return apiGet<AdminUserLedgerPage>(`/admin/users/${encodeURIComponent(userId)}/ledger?${params.toString()}`);
+}
+
 export function grantAdminCredits(input: {
   credits: number;
   expiresAt?: string;
+  idempotencyKey: string;
   reason: string;
   targetUserId: string;
   tenantId: string;
@@ -256,6 +271,7 @@ export function grantAdminCredits(input: {
   return apiPost<AdminGrantCreditsResponse>(`/admin/users/${input.targetUserId}/grant-credits`, {
     credits: input.credits,
     expiresAt: input.expiresAt,
+    idempotencyKey: input.idempotencyKey,
     reason: input.reason,
     tenantId: input.tenantId,
     validityDays: input.validityDays,
@@ -267,6 +283,7 @@ export function grantAdminCredits(input: {
 export function adjustAdminCredits(input: {
   credits: number;
   direction: "add" | "subtract";
+  idempotencyKey: string;
   reason: string;
   targetUserId: string;
   tenantId: string;
@@ -274,16 +291,19 @@ export function adjustAdminCredits(input: {
   return apiPost<AdminAdjustCreditsResponse>(`/admin/users/${input.targetUserId}/adjust-credits`, {
     credits: input.credits,
     direction: input.direction,
+    idempotencyKey: input.idempotencyKey,
     reason: input.reason,
     tenantId: input.tenantId,
   });
 }
 
 export function updateAdminUserStatus(input: {
+  reason: string;
   status: "active" | "disabled";
   targetUserId: string;
 }): Promise<AdminUpdateUserStatusResponse> {
   return apiPatch<AdminUpdateUserStatusResponse>(`/admin/users/${input.targetUserId}/status`, {
+    reason: input.reason,
     status: input.status,
   });
 }

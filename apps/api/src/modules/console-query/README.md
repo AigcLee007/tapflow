@@ -1,0 +1,16 @@
+# Console query contract and coverage
+
+The exported DTO contract is `console-query.types.ts`. Routes are registered by `console-query.routes.ts` from `app.ts`.
+
+- Lists return `items`, `nextCursor`, `hasMore`, `asOf`, `from`, `to`, `scope`, and `pageSize`. Detail routes return `{ item }`.
+- Queries accept `limit` (default 50, maximum 100), `cursor`, `from`, `to`, `asOf`, `status`, `source`, `userId`, `tenantId`, `projectId`, `modelId`, and `routeId`. The default window is seven days and maximum window is 90 days. Date values are ISO timestamps; unknown query fields are rejected.
+- HMAC cursors bind the actor, resource, scope, filters, and time window. The server preserves Postgres microseconds in the ordering key. Default `asOf` is obtained from the database clock. `asOf` bounds record creation; source tables do not retain historical status versions, so it is not a historical snapshot of mutable statuses or membership. Refresh to see later changes.
+- Usage IDs are `usage:<uuid>`, `node:<uuid>`, and `workbench:<uuid>`. Task IDs are `workflow:<uuid>`, `workbench:<uuid>`, and `agent:<uuid>`. Call and activity IDs are ordinary UUIDs.
+- All monetary values are decimal strings. Actual personal-wallet settlement ledger totals take precedence over legacy usage snapshots, since personal settlement can leave the usage row's status as `pending`. Reserve/refund ledger amounts are never added to consumption. Missing usage rows are included for proven node and Workbench executions; reservation rows determine reserved/released state independently of execution failure.
+- Personal financial records are scoped globally to the billed user. Task access requires the initiator plus active tenant membership and an undeleted project/flow where present. This repository has no separate project-membership table. Losing project access retains the owner's financial entry but removes its task/project links.
+- Platform transactions recheck active database grants using usage/tasks capabilities and never enable `app.is_system_admin`. Migration 86 adds only scoped SELECT policies and query indexes.
+- Generation statistics count actual image/video/text node executions and Workbench executions, excluding Workbench batch parents and Agent/workflow orchestration parents. Cancellations and known upstream timeout/unknown-result cases are outside the success-rate denominator. Call log success is never used as generation success.
+
+Historical limits are explicit (`partial`/`legacy`): physical upstream operation, attempt, actor and trace coverage is incomplete, so operation is `unknown` and request success rate is `null`. Agent Skill runs do not contain a reliable direct initiator field and are not guessed into the self task list. Workbench model/route filters only match proven usage foreign keys; product model names are not rewritten from today's model configuration. No prompts, output JSON, raw provider diagnostics, secret fields, or private asset URLs appear in these DTOs. Authoritative asset access and the new provider-request telemetry write path remain separate work.
+
+Focused verification: `npm run test --workspace @aigc-flow/api -- console-query` with `DATABASE_URL` pointing to disposable local Postgres. The database test migrates a disposable database and executes queries under a distinct nonowner, non-BYPASSRLS application role.

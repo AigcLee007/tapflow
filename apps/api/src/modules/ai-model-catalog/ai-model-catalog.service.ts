@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import { withPlatformTransaction, type PlatformDbContext } from "../../http/platform-transaction.js";
 
 import type {
   ModelCatalogBundleQuery,
@@ -13,6 +14,7 @@ type TenantContext = {
   tenantId: string;
   userId: string | null;
 };
+type CatalogContext = { tenantId: string | null; userId: string | null };
 
 const KNOWN_IMAGE_GENERATION_MODES = new Set([
   "standard",
@@ -274,6 +276,13 @@ export class AiModelCatalogService {
     }, this.pool);
   }
 
+  async listPlatformModels(context: PlatformDbContext, query: ModelCatalogQuery): Promise<ModelCatalogItemView[]> {
+    return withPlatformTransaction(this.pool, context, "platform:models:read", async (client) => {
+      const rows = await queryCatalogModels(client, { tenantId: context.tenantId ?? null, userId: context.userId }, { modality: query.modality, environment: query.environment, tenantFirst: false, platformScope: true, requireAvailableRoute: false });
+      return rows.map(mapModelCatalogItem);
+    });
+  }
+
   async listRoutesForModel(
     context: TenantContext,
     modelKey: string,
@@ -301,11 +310,22 @@ export class AiModelCatalogService {
       return rows.map(mapModelCatalogRoute);
     }, this.pool);
   }
+
+  async listPlatformRoutes(context: PlatformDbContext, modelKey: string, query: ModelCatalogRoutesQuery): Promise<ModelCatalogRouteView[]> {
+    return withPlatformTransaction(this.pool, context, "platform:routes:read", async (client) => {
+      const catalogContext = { tenantId: context.tenantId ?? null, userId: context.userId };
+      const selectedModel = (await queryCatalogModels(client, catalogContext, { modelKey: modelKey.trim(), environment: query.environment, requireAvailableRoute: false, tenantFirst: false, platformScope: true }))[0];
+      if (!selectedModel) throw new AiModelCatalogApiError(404, "MODEL_NOT_FOUND", "Model catalog entry not found");
+      const rows = await queryCatalogRoutes(client, catalogContext, { modality: selectedModel.modality, modelFamily: selectedModel.model_family, modelId: selectedModel.model_id, modelKey: selectedModel.model_key, pricingModelKey: selectedModel.model_key, environment: query.environment, platformScope: true });
+      return rows.map(mapModelCatalogRoute);
+    });
+  }
 }
 
 type CatalogQueryClient = Pick<PoolClient, "query">;
 
 type CatalogModelQueryOptions = {
+  platformScope?: boolean;
   environment?: string | null;
   modality?: string | null;
   modelKey?: string | null;
@@ -314,6 +334,7 @@ type CatalogModelQueryOptions = {
 };
 
 type CatalogRouteQueryOptions = {
+  platformScope?: boolean;
   environment?: string | null;
   modality: string;
   modelFamily?: string | null;
@@ -324,7 +345,7 @@ type CatalogRouteQueryOptions = {
 
 async function queryCatalogModels(
   client: CatalogQueryClient,
-  context: TenantContext,
+  context: CatalogContext,
   options: CatalogModelQueryOptions,
 ): Promise<ModelCatalogRecord[]> {
   const availabilityFilter = options.requireAvailableRoute === false ? "" : `
@@ -353,7 +374,7 @@ async function queryCatalogModels(
   if (availabilityFilter) params.push(normalizeEnvironment(options.environment));
   const result = await client.query<ModelCatalogRecord>(
     `
-      SELECT DISTINCT ON (catalog.model_family)
+      SELECT ${options.platformScope ? "" : "DISTINCT ON (catalog.model_family)"}
         catalog.id::text AS id,
         catalog.model_id::text AS model_id,
         catalog.model_key,
@@ -368,11 +389,11 @@ async function queryCatalogModels(
       FROM ai_model_catalog AS catalog
       LEFT JOIN tenant_ai_plugin_installs AS install
         ON install.id = catalog.plugin_install_id
-      WHERE (catalog.tenant_id = $1::uuid OR catalog.tenant_id IS NULL)
-        AND catalog.status = 'active'
+      WHERE (catalog.tenant_id = $1::uuid OR catalog.tenant_id IS NULL OR ${options.platformScope === true})
+        ${options.platformScope ? "" : "AND catalog.status = 'active'"}
         AND ($2::text IS NULL OR catalog.modality = $2::text)
         AND ($3::text IS NULL OR catalog.model_key = $3::text OR catalog.model_family = $3::text)
-        AND (catalog.plugin_install_id IS NULL OR install.status = 'published')
+        ${options.platformScope ? "" : "AND (catalog.plugin_install_id IS NULL OR install.status = 'published')"}
         ${availabilityFilter}
       ORDER BY
         catalog.model_family ASC,
@@ -388,12 +409,12 @@ async function queryCatalogModels(
 
 async function queryCatalogRoutes(
   client: CatalogQueryClient,
-  context: TenantContext,
+  context: CatalogContext,
   options: CatalogRouteQueryOptions,
 ): Promise<ModelRouteRecord[]> {
   const result = await client.query<ModelRouteRecord>(
     `
-      SELECT DISTINCT ON (route.route_key)
+      SELECT ${options.platformScope ? "" : "DISTINCT ON (route.route_key)"}
         route.id::text AS route_id,
         route.route_key,
         route.route_label,
@@ -441,13 +462,13 @@ async function queryCatalogRoutes(
         ORDER BY pricing_fallback_level ASC
         LIMIT 1
       ) AS pricing ON true
-      WHERE (route.tenant_id = $1::uuid OR route.tenant_id IS NULL)
-        AND route.status = 'active'
+      WHERE (route.tenant_id = $1::uuid OR route.tenant_id IS NULL OR ${options.platformScope === true})
+        ${options.platformScope ? "AND route.deleted_at IS NULL" : "AND route.status = 'active'"}
         AND route.modality = $2::text
         AND route.environment = $3::text
-        AND provider.status = 'active'
+        ${options.platformScope ? "" : `AND provider.status = 'active'
         AND (route.model_id IS NULL OR model.status = 'active')
-        AND (route.plugin_install_id IS NULL OR route_install.status = 'published')
+        AND (route.plugin_install_id IS NULL OR route_install.status = 'published')`}
         AND ($4::text IS NULL OR route.model_family = $4::text)
         AND (
           ($4::text IS NULL AND $5::uuid IS NULL AND $6::text IS NULL)

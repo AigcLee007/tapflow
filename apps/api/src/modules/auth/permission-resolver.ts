@@ -1,4 +1,6 @@
-import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import { createPgPool, withUserTransaction } from "@aigc-flow/db";
+import { sanitizeTenantPermissions } from "../platform-access/platform-access.policy.js";
+import { readPlatformAccessWithClient } from "../platform-access/platform-access.service.js";
 
 type PgPool = ReturnType<typeof createPgPool>;
 
@@ -23,19 +25,25 @@ export async function resolvePermissionsForTenant(
   },
   pool: PgPool = getSharedPool(),
 ): Promise<ResolvedPermissions> {
-  if (!input.tenantId || !input.userId) {
+  if (!input.userId) {
     return {
       permissions: [],
       roles: [],
     };
   }
 
-  return withTenantTransaction(
+  return withUserTransaction(
     {
       tenantId: input.tenantId,
       userId: input.userId,
     },
     async (client) => {
+      const platform = await readPlatformAccessWithClient(client, input.userId!);
+      const combine = (permissions: string[], roles: string[]): ResolvedPermissions => ({
+        permissions: [...new Set([...sanitizeTenantPermissions(permissions), ...platform.permissions])],
+        roles: [...new Set([...roles.filter((role) => !role.startsWith("platform:") && !role.startsWith("platform_")), ...platform.roles])],
+      });
+      if (!input.tenantId) return combine([], []);
       const membership = await client.query<{ role_key: string }>(
         `
           SELECT role_key
@@ -50,10 +58,7 @@ export async function resolvePermissionsForTenant(
 
       const membershipRoleKey = membership.rows[0]?.role_key;
       if (!membershipRoleKey) {
-        return {
-          permissions: [],
-          roles: [],
-        };
+        return combine([], []);
       }
 
       const role = await client.query<{ role_id: string }>(
@@ -70,10 +75,7 @@ export async function resolvePermissionsForTenant(
 
       const roleId = role.rows[0]?.role_id;
       if (!roleId) {
-        return {
-          permissions: [],
-          roles: [membershipRoleKey],
-        };
+        return combine([], [membershipRoleKey]);
       }
 
       const permissions = await client.query<{ permission_key: string }>(
@@ -86,10 +88,7 @@ export async function resolvePermissionsForTenant(
         [roleId],
       );
 
-      return {
-        permissions: permissions.rows.map((row) => row.permission_key),
-        roles: [membershipRoleKey],
-      };
+      return combine(permissions.rows.map((row) => row.permission_key), [membershipRoleKey]);
     },
     pool,
   );

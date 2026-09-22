@@ -7,6 +7,7 @@ import {
   ACCOUNT_ROUTE,
 } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
+import { hasPlatformCapability } from "../auth/productRoles";
 import {
   listAdminCredentials,
   listAdminModels,
@@ -20,8 +21,8 @@ import {
   type AdminRoute,
 } from "../services/v2AiGatewayAdminApi";
 import {
-  listAiModelCatalog,
-  listAiModelRoutes,
+  listAdminAiModelCatalog,
+  listAdminAiModelRoutes,
   type AiModelCatalogItem,
   type AiModelCatalogRoute,
 } from "../services/v2AiModelCatalogApi";
@@ -145,11 +146,13 @@ function SectionCard({
 }
 
 function ChecklistRow({
+  canConfigure,
   details,
   href,
   label,
   ok,
 }: {
+  canConfigure: boolean;
   details: string;
   href: string;
   label: string;
@@ -164,14 +167,16 @@ function ChecklistRow({
         </div>
         <div className="mt-1 text-sm text-slate-400">{details}</div>
       </div>
-      <button className={buttonClass} onClick={() => navigate(href)} type="button">
-        查看并处理
-      </button>
+      {canConfigure ? (
+        <button className={buttonClass} onClick={() => navigate(href)} type="button">
+          查看并处理
+        </button>
+      ) : null}
     </div>
   );
 }
 
-function IssueRow({ issue }: { issue: InspectionIssue }) {
+function IssueRow({ canConfigure, issue }: { canConfigure: boolean; issue: InspectionIssue }) {
   const toneClass =
     issue.severity === "blocking"
       ? "border-red-400/20 bg-red-500/10"
@@ -190,15 +195,19 @@ function IssueRow({ issue }: { issue: InspectionIssue }) {
         </div>
         <div className="mt-1 text-sm text-slate-300">{issue.description}</div>
       </div>
-      <button className={buttonClass} onClick={() => navigate(issue.actionHref)} type="button">
-        {issue.actionLabel}
-      </button>
+      {canConfigure ? (
+        <button className={buttonClass} onClick={() => navigate(issue.actionHref)} type="button">
+          {issue.actionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }
 
 export function InspectionDashboardPage() {
-  const { permissions } = useAuth();
+  const { permissions, roles } = useAuth();
+  const access = { permissions, roles };
+  const canConfigure = hasPlatformCapability(access, "platform:connections:manage");
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [providers, setProviders] = useState<AdminProvider[]>([]);
@@ -209,7 +218,8 @@ export function InspectionDashboardPage() {
   const [catalogItems, setCatalogItems] = useState<AiModelCatalogItem[]>([]);
   const [catalogRoutes, setCatalogRoutes] = useState<AiModelCatalogRoute[]>([]);
 
-  const canRead = permissions.includes("admin:system");
+  const canRead = hasPlatformCapability(access, "platform:connections:read")
+    && hasPlatformCapability(access, "platform:routes:read");
 
   const refresh = useCallback(async () => {
     if (!canRead) {
@@ -236,15 +246,15 @@ export function InspectionDashboardPage() {
         listAdminProviderConnections(),
         listAdminRoutes(),
         listAdminModels(),
-        listAiModelCatalog("image"),
-        listAiModelCatalog("text"),
-        listAiModelCatalog("video"),
+        listAdminAiModelCatalog("image"),
+        listAdminAiModelCatalog("text"),
+        listAdminAiModelCatalog("video"),
       ]);
 
       const nextCatalogItems = [...imageCatalog, ...textCatalog, ...videoCatalog];
       const activeCatalogModels = nextCatalogItems.filter((item) => item.status === "active");
       const routeGroups = await Promise.all(
-        activeCatalogModels.map((item) => listAiModelRoutes(item.modelKey)),
+          activeCatalogModels.map((item) => listAdminAiModelRoutes(item.modelKey)),
       );
       const nextCatalogRoutes = Array.from(
         new Map(
@@ -619,14 +629,18 @@ export function InspectionDashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={() => navigate(ACCOUNT_AI_SETTINGS_ROUTE)} type="button">
-            <Sparkles size={14} />
-            模型中心
-          </button>
-          <button className={buttonClass} onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)} type="button">
-            <Settings2 size={14} />
-            高级配置
-          </button>
+          {canConfigure ? (
+            <>
+              <button className={buttonClass} onClick={() => navigate(ACCOUNT_AI_SETTINGS_ROUTE)} type="button">
+                <Sparkles size={14} />
+                模型中心
+              </button>
+              <button className={buttonClass} onClick={() => navigate(ACCOUNT_PROVIDER_SETTINGS_ROUTE)} type="button">
+                <Settings2 size={14} />
+                高级配置
+              </button>
+            </>
+          ) : null}
           <button className={buttonClass} onClick={() => void refresh()} type="button">
             <RefreshCw size={14} />
             刷新巡检
@@ -650,6 +664,7 @@ export function InspectionDashboardPage() {
         <div className="space-y-3">
           {checklistItems.map((item) => (
             <ChecklistRow
+              canConfigure={canConfigure}
               key={item.label}
               details={item.details}
               href={item.href}
@@ -667,7 +682,7 @@ export function InspectionDashboardPage() {
         >
           <div className="space-y-3">
             {blockingIssues.length > 0 ? (
-              blockingIssues.map((issue) => <IssueRow issue={issue} key={issue.id} />)
+              blockingIssues.map((issue) => <IssueRow canConfigure={canConfigure} issue={issue} key={issue.id} />)
             ) : (
               <div className="rounded border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
                 当前没有阻塞上线的异常项。
@@ -682,7 +697,7 @@ export function InspectionDashboardPage() {
         >
           <div className="space-y-3">
             {warningIssues.length > 0 ? (
-              warningIssues.map((issue) => <IssueRow issue={issue} key={issue.id} />)
+              warningIssues.map((issue) => <IssueRow canConfigure={canConfigure} issue={issue} key={issue.id} />)
             ) : (
               <div className="rounded border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
                 当前没有需要补收口的提醒项。

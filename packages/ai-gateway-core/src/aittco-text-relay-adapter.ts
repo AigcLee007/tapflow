@@ -1,3 +1,4 @@
+import { observeProviderFetch } from "./provider-request-telemetry.js";
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import { readTextServerSentEvents, type ProviderTextStreamEvent } from "./text-streaming-contract.js";
@@ -274,7 +275,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     };
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "stream", this.fetchImplementation, providerRequest.url, {
         body: JSON.stringify(payload),
         headers: providerRequest.headers,
         method: "POST",
@@ -395,7 +396,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(url, {
+      response = await observeProviderFetch(context, "generate", this.fetchImplementation, url, {
         body: JSON.stringify(payload),
         headers: {
           Authorization: `Bearer ${context.apiKey}`,

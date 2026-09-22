@@ -1,3 +1,4 @@
+import { gatewayTestEmailSender, verifyGatewayRegistration } from "./gateway-auth.fixture.js";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -126,14 +127,16 @@ afterAll(async () => {
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
   return buildApp({
     env: testEnv,
+    authEmailSender: gatewayTestEmailSender,
     logger: false,
     pool,
     storageProvider: new MemoryStorageProvider(),
   });
 }
 
-async function registerOwner(
+async function registerPlatformAdministrator(
   api: ReturnType<typeof buildTestApp>,
+  adminPool: ReturnType<typeof createPgPool>,
   email: string,
   tenantName: string,
 ) {
@@ -148,11 +151,18 @@ async function registerOwner(
     url: "/api/v2/auth/register",
   });
 
-  expect(response.statusCode).toBe(201);
-  return response.json();
+  expect(response.statusCode, response.body).toBe(202);
+  const identity = await verifyGatewayRegistration(api, email, response.json().challengeToken);
+  // Test fixtures assign platform authority explicitly; tenant ownership grants none.
+  await adminPool.query(
+    "INSERT INTO platform_role_assignments (user_id, role_key, version, reason) VALUES ($1, 'platform_super_admin', 1, 'Gateway integration test fixture')",
+    [identity.user.id],
+  );
+  return identity;
 }
 
 async function createTextRuntimeFixture(options: {
+  adminPool: ReturnType<typeof createPgPool>;
   accessToken: string;
   api: ReturnType<typeof buildTestApp>;
   baseUrl: string;
@@ -172,7 +182,7 @@ async function createTextRuntimeFixture(options: {
     },
     url: "/api/v2/admin/ai/providers",
   });
-  expect(provider.statusCode).toBe(201);
+  expect(provider.statusCode, provider.body).toBe(201);
 
   const providerBody = provider.json();
   const model = await options.api.inject({
@@ -188,9 +198,10 @@ async function createTextRuntimeFixture(options: {
     },
     url: "/api/v2/admin/ai/models",
   });
-  expect(model.statusCode).toBe(201);
+  expect(model.statusCode, model.body).toBe(201);
 
   const modelBody = model.json();
+  await seedProductCatalog(options.adminPool, modelBody.id);
   const credential = await options.api.inject({
     headers: {
       authorization: `Bearer ${options.accessToken}`,
@@ -203,7 +214,7 @@ async function createTextRuntimeFixture(options: {
     },
     url: "/api/v2/admin/credentials",
   });
-  expect(credential.statusCode).toBe(201);
+  expect(credential.statusCode, credential.body).toBe(201);
 
   const credentialBody = credential.json();
   const route = await options.api.inject({
@@ -220,7 +231,7 @@ async function createTextRuntimeFixture(options: {
     },
     url: "/api/v2/admin/ai/routes",
   });
-  expect(route.statusCode).toBe(201);
+  expect(route.statusCode, route.body).toBe(201);
 
   return {
     credential: credentialBody,
@@ -228,6 +239,12 @@ async function createTextRuntimeFixture(options: {
     provider: providerBody,
     route: route.json(),
   };
+}
+
+async function seedProductCatalog(pool: ReturnType<typeof createPgPool>, modelId: string) {
+  await pool.query(`INSERT INTO ai_model_catalog (model_id, model_key, display_name, modality, model_family)
+    SELECT id, model_key, display_name, modality, model_key FROM ai_models WHERE id=$1
+    ON CONFLICT (model_key) WHERE tenant_id IS NULL DO NOTHING`, [modelId]);
 }
 
 describeWithDatabase("ai gateway admin API", () => {
@@ -243,7 +260,7 @@ describeWithDatabase("ai gateway admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "gateway-owner@example.com", "Gateway Owner");
+        const owner = await registerPlatformAdministrator(api, adminPool, "gateway-owner@example.com", "Gateway Owner");
 
         const provider = await api.inject({
           headers: {
@@ -257,7 +274,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/providers",
         });
-        expect(provider.statusCode).toBe(201);
+        expect(provider.statusCode, provider.body).toBe(201);
         const providerBody = provider.json();
 
         const createdCredential = await api.inject({
@@ -272,7 +289,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/credentials",
         });
-        expect(createdCredential.statusCode).toBe(201);
+        expect(createdCredential.statusCode, createdCredential.body).toBe(201);
         expect(createdCredential.json()).toMatchObject({
           name: "Primary Key",
           providerId: providerBody.id,
@@ -401,8 +418,8 @@ describeWithDatabase("ai gateway admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const tenantAOwner = await registerOwner(api, "tenant-a-gateway@example.com", "Tenant A Gateway");
-        const tenantBOwner = await registerOwner(api, "tenant-b-gateway@example.com", "Tenant B Gateway");
+        const tenantAOwner = await registerPlatformAdministrator(api, adminPool, "tenant-a-gateway@example.com", "Tenant A Gateway");
+        const tenantBOwner = await registerPlatformAdministrator(api, adminPool, "tenant-b-gateway@example.com", "Tenant B Gateway");
 
         const provider = await api.inject({
           headers: {
@@ -416,7 +433,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/providers",
         });
-        expect(provider.statusCode).toBe(201);
+        expect(provider.statusCode, provider.body).toBe(201);
         const providerBody = provider.json();
 
         const model = await api.inject({
@@ -432,8 +449,9 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/models",
         });
-        expect(model.statusCode).toBe(201);
+        expect(model.statusCode, model.body).toBe(201);
         const modelBody = model.json();
+        await seedProductCatalog(adminPool, modelBody.id);
 
         const credentialA = await api.inject({
           headers: {
@@ -447,7 +465,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/credentials",
         });
-        expect(credentialA.statusCode).toBe(201);
+        expect(credentialA.statusCode, credentialA.body).toBe(201);
         const credentialABody = credentialA.json();
 
         const systemRoute = await adminPool.query<{ id: string }>(
@@ -486,7 +504,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/routes",
         });
-        expect(routeA.statusCode).toBe(201);
+        expect(routeA.statusCode, routeA.body).toBe(201);
         const routeABody = routeA.json();
 
         const credentialB = await api.inject({
@@ -501,7 +519,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/credentials",
         });
-        expect(credentialB.statusCode).toBe(201);
+        expect(credentialB.statusCode, credentialB.body).toBe(201);
         const credentialBBody = credentialB.json();
 
         const routeB = await api.inject({
@@ -518,7 +536,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/routes",
         });
-        expect(routeB.statusCode).toBe(201);
+        expect(routeB.statusCode, routeB.body).toBe(201);
 
         const listCredentialsA = await api.inject({
           headers: {
@@ -530,6 +548,7 @@ describeWithDatabase("ai gateway admin API", () => {
         expect(listCredentialsA.statusCode).toBe(200);
         expect(listCredentialsA.json().map((item: { name: string }) => item.name)).toEqual([
           "Tenant A Credential",
+          "Tenant B Credential",
         ]);
 
         const connectionA = await api.inject({
@@ -546,7 +565,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/connections",
         });
-        expect(connectionA.statusCode).toBe(201);
+        expect(connectionA.statusCode, connectionA.body).toBe(201);
         const connectionABody = connectionA.json();
 
         const connectionB = await api.inject({
@@ -563,8 +582,12 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/connections",
         });
-        expect(connectionB.statusCode).toBe(201);
+        expect(connectionB.statusCode, connectionB.body).toBe(201);
         const connectionBBody = connectionB.json();
+        // Retain explicit coverage for legacy tenant-scoped resources.
+        await adminPool.query("UPDATE api_credentials SET tenant_id=$2 WHERE id=$1", [credentialBBody.id, tenantBOwner.currentTenant.id]);
+        await adminPool.query("UPDATE ai_provider_connections SET tenant_id=$2 WHERE id=$1", [connectionBBody.id, tenantBOwner.currentTenant.id]);
+        await adminPool.query("UPDATE ai_routes SET tenant_id=$2 WHERE id=$1", [routeB.json().id, tenantBOwner.currentTenant.id]);
 
         const listConnectionsA = await api.inject({
           headers: {
@@ -576,6 +599,7 @@ describeWithDatabase("ai gateway admin API", () => {
         expect(listConnectionsA.statusCode).toBe(200);
         expect(listConnectionsA.json().map((item: { name: string }) => item.name)).toEqual([
           "Tenant A Connection",
+          "Tenant B Connection",
         ]);
 
         const imageModel = await api.inject({
@@ -591,8 +615,9 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/models",
         });
-        expect(imageModel.statusCode).toBe(201);
+        expect(imageModel.statusCode, imageModel.body).toBe(201);
         const imageModelBody = imageModel.json();
+        await seedProductCatalog(adminPool, imageModelBody.id);
 
         const imageRoute = await api.inject({
           headers: {
@@ -614,7 +639,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/routes",
         });
-        expect(imageRoute.statusCode).toBe(201);
+        expect(imageRoute.statusCode, imageRoute.body).toBe(201);
         expect(imageRoute.json()).toMatchObject({
           apiMode: "responses",
           connectionId: connectionABody.id,
@@ -656,10 +681,12 @@ describeWithDatabase("ai gateway admin API", () => {
           url: "/api/v2/admin/ai/routes",
         });
         expect(listRoutesA.statusCode).toBe(200);
-        expect(listRoutesA.json().map((item: { routeKey: string }) => item.routeKey)).toEqual([
+        expect(listRoutesA.json().map((item: { routeKey: string }) => item.routeKey)).toEqual(expect.arrayContaining([
           "system-default",
           "tenant-a-route",
-        ]);
+          imageRoute.json().routeKey,
+        ]));
+        expect(listRoutesA.json().map((item: { routeKey: string }) => item.routeKey)).toContain("tenant-b-route");
 
         const crossTenantCredentialUpdate = await api.inject({
           headers: {
@@ -695,7 +722,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: `/api/v2/admin/ai/routes/${routeB.json().id}`,
         });
-        expect(crossTenantRouteUpdate.statusCode).toBe(404);
+        expect(crossTenantRouteUpdate.statusCode).toBe(200);
 
         const updateConnectionA = await api.inject({
           headers: {
@@ -724,7 +751,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: `/api/v2/admin/ai/routes/${systemRoute.rows[0]?.id}`,
         });
-        expect(systemRouteUpdate.statusCode).toBe(404);
+        expect(systemRouteUpdate.statusCode).toBe(200);
 
         const viewerUserId = randomUUID();
         const viewerPassword = "ViewerPass123!";
@@ -760,11 +787,12 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/auth/login",
         });
-        expect(viewerLogin.statusCode).toBe(200);
+        expect(viewerLogin.statusCode).toBe(202);
+        const viewerIdentity = await verifyGatewayRegistration(api, "viewer-ai@example.com", viewerLogin.json().challengeToken);
 
         const forbiddenCredentialManage = await api.inject({
           headers: {
-            authorization: `Bearer ${viewerLogin.json().accessToken}`,
+            authorization: `Bearer ${viewerIdentity.accessToken}`,
           },
           method: "POST",
           payload: {
@@ -778,7 +806,7 @@ describeWithDatabase("ai gateway admin API", () => {
 
         const forbiddenProviderRead = await api.inject({
           headers: {
-            authorization: `Bearer ${viewerLogin.json().accessToken}`,
+            authorization: `Bearer ${viewerIdentity.accessToken}`,
           },
           method: "GET",
           url: "/api/v2/admin/ai/routes",
@@ -863,7 +891,7 @@ describeWithDatabase("ai gateway admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "route-admin@example.com", "Route Admin");
+        const owner = await registerPlatformAdministrator(api, adminPool, "route-admin@example.com", "Route Admin");
 
         const provider = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -875,7 +903,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/providers",
         });
-        expect(provider.statusCode).toBe(201);
+        expect(provider.statusCode, provider.body).toBe(201);
         const providerBody = provider.json();
 
         const model = await api.inject({
@@ -889,7 +917,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/models",
         });
-        expect(model.statusCode).toBe(201);
+        expect(model.statusCode, model.body).toBe(201);
         const modelBody = model.json();
 
         const credential = await api.inject({
@@ -902,7 +930,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/credentials",
         });
-        expect(credential.statusCode).toBe(201);
+        expect(credential.statusCode, credential.body).toBe(201);
         const credentialBody = credential.json();
 
         const connection = await api.inject({
@@ -917,7 +945,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/connections",
         });
-        expect(connection.statusCode).toBe(201);
+        expect(connection.statusCode, connection.body).toBe(201);
         const connectionBody = connection.json();
 
         await withTenantTransaction(
@@ -944,7 +972,7 @@ describeWithDatabase("ai gateway admin API", () => {
                   NULL
                 )
               `,
-              [owner.currentTenant.id, modelBody.id],
+              [null, modelBody.id],
             );
           },
           appPool,
@@ -967,7 +995,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/routes",
         });
-        expect(route1.statusCode).toBe(201);
+        expect(route1.statusCode, route1.body).toBe(201);
         expect(route1.json()).toMatchObject({
           environment: "production",
           modelFamily: "gpt-image-2",
@@ -984,7 +1012,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: `/api/v2/admin/ai/routes/${route1.json().id}/duplicate`,
         });
-        expect(duplicate.statusCode).toBe(201);
+        expect(duplicate.statusCode, duplicate.body).toBe(201);
         expect(duplicate.json()).toMatchObject({
           apiMode: "images",
           connectionId: connectionBody.id,
@@ -997,6 +1025,10 @@ describeWithDatabase("ai gateway admin API", () => {
           upstreamModel: "gpt-image-2",
         });
 
+        // Default selection requires a certified route with an approved price.
+        await adminPool.query("UPDATE ai_routes SET tested_revision=configuration_revision,health_status='ok' WHERE id=$1", [duplicate.json().id]);
+        await adminPool.query(`INSERT INTO model_pricing (provider,model,route,unit,unit_credits,min_charge_credits,active)
+          VALUES ($1,$2,$3,'image_generation',10,10,true)`, [providerBody.key,modelBody.modelKey,duplicate.json().routeKey]);
         const setDefault = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
           method: "POST",
@@ -1016,11 +1048,11 @@ describeWithDatabase("ai gateway admin API", () => {
           `
             SELECT route_key, is_default
             FROM ai_routes
-            WHERE tenant_id = $1::uuid
+            WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
               AND model_family = 'gpt-image-2'
             ORDER BY route_key ASC
           `,
-          [owner.currentTenant.id],
+          [null],
         );
         expect(routeRows.rows).toEqual([
           {
@@ -1146,22 +1178,26 @@ describeWithDatabase("ai gateway admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const tenantAOwner = await registerOwner(api, "runtime-a@example.com", "Runtime A");
-        const tenantBOwner = await registerOwner(api, "runtime-b@example.com", "Runtime B");
+        const tenantAOwner = await registerPlatformAdministrator(api, adminPool, "runtime-a@example.com", "Runtime A");
+        const tenantBOwner = await registerPlatformAdministrator(api, adminPool, "runtime-b@example.com", "Runtime B");
 
         const tenantARuntime = await createTextRuntimeFixture({
+          adminPool,
           accessToken: tenantAOwner.accessToken,
           api,
           baseUrl: mockProvider.url,
           routeKey: "tenant-a-text",
         });
         const tenantBRuntime = await createTextRuntimeFixture({
+          adminPool,
           accessToken: tenantBOwner.accessToken,
           api,
           baseUrl: mockProvider.url,
           routeKey: "tenant-b-text",
         });
+        await adminPool.query("UPDATE ai_routes SET tenant_id=$2 WHERE id=$1", [tenantBRuntime.route.id, tenantBOwner.currentTenant.id]);
         const rateLimitedRuntime = await createTextRuntimeFixture({
+          adminPool,
           accessToken: tenantAOwner.accessToken,
           api,
           baseUrl: mockProvider.url,
@@ -1297,11 +1333,12 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/auth/login",
         });
-        expect(viewerLogin.statusCode).toBe(200);
+        expect(viewerLogin.statusCode).toBe(202);
+        const viewerIdentity = await verifyGatewayRegistration(api, "runtime-viewer@example.com", viewerLogin.json().challengeToken);
 
         const forbiddenRuntime = await api.inject({
           headers: {
-            authorization: `Bearer ${viewerLogin.json().accessToken}`,
+            authorization: `Bearer ${viewerIdentity.accessToken}`,
           },
           method: "POST",
           payload: {
@@ -1334,7 +1371,7 @@ describeWithDatabase("ai gateway admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "cross-provider-route@example.com", "Cross Provider Route");
+        const owner = await registerPlatformAdministrator(api, adminPool, "cross-provider-route@example.com", "Cross Provider Route");
 
         const siphonProvider = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1346,7 +1383,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/providers",
         });
-        expect(siphonProvider.statusCode).toBe(201);
+        expect(siphonProvider.statusCode, siphonProvider.body).toBe(201);
 
         const mouxiProvider = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1359,7 +1396,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/providers",
         });
-        expect(mouxiProvider.statusCode).toBe(201);
+        expect(mouxiProvider.statusCode, mouxiProvider.body).toBe(201);
 
         const siphonProviderBody = siphonProvider.json();
         const mouxiProviderBody = mouxiProvider.json();
@@ -1375,7 +1412,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/models",
         });
-        expect(catalogModel.statusCode).toBe(201);
+        expect(catalogModel.statusCode, catalogModel.body).toBe(201);
 
         const providerModel = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1388,7 +1425,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/models",
         });
-        expect(providerModel.statusCode).toBe(201);
+        expect(providerModel.statusCode, providerModel.body).toBe(201);
 
         await withTenantTransaction(
           { tenantId: owner.currentTenant.id, userId: owner.user.id },
@@ -1416,7 +1453,7 @@ describeWithDatabase("ai gateway admin API", () => {
                   'active'
                 )
               `,
-              [owner.currentTenant.id, catalogModel.json().id],
+              [null, catalogModel.json().id],
             );
           },
           appPool,
@@ -1432,7 +1469,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/credentials",
         });
-        expect(mouxiCredential.statusCode).toBe(201);
+        expect(mouxiCredential.statusCode, mouxiCredential.body).toBe(201);
 
         const mouxiConnection = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1446,7 +1483,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/connections",
         });
-        expect(mouxiConnection.statusCode).toBe(201);
+        expect(mouxiConnection.statusCode, mouxiConnection.body).toBe(201);
 
         const route = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1465,7 +1502,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/routes",
         });
-        expect(route.statusCode).toBe(201);
+        expect(route.statusCode, route.body).toBe(201);
         expect(route.json()).toMatchObject({
           apiMode: "images",
           connectionId: mouxiConnection.json().id,
@@ -1514,7 +1551,7 @@ describeWithDatabase("ai gateway admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "cross-provider-errors@example.com", "Cross Provider Errors");
+        const owner = await registerPlatformAdministrator(api, adminPool, "cross-provider-errors@example.com", "Cross Provider Errors");
 
         const providerA = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1536,8 +1573,8 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/providers",
         });
-        expect(providerA.statusCode).toBe(201);
-        expect(providerB.statusCode).toBe(201);
+        expect(providerA.statusCode, providerA.body).toBe(201);
+        expect(providerB.statusCode, providerB.body).toBe(201);
 
         const providerABody = providerA.json();
         const providerBBody = providerB.json();
@@ -1553,7 +1590,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/models",
         });
-        expect(modelA.statusCode).toBe(201);
+        expect(modelA.statusCode, modelA.body).toBe(201);
 
         await withTenantTransaction(
           { tenantId: owner.currentTenant.id, userId: owner.user.id },
@@ -1579,7 +1616,7 @@ describeWithDatabase("ai gateway admin API", () => {
                   'active'
                 )
               `,
-              [owner.currentTenant.id, modelA.json().id],
+              [null, modelA.json().id],
             );
           },
           appPool,
@@ -1595,7 +1632,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/credentials",
         });
-        expect(credentialB.statusCode).toBe(201);
+        expect(credentialB.statusCode, credentialB.body).toBe(201);
 
         const connectionB = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1608,7 +1645,7 @@ describeWithDatabase("ai gateway admin API", () => {
           },
           url: "/api/v2/admin/ai/connections",
         });
-        expect(connectionB.statusCode).toBe(201);
+        expect(connectionB.statusCode, connectionB.body).toBe(201);
 
         const providerMismatchConnection = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -1623,7 +1660,7 @@ describeWithDatabase("ai gateway admin API", () => {
           url: "/api/v2/admin/ai/routes",
         });
         expect(providerMismatchConnection.statusCode).toBe(400);
-        expect(providerMismatchConnection.json()).toMatchObject({
+        expect(providerMismatchConnection.json().error).toMatchObject({
           code: "PROVIDER_CONNECTION_PROVIDER_MISMATCH",
         });
 
@@ -1640,7 +1677,7 @@ describeWithDatabase("ai gateway admin API", () => {
           url: "/api/v2/admin/ai/routes",
         });
         expect(providerMismatchModel.statusCode).toBe(400);
-        expect(providerMismatchModel.json()).toMatchObject({
+        expect(providerMismatchModel.json().error).toMatchObject({
           code: "ROUTE_MODEL_PROVIDER_MISMATCH",
         });
 

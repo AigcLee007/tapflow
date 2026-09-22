@@ -9,6 +9,9 @@ const getBillingSummaryMock = vi.fn();
 const listBillingLedgerMock = vi.fn();
 const listBillingUsageEventsMock = vi.fn();
 const listRechargePlansMock = vi.fn();
+const listConsoleRecordsMock = vi.fn();
+
+vi.mock("../services/v2ConsoleApi", () => ({ listConsoleRecords: (...args: unknown[]) => listConsoleRecordsMock(...args) }));
 
 vi.mock("./billingApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./billingApi")>()),
@@ -29,6 +32,7 @@ function renderPage() { return render(<AuthContext.Provider value={auth()}><Bill
 describe("BillingCenterPage", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/billing");
+    listConsoleRecordsMock.mockResolvedValue({items:[],scope:"self",from:"2026-09-14T00:00:00Z",to:"2026-09-21T00:00:00Z",asOf:"2026-09-21T00:00:00Z",pageSize:50,hasMore:false,nextCursor:null});
     getBillingSummaryMock.mockResolvedValue({ availableCredits: 100, balanceCredits: 100, expiringSoonCredits: 0, nearestExpiryAt: null, reservedCredits: 0, walletId: "wallet-1" });
     listBillingUsageEventsMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
     listBillingLedgerMock.mockResolvedValue({ items: [], page: 1, pageSize: 20 });
@@ -36,6 +40,18 @@ describe("BillingCenterPage", () => {
       { id: "1", key: "credits_100", name: "100 AI credits", amountCents: 990, credits: 100, currency: "CNY", validityDays: 365, sortOrder: 10 },
       { id: "2", key: "credits_700", name: "700 AI credits", amountCents: 5000, credits: 700, currency: "CNY", validityDays: 365, sortOrder: 20 },
     ]);
+  });
+
+  test("loads the authoritative activity page without merging two capped lists", async () => {
+    listBillingLedgerMock.mockClear(); listBillingUsageEventsMock.mockClear();
+    listConsoleRecordsMock.mockResolvedValue({items:[{id:"ledger-new",createdAt:"2026-09-20T00:00:00Z",entryType:"settle",amountCredits:"-12.125",usageEventId:"usage-id",tenantId:"tenant-1"}],scope:"self",from:"2026-09-14T00:00:00Z",to:"2026-09-21T00:00:00Z",asOf:"2026-09-21T00:00:00Z",pageSize:50,hasMore:true,nextCursor:"billing-page-2"});
+    renderPage();
+    expect(await screen.findByText("-12.125")).toBeTruthy();
+    expect(listBillingLedgerMock).not.toHaveBeenCalled();
+    expect(listBillingUsageEventsMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",{name:"下一页"}));
+    await waitFor(()=>expect(listConsoleRecordsMock).toHaveBeenLastCalledWith("self","activity",expect.objectContaining({cursor:"billing-page-2"})));
+    expect(screen.getByTestId("billing-recharge-entry")).toBeTruthy();
   });
 
   test("keeps billing focused on wallet history and puts redeem code below one recharge entry", async () => {

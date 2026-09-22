@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { ProviderSettingsPage } from "./ProviderSettingsPage";
+import { platformAuth } from "../test/platformAuth";
 
 const listAdminProvidersMock = vi.fn();
 const listAdminCredentialsMock = vi.fn();
@@ -36,12 +37,11 @@ function createAuthState(): AuthState {
     authenticated: true,
     error: null,
     loading: false,
-    permissions: ["admin:system"],
+    ...platformAuth(),
     refreshMe: vi.fn(async () => undefined),
     register: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
-    roles: ["tenant_owner"],
     sessionId: "session-1",
     tenant: { id: "tenant-1", name: "Test Tenant", plan: "pro", slug: "test", status: "active" },
     user: { displayName: "Tester", email: "tester@example.com", id: "user-1", status: "active" },
@@ -49,6 +49,14 @@ function createAuthState(): AuthState {
 }
 
 describe("ProviderSettingsPage", () => {
+  test("lets operators inspect connections while disabling connection and credential writes", async () => {
+    render(<AuthContext.Provider value={{ ...createAuthState(), ...platformAuth("platform_operator") }}><ProviderSettingsPage /></AuthContext.Provider>);
+    fireEvent.click(await screen.findByRole("button", { name: /Main Connection OpenAI \(openai\)/ }));
+    for (const name of ["保存连接", "创建服务商", "保存凭证", "创建连接"]) {
+      expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    }
+  });
+
   beforeEach(() => {
     listAdminProvidersMock.mockResolvedValue([
       {

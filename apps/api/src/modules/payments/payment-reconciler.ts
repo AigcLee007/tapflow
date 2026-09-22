@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import type { PaymentsService } from "./payments.service.js";
 
@@ -10,8 +10,8 @@ export class PaymentReconciler {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => { void this.runOnce(); }, this.options.intervalMs);
-    void this.runOnce();
+    this.timer = setInterval(() => { this.trigger(); }, this.options.intervalMs);
+    this.trigger();
   }
 
   async stop(): Promise<void> {
@@ -23,8 +23,9 @@ export class PaymentReconciler {
   async runOnce(): Promise<void> {
     if (this.running) return;
     this.running = true;
-    const client = await this.options.pool.connect();
+    let client: PoolClient | null = null;
     try {
+      client = await this.options.pool.connect();
       const lock = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtext('tapflow:xunhupay:reconcile')) AS locked");
       if (!lock.rows[0]?.locked) return;
       try {
@@ -34,7 +35,7 @@ export class PaymentReconciler {
           LIMIT 50 FOR UPDATE SKIP LOCKED`);
         for (const candidate of candidates.rows) {
           try {
-            await this.options.payments.queryAdminPayment(candidate.id);
+            await this.options.payments.queryAdminPaymentInternal(candidate.id);
           } catch (error) {
             this.options.logger.error({ err: error, paymentId: candidate.id }, "payment reconciliation query failed");
           }
@@ -44,8 +45,12 @@ export class PaymentReconciler {
         await client.query("SELECT pg_advisory_unlock(hashtext('tapflow:xunhupay:reconcile'))");
       }
     } finally {
-      client.release();
+      client?.release();
       this.running = false;
     }
+  }
+
+  private trigger(): void {
+    void this.runOnce().catch(error => this.options.logger.error({ err: error }, "payment reconciliation run failed"));
   }
 }

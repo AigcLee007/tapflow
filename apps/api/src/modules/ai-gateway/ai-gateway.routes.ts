@@ -45,6 +45,7 @@ import {
   updateRouteSchema,
 } from "./ai-gateway.schemas.js";
 import { AiGatewayApiError } from "./ai-gateway.service.js";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 
 function sendError(
   request: FastifyRequest,
@@ -78,6 +79,7 @@ function getTenantContext(request: FastifyRequest) {
   }
 
   return {
+    permissions: request.ctx.permissions,
     ipHash: request.ctx.ipHash,
     requestId: request.ctx.requestId,
     tenantId: request.ctx.tenantId,
@@ -103,6 +105,9 @@ function handleRouteError(
     );
   }
 
+  if (error instanceof PlatformTransactionError) {
+    return sendError(request, reply, error.statusCode, error.code, error.message);
+  }
   if (error instanceof AiGatewayApiError) {
     return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
   }
@@ -126,13 +131,8 @@ function handleRouteError(
 
 export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
-  const requireSystemAdmin = () => {
-    const permissionGuard = requirePermission("admin:system");
-    return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-      await permissionGuard(request, reply);
-    };
-  };
-  const systemAdminHandlers = [...authHandlers, requireSystemAdmin()];
+  const handlers = (capability: string) => [...authHandlers, requirePermission("platform:console:access"), requirePermission(capability)];
+  const systemAdminHandlers = handlers("platform:connections:manage");
 
   app.post(
     "/api/v2/ai/text/generate",
@@ -167,7 +167,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/connections",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:connections:read"),
     },
     async (request, reply) => {
       try {
@@ -240,11 +240,11 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/providers",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:connections:read"),
     },
     async (request, reply) => {
       try {
-        return reply.send(await app.aiGatewayService.listProviders());
+        return reply.send(await app.aiGatewayService.listProviders(getTenantContext(request)));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -269,11 +269,11 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/models",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:models:read"),
     },
     async (request, reply) => {
       try {
-        return reply.send(await app.aiGatewayService.listModels());
+        return reply.send(await app.aiGatewayService.listModels(getTenantContext(request)));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -298,7 +298,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/routes",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:routes:read"),
     },
     async (request, reply) => {
       try {
@@ -327,7 +327,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/ai/routes/:routeId",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:routes:write"),
     },
     async (request, reply) => {
       try {
@@ -367,7 +367,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/admin/ai/routes/:routeId/set-default",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:routes:write"),
     },
     async (request, reply) => {
       try {
@@ -401,7 +401,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/credentials",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:connections:read"),
     },
     async (request, reply) => {
       try {
@@ -496,7 +496,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/admin/ai/pricing",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:routes:read"),
     },
     async (request, reply) => {
       try {
@@ -511,7 +511,7 @@ export function registerAiGatewayAdminRoutes(app: FastifyInstance): void {
   app.patch(
     "/api/v2/admin/ai/pricing",
     {
-      preHandler: systemAdminHandlers,
+      preHandler: handlers("platform:pricing:publish"),
     },
     async (request, reply) => {
       try {

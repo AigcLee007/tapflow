@@ -3231,6 +3231,8 @@ describe("route resolver and ai gateway", () => {
     Object.defineProperty(runtime, "listRuntimeRoutes", {
       value: listRuntimeRoutes,
     });
+    Object.defineProperty(runtime, "getPendingRoute", { value: async () => null });
+    Object.defineProperty(runtime, "savePendingRoutes", { value: async () => undefined });
     Object.defineProperty(runtime, "insertAiCallLog", {
       value: async () => undefined,
     });
@@ -3334,6 +3336,8 @@ describe("route resolver and ai gateway", () => {
         }),
       ],
     });
+    Object.defineProperty(runtime, "getPendingRoute", { value: async () => null });
+    Object.defineProperty(runtime, "savePendingRoutes", { value: async () => undefined });
     Object.defineProperty(runtime, "insertAiCallLog", {
       value: async () => undefined,
     });
@@ -3390,6 +3394,8 @@ describe("route resolver and ai gateway", () => {
         routeKey: "video.pixelhub.gemini-omni-flash",
       })],
     });
+    Object.defineProperty(runtime, "getPendingRoute", { value: async () => null });
+    Object.defineProperty(runtime, "savePendingRoutes", { value: async () => undefined });
     Object.defineProperty(runtime, "insertAiCallLog", { value: async () => undefined });
 
     await expect(runtime.generateVideo({ tenantId: "tenant-1", userId: "user-1" }, {
@@ -3462,6 +3468,8 @@ describe("route resolver and ai gateway", () => {
         }),
       ],
     });
+    Object.defineProperty(runtime, "getPendingRoute", { value: async () => null });
+    Object.defineProperty(runtime, "savePendingRoutes", { value: async () => undefined });
     Object.defineProperty(runtime, "insertAiCallLog", {
       value: async () => undefined,
     });
@@ -3583,6 +3591,8 @@ describe("route resolver and ai gateway", () => {
       } as never,
     });
 
+    Object.defineProperty(runtime, "getPendingRoute", { value: async () => null });
+    Object.defineProperty(runtime, "savePendingRoutes", { value: async () => undefined });
     Object.defineProperty(runtime, "insertAiCallLog", {
       value: vi.fn(async () => undefined),
     });
@@ -3668,7 +3678,7 @@ describe("route resolver and ai gateway", () => {
         metadataReferenceImageKinds: ["httpsUrl", "dataUrl"],
         providerImageCount: 2,
         providerModel: "gemini-3.1-flash-image-preview-2k",
-        providerPrompt: "图一女孩穿印有图二图案的衣服",
+        providerPromptLength: "图一女孩穿印有图二图案的衣服".length,
         providerUsesEditEndpoint: true,
         routeKey: "image.mouxihub.nano-banana-pro.t3",
         source: "workbench",
