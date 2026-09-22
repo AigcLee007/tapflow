@@ -19,7 +19,6 @@ import type {
 import { recordLegalConsent, validateCurrentConsent } from "./legal-consent.repository.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import {
-  type ResolvedPermissions,
   resolvePermissionsForTenant,
 } from "./permission-resolver.js";
 import {
@@ -53,9 +52,6 @@ type AuthenticatedIdentity = {
   tenantId: string | null;
   userId: string;
 };
-
-const ADMIN_PERMISSION = "admin:system";
-const PLATFORM_BILLING_PERMISSIONS = ["billing:plans:manage", "billing:payments:manage", "billing:refund"];
 
 type PublicTenant = {
   id: string;
@@ -311,6 +307,7 @@ export class AuthService {
       ),
       currentTenant: records.tenant ? mapTenant(records.tenant) : null,
       permissions: resolved.permissions,
+      roles: resolved.roles,
       refreshToken: input.refreshToken,
       user: mapUser(records.user),
     };
@@ -434,18 +431,9 @@ export class AuthService {
       this.pool,
     );
 
-    const normalizedEmail = session.email.trim().toLowerCase();
-    const isAdminEmail = this.env.adminEmails.includes(normalizedEmail);
-    const permissions = isAdminEmail
-      ? Array.from(new Set([...resolved.permissions, ADMIN_PERMISSION, ...PLATFORM_BILLING_PERMISSIONS]))
-      : resolved.permissions;
-    const roles = isAdminEmail
-      ? Array.from(new Set([...resolved.roles, "admin_email"]))
-      : resolved.roles;
-
     return {
-      permissions,
-      roles,
+      permissions: resolved.permissions,
+      roles: resolved.roles,
       sessionId: session.session_id,
       tenantId: session.tenant_id,
       userId: session.user_id,

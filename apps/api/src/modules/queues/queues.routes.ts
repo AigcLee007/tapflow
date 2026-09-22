@@ -29,7 +29,7 @@ export function registerQueueRoutes(app: FastifyInstance): void {
       preHandler: [
         requireAuth,
         requireTenant,
-        requirePermission("admin:system"),
+        requirePermission("platform:console:access"),
       ],
     },
     async (request, reply) => {

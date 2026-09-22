@@ -90,7 +90,7 @@ describe("PersonalWalletService administrator wallet mutations", () => {
         if (sql.includes("wallet_admin_debit")) {
           return { rows: [{ id: "debit-1", wallet_id: "wallet-1", user_id: userId, tenant_id: tenantId, usage_event_id: null, entry_type: "admin_debit", amount_credits: "60", idempotency_key: "admin-debit:1", created_at: "2030-01-01T00:00:00.000Z" }] };
         }
-        return { rows: [{ wallet_id: "wallet-1", user_id: userId, balance: "100", reserved: "20", expiring: "0", nearest: null }] };
+        return { rows: [{ wallet_id: "wallet-1", user_id: userId, balance: "100", reserved: "20", refund_held: "10", expiring: "0", nearest: null }] };
       },
     };
     const wallet = new PersonalWalletService({ pool: {} as never });
@@ -108,7 +108,7 @@ describe("PersonalWalletService administrator wallet mutations", () => {
       idempotencyKey: "admin-debit:1",
     })).resolves.toMatchObject({ amountCredits: 60, entryType: "admin_debit" });
     await expect(wallet.getSummariesWithClient(client as never, [userId, otherUserId])).resolves.toEqual(new Map([
-      [userId, expect.objectContaining({ availableCredits: 80, walletId: "wallet-1" })],
+      [userId, expect.objectContaining({ availableCredits: 70, walletId: "wallet-1" })],
       [otherUserId, expect.objectContaining({ availableCredits: 0, walletId: "" })],
     ]));
 

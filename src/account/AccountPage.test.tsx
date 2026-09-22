@@ -4,18 +4,20 @@ import { describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { AccountPage } from "./AccountPage";
+import { platformAuth } from "../test/platformAuth";
 
 function createAuthState(): AuthState {
   return {
     authenticated: true,
     error: null,
     loading: false,
-    permissions: ["admin:system"],
+    ...platformAuth(),
     refreshMe: vi.fn(async () => undefined),
     register: vi.fn(async () => undefined),
+    verifyEmail: vi.fn(async () => undefined),
+    resendEmailVerification: vi.fn(),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
-    roles: ["tenant_owner"],
     sessionId: "session-1",
     tenant: {
       id: "tenant-1",
@@ -48,7 +50,35 @@ describe("AccountPage", () => {
     expect(screen.getByRole("button", { name: "运营后台" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "模型中心" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Provider Connections" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Template Library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "巡检面板" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+  });
+
+  test("shows read and operations tools without integration management to an operator", () => {
+    render(
+      <AuthContext.Provider value={{ ...createAuthState(), ...platformAuth("platform_operator") }}>
+        <AccountPage />
+      </AuthContext.Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: "运营后台" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "巡检面板" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "模型中心" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Provider Connections" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Template Library" })).toBeNull();
+  });
+
+  test.each(["tenant_admin", "system_admin", "admin_email"])("hides platform tools from legacy %s", (role) => {
+    render(
+      <AuthContext.Provider value={{ ...createAuthState(), permissions: ["admin:system"], roles: [role] }}>
+        <AccountPage />
+      </AuthContext.Provider>,
+    );
+
+    for (const name of ["运营后台", "巡检面板", "模型中心", "Provider Connections", "Template Library"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
   });
 
   test("shows creator account details without internal tenant diagnostics", () => {
@@ -84,5 +114,9 @@ describe("AccountPage", () => {
     expect(screen.queryByText("lee-workspace")).toBeNull();
     expect(screen.queryByText("tenant_owner")).toBeNull();
     expect(screen.queryByText("project:read")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "管理员工具" })).toBeNull();
+    for (const name of ["运营后台", "巡检面板", "模型中心", "Provider Connections", "Template Library"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
   });
 });

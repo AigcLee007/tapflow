@@ -1,3 +1,5 @@
+import { gatewayTestEmailSender, verifyGatewayRegistration } from "./gateway-auth.fixture.js";
+import { resolvePlatformCapabilities } from "../src/modules/platform-access/platform-access.policy.js";
 import { afterAll, describe, expect, test } from "vitest";
 import Fastify from "fastify";
 import { AiPluginRegistry, builtinAiPluginRegistry, CredentialVault } from "@aigc-flow/ai-gateway-core";
@@ -20,7 +22,7 @@ import { AiGatewayAdminService } from "../src/modules/ai-gateway/ai-gateway.serv
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = hasDatabaseEnv() ? describe : describe.skip;
-const context = { tenantId: "00000000-0000-0000-0000-000000000001", userId: null };
+const context = { tenantId: "00000000-0000-0000-0000-000000000001", userId: "00000000-0000-0000-0000-000000000002", permissions: resolvePlatformCapabilities("platform_super_admin") };
 const configurationAdminEmail = "model-configuration-admin@example.com";
 
 const apiTestEnv: ApiEnv = {
@@ -56,7 +58,7 @@ class MemoryStorageProvider implements StorageProvider {
 }
 
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
-  return buildApp({ env: apiTestEnv, logger: false, pool, storageProvider: new MemoryStorageProvider() });
+  return buildApp({ env: apiTestEnv, authEmailSender: gatewayTestEmailSender, logger: false, pool, storageProvider: new MemoryStorageProvider() });
 }
 
 async function registerUser(api: ReturnType<typeof buildTestApp>, email: string, tenantName: string) {
@@ -65,8 +67,8 @@ async function registerUser(api: ReturnType<typeof buildTestApp>, email: string,
     payload: { email, password: "StrongPass123!", consent: currentLegalConsent, tenantName },
     url: "/api/v2/auth/register",
   });
-  expect(response.statusCode).toBe(201);
-  return response.json();
+  expect(response.statusCode, response.body).toBe(202);
+  return verifyGatewayRegistration(api, email, response.json().challengeToken);
 }
 
 function mockConfigurationDraft(secret: string, overrides: Record<string, unknown> = {}) {
@@ -75,7 +77,7 @@ function mockConfigurationDraft(secret: string, overrides: Record<string, unknow
     connection: { mode: "create", name: "Model Configuration Mock Connection", baseUrl: "https://mock.local/", environment: "production" },
     credential: { mode: "create", name: "Model Configuration Mock Credential", secret },
     pricing: { unit: "image_generation", unitCredits: 10, minChargeCredits: 10 },
-    route: { routeKey: "image.default", routeLabel: "Mock success", upstreamModel: "mock-image" },
+    route: { routeKey: "image.default", routeLabel: "Mock success", upstreamModel: "mock-image-v1" },
     ...overrides,
   };
 }
@@ -92,7 +94,7 @@ describe("ai model configuration route contract", () => {
       request.ctx = {
         ipHash: null,
         isAuthenticated: role !== undefined,
-        permissions: isAdmin ? ["admin:system"] : [],
+        permissions: isAdmin ? resolvePlatformCapabilities("platform_super_admin") : [],
         requestId: request.id,
         roles: isAdmin ? ["owner"] : [],
         sessionId: null,
@@ -174,6 +176,9 @@ async function withService(run: (args: {
     let appPool = createPgPool();
     try {
       await runMigrations(adminPool);
+      await adminPool.query("INSERT INTO tenants (id, name, slug) VALUES ($1, 'Configuration fixture', 'configuration-fixture')", [context.tenantId]);
+      await adminPool.query("INSERT INTO users (id, email) VALUES ($1, 'configuration-fixture@example.test')", [context.userId]);
+      await adminPool.query("INSERT INTO platform_role_assignments (user_id, role_key, version, reason) VALUES ($1, 'platform_super_admin', 1, 'Explicit configuration fixture assignment')", [context.userId]);
       appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
       const service = new AiModelConfigurationsService({
         credentialVault: new CredentialVault({ masterKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" }),
@@ -193,6 +198,7 @@ describe("AiModelConfigurationsService", () => {
     const queries: string[] = [];
     const client = { query: async (sql: string) => {
       queries.push(sql);
+      if (sql.includes("app.current_platform_role()")) return { rows: [{ role_key: "platform_super_admin" }] };
       if (sql.includes("SELECT modality,model_family,environment FROM ai_routes")) {
         return { rows: [{ modality: "image", model_family: "family", environment: "production" }] };
       }
@@ -240,7 +246,7 @@ describe("AiModelConfigurationsService", () => {
     });
 
     await expect(service.saveDraft(
-      { tenantId: "00000000-0000-0000-0000-000000000001", userId: null },
+      context,
       {
         packageKey: "pixellelabs.nano-banana-pro",
         connection: { mode: "existing", connectionId: "00000000-0000-0000-0000-000000000002" },
@@ -258,7 +264,7 @@ describe("AiModelConfigurationsService", () => {
       pool: { connect() { throw new Error("transaction must not start"); } } as never,
     });
     await expect(service.saveDraft(
-      { tenantId: "00000000-0000-0000-0000-000000000001", userId: null },
+      context,
       {
         packageKey: "pixellelabs.nano-banana-pro",
         connection: { mode: "existing", connectionId: "00000000-0000-0000-0000-000000000002" },
@@ -383,7 +389,7 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
       });
       expect((await routeTests.testAdminDraftRoute(context, draft.route.id, {})).status).toBe("ok");
       const revision = await adminPool.query("SELECT configuration_revision,tested_revision,health_status FROM ai_routes WHERE id=$1", [draft.route.id]);
-      expect(revision.rows[0]).toMatchObject({ configuration_revision: 2, tested_revision: null, health_status: "ok" });
+      expect(revision.rows[0]).toMatchObject({ configuration_revision: 2, tested_revision: null, health_status: null });
     });
   });
 
@@ -707,7 +713,7 @@ describeWithDatabase("AiModelConfigurationsService database drafts", () => {
         (tenant_id,provider_id,name,encrypted_secret,nonce,auth_tag,key_version,secret_fingerprint,status)
         VALUES ($1,$2,'Tenant key',$3,$4,$5,$6,$7,'active') RETURNING id::text`,
         [tenant.rows[0].id,provider.rows[0].id,encrypted.encryptedSecret,encrypted.nonce,encrypted.authTag,encrypted.keyVersion,encrypted.secretFingerprint]);
-      await expect(service.saveDraft({ tenantId: tenant.rows[0].id, userId: null }, builtInDraft("scope", {
+      await expect(service.saveDraft({ ...context, tenantId: tenant.rows[0].id }, builtInDraft("scope", {
         credential: { mode: "existing", credentialId: credential.rows[0].id },
       }))).rejects.toMatchObject({ code: "CONFIGURATION_SCOPE_MISMATCH" });
     });
@@ -788,6 +794,10 @@ describeWithDatabase("ai model configuration API", () => {
         expect(forbidden.statusCode).toBe(403);
 
         const admin = await registerUser(api, configurationAdminEmail, "Model Configuration Admin");
+        await adminPool.query(
+          "INSERT INTO platform_role_assignments (user_id, role_key, version, reason) VALUES ($1, 'platform_super_admin', 1, 'Model configuration integration test fixture')",
+          [admin.user.id],
+        );
         const invalid = await api.inject({
           headers: { authorization: `Bearer ${admin.accessToken}` },
           method: "POST",
@@ -804,7 +814,7 @@ describeWithDatabase("ai model configuration API", () => {
           payload: mockConfigurationDraft(secret),
           url: "/api/v2/admin/ai/model-configurations/draft",
         });
-        expect(draft.statusCode).toBe(201);
+        expect(draft.statusCode, draft.body).toBe(201);
         expect(draft.json()).toMatchObject({ route: { status: "inactive", configurationRevision: 1 } });
         expect(draft.body).not.toContain(secret);
         expect(draft.body).not.toMatch(/encrypted_secret|auth_tag|authorization/i);
@@ -819,6 +829,10 @@ describeWithDatabase("ai model configuration API", () => {
         expect(stale.statusCode).toBe(409);
         expect(stale.json()).toMatchObject({ error: { code: "MODEL_CONFIGURATION_CONFLICT" } });
         expect(stale.body).not.toContain(secret);
+
+        // Publishing requires an enabled connection and explicitly approved pricing.
+        await adminPool.query("UPDATE ai_provider_connections SET status='active' WHERE id=$1", [draft.json().connection.id]);
+        await adminPool.query("UPDATE model_pricing SET active=true WHERE route=$1", [draft.json().route.key]);
 
         const testRoute = await api.inject({
           headers: { authorization: `Bearer ${admin.accessToken}` },
@@ -835,7 +849,7 @@ describeWithDatabase("ai model configuration API", () => {
           payload: { routeId, expectedRevision: 1 },
           url: "/api/v2/admin/ai/model-configurations/publish",
         });
-        expect(published.statusCode).toBe(200);
+        expect(published.statusCode, published.body).toBe(200);
         expect(published.json()).toMatchObject({ route: { id: routeId, status: "active", testedRevision: 1 } });
         expect(published.body).not.toContain(secret);
 

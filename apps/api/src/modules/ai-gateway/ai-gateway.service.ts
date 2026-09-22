@@ -1,4 +1,5 @@
-import { createPgPool, safeRecordAuditLog, withTenantTransaction } from "@aigc-flow/db";
+import { createPgPool, recordAuditLogWithClient, safeRecordAuditLog, withTenantTransaction } from "@aigc-flow/db";
+import { withPlatformTransaction } from "../../http/platform-transaction.js";
 import {
   AiGatewayError,
   DatabaseTextGenerationRuntime,
@@ -24,10 +25,12 @@ import type {
   UpdateProviderConnectionInput,
   UpdateRouteInput,
 } from "./ai-gateway.schemas.js";
+import { isSensitiveRequestConfigKey, requestConfigSchema } from "./ai-gateway.schemas.js";
 
 type PgPool = Pool;
 
 type TenantContext = {
+  permissions?: readonly string[];
   ipHash?: string | null;
   requestId?: string | null;
   tenantId: string;
@@ -35,6 +38,14 @@ type TenantContext = {
   userAgent?: string | null;
   userId: string | null;
 };
+
+const OPERATOR_ROUTE_FIELDS = new Set(["routeLabel", "status", "priority", "weight", "isDefault"]);
+
+function requireGatewayCapability(context: TenantContext, capability: string): void {
+  if (!context.permissions?.includes("platform:console:access") || !context.permissions.includes(capability)) {
+    throw new AiGatewayApiError(403, "FORBIDDEN", "Insufficient platform capability");
+  }
+}
 
 const PLATFORM_TENANT_ID: string | null = null;
 const KNOWN_IMAGE_GENERATION_MODES = new Set([
@@ -381,6 +392,18 @@ function mapModel(row: ModelRecord): ModelView {
   };
 }
 
+function projectSafeRequestConfig(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const project = (nested: unknown): unknown => {
+    if (Array.isArray(nested)) return nested.map(project);
+    if (!nested || typeof nested !== "object") return nested;
+    return Object.fromEntries(Object.entries(nested as Record<string, unknown>)
+      .filter(([key]) => !isSensitiveRequestConfigKey(key))
+      .map(([key, child]) => [key, project(child)]));
+  };
+  return project(value) as Record<string, unknown>;
+}
+
 function mapRoute(row: RouteRecord): RouteView {
   return {
     adminNotes: row.admin_notes,
@@ -406,7 +429,7 @@ function mapRoute(row: RouteRecord): RouteView {
     providerId: row.provider_id,
     rateLimit: row.rate_limit ?? {},
     requestPath: row.request_path,
-    requestConfig: row.request_config ?? {},
+    requestConfig: projectSafeRequestConfig(row.request_config),
     routeKey: row.route_key,
     routeLabel: row.route_label,
     status: row.status,
@@ -415,6 +438,12 @@ function mapRoute(row: RouteRecord): RouteView {
     updatedAt: row.updated_at,
     weight: row.weight,
   };
+}
+
+function mapRouteForViewer(row: RouteRecord, context: TenantContext): RouteView {
+  const route = mapRoute(row);
+  if (context.permissions?.includes("platform:connections:manage")) return route;
+  return { ...route, requestConfig: {}, pricing: {}, rateLimit: {}, adminNotes: null, internalLabel: null };
 }
 
 function mapPricing(row: PricingRecord): PricingView {
@@ -593,7 +622,8 @@ export class AiGatewayAdminService {
     });
   }
 
-  async listProviders(): Promise<ProviderView[]> {
+  async listProviders(context: TenantContext): Promise<ProviderView[]> {
+    requireGatewayCapability(context, "platform:connections:read");
     const result = await this.pool.query<ProviderRecord>(
       `
         SELECT
@@ -615,8 +645,9 @@ export class AiGatewayAdminService {
   }
 
   async createProvider(context: TenantContext, input: CreateProviderInput): Promise<ProviderView> {
+    requireGatewayCapability(context, "platform:connections:manage");
     try {
-      const result = await this.pool.query<ProviderRecord>(
+      const result = await withPlatformTransaction(this.pool, context, "platform:connections:manage", (client) => client.query<ProviderRecord>(
         `
           INSERT INTO ai_providers (
             key,
@@ -647,7 +678,7 @@ export class AiGatewayAdminService {
           input.defaultBaseUrl?.trim() ?? null,
           JSON.stringify(input.capabilities ?? {}),
         ],
-      );
+      ));
 
       const provider = mapProvider(result.rows[0]);
       await safeRecordAuditLog(
@@ -679,7 +710,8 @@ export class AiGatewayAdminService {
   }
 
   async listProviderConnections(context: TenantContext): Promise<ProviderConnectionView[]> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:read");
+    return withPlatformTransaction(this.pool, context, "platform:connections:read", async (client) => {
       const result = await client.query<ProviderConnectionRecord>(
         `
           SELECT
@@ -699,24 +731,26 @@ export class AiGatewayAdminService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM ai_provider_connections
-          WHERE tenant_id IS NULL OR tenant_id = $1::uuid
           ORDER BY
             CASE WHEN tenant_id IS NULL THEN 0 ELSE 1 END ASC,
             created_at ASC,
             id ASC
         `,
-        [context.tenantId],
+        [],
       );
 
-      return result.rows.map(mapProviderConnection);
-    }, this.pool);
+      return result.rows.map((row) => ({ ...mapProviderConnection(row),
+        metadata: context.permissions?.includes("platform:connections:manage") ? row.metadata ?? {} : {},
+      }));
+    });
   }
 
   async createProviderConnection(
     context: TenantContext,
     input: CreateProviderConnectionInput,
   ): Promise<ProviderConnectionView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       await this.ensureProviderExists(input.providerId, client);
       if (input.credentialId) {
         await this.ensurePlatformCredentialExists(input.credentialId, client);
@@ -812,7 +846,7 @@ export class AiGatewayAdminService {
       } catch (error) {
         this.rethrowKnownDatabaseError(error, "Unable to create provider connection");
       }
-    }, this.pool);
+    });
   }
 
   async updateProviderConnection(
@@ -820,7 +854,8 @@ export class AiGatewayAdminService {
     connectionId: string,
     input: UpdateProviderConnectionInput,
   ): Promise<ProviderConnectionView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getProviderConnectionRow(client, connectionId);
       this.assertAdminManageableProviderConnection(existing, context.tenantId);
       if (input.credentialId) {
@@ -874,10 +909,11 @@ export class AiGatewayAdminService {
       );
 
       return mapProviderConnection(result.rows[0]);
-    }, this.pool);
+    });
   }
 
-  async listModels(): Promise<ModelView[]> {
+  async listModels(context: TenantContext): Promise<ModelView[]> {
+    requireGatewayCapability(context, "platform:models:read");
     const result = await this.pool.query<ModelRecord>(
       `
         SELECT
@@ -900,10 +936,11 @@ export class AiGatewayAdminService {
   }
 
   async createModel(context: TenantContext, input: CreateModelInput): Promise<ModelView> {
+    requireGatewayCapability(context, "platform:connections:manage");
     await this.ensureProviderExists(input.providerId);
 
     try {
-      const result = await this.pool.query<ModelRecord>(
+      const result = await withPlatformTransaction(this.pool, context, "platform:connections:manage", (client) => client.query<ModelRecord>(
         `
           INSERT INTO ai_models (
             provider_id,
@@ -937,7 +974,7 @@ export class AiGatewayAdminService {
           input.contextWindow ?? null,
           input.status?.trim() ?? "active",
         ],
-      );
+      ));
 
       const model = mapModel(result.rows[0]);
       await safeRecordAuditLog(
@@ -970,7 +1007,8 @@ export class AiGatewayAdminService {
   }
 
   async listRoutes(context: TenantContext): Promise<RouteView[]> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:routes:read");
+    return withPlatformTransaction(this.pool, context, "platform:routes:read", async (client) => {
       const result = await client.query<RouteRecord>(
         `
           SELECT
@@ -1006,14 +1044,13 @@ export class AiGatewayAdminService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
           FROM ai_routes
-          WHERE tenant_id = $1::uuid OR tenant_id IS NULL
           ORDER BY route_key ASC, created_at ASC
         `,
-        [context.tenantId],
+        [],
       );
 
-      return result.rows.map(mapRoute);
-    }, this.pool);
+      return result.rows.map((row) => mapRouteForViewer(row, context));
+    });
   }
 
   async listRuntimeRoutesForUi(
@@ -1095,11 +1132,13 @@ export class AiGatewayAdminService {
         pricingUnit: row.pricing_unit ?? null,
         routeKey: row.route_key,
       }));
-    }, this.pool);
+    });
   }
 
   async listPricing(context: TenantContext, query: ListPricingQuery): Promise<PricingView[]> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:routes:read");
+    const canPublishPricing = context.permissions?.includes("platform:pricing:publish");
+    return withPlatformTransaction(this.pool, context, "platform:routes:read", async (client) => {
       const result = await client.query<PricingRecord>(
         `
           SELECT
@@ -1114,6 +1153,7 @@ export class AiGatewayAdminService {
             mp.created_at::text AS created_at
           FROM model_pricing mp
           WHERE ($1::text IS NULL OR mp.unit = $1::text)
+            AND ($2::boolean OR mp.active = true)
             AND (
               mp.route = 'default'
               OR EXISTS (
@@ -1121,23 +1161,25 @@ export class AiGatewayAdminService {
                 FROM ai_routes r
                 JOIN ai_providers p ON p.id = r.provider_id
                 LEFT JOIN ai_models m ON m.id = r.model_id
-                WHERE r.tenant_id = $2::uuid
-                  AND r.route_key = mp.route
+                WHERE r.route_key = mp.route
                   AND p.key = mp.provider
                   AND (m.model_key = mp.model OR mp.model = 'default')
               )
             )
           ORDER BY mp.provider ASC, mp.model ASC, mp.route ASC, mp.unit ASC
         `,
-        [query.unit?.trim() || null, context.tenantId],
+        [query.unit?.trim() || null, canPublishPricing],
       );
 
-      return result.rows.map(mapPricing);
-    }, this.pool);
+      return result.rows.filter((row) => canPublishPricing || row.active).map((row) => ({
+        ...mapPricing(row), metadata: canPublishPricing ? row.metadata ?? {} : {},
+      }));
+    });
   }
 
   async upsertPricing(context: TenantContext, input: UpsertPricingInput): Promise<PricingView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:pricing:publish");
+    return withPlatformTransaction(this.pool, context, "platform:pricing:publish", async (client) => {
       const provider = input.provider.trim();
       const model = input.model.trim();
       const route = input.route.trim();
@@ -1149,7 +1191,7 @@ export class AiGatewayAdminService {
           FROM ai_routes r
           JOIN ai_providers p ON p.id = r.provider_id
           JOIN ai_models m ON m.id = r.model_id
-          WHERE r.tenant_id = $1::uuid
+          WHERE (r.tenant_id = $1::uuid OR r.tenant_id IS NULL)
             AND r.route_key = $2::text
             AND p.key = $3::text
             AND m.model_key = $4::text
@@ -1213,11 +1255,13 @@ export class AiGatewayAdminService {
       }
 
       return mapPricing(row);
-    }, this.pool);
+    });
   }
 
   async createRoute(context: TenantContext, input: CreateRouteInput): Promise<RouteView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    requestConfigSchema.parse(input.requestConfig ?? {});
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       await this.ensureProviderExists(input.providerId, client);
       const model = input.modelId ? await this.getModelRow(client, input.modelId) : null;
       if (input.credentialId) {
@@ -1322,20 +1366,21 @@ export class AiGatewayAdminService {
               $7,
               $8,
               $9,
-              $10::int,
+              $10,
               $11::int,
-              $12,
+              $12::int,
               $13,
               $14,
               $15,
               $16,
               $17,
               $18,
-              $19::boolean,
-              $20::jsonb,
+              $19,
+              $20::boolean,
               $21::jsonb,
               $22::jsonb,
-              $23,
+              $23::jsonb,
+              $24,
               now()
             )
             RETURNING
@@ -1433,7 +1478,7 @@ export class AiGatewayAdminService {
       } catch (error) {
         this.rethrowKnownDatabaseError(error, "Unable to create route");
       }
-    }, this.pool);
+    });
   }
 
   async updateRoute(
@@ -1441,9 +1486,16 @@ export class AiGatewayAdminService {
     routeId: string,
     input: UpdateRouteInput,
   ): Promise<RouteView> {
-    return withTenantTransaction(context, async (client) => {
-      const existing = await this.getRouteRow(client, routeId);
-      this.assertAdminManageableRoute(existing, context.tenantId);
+    requireGatewayCapability(context, "platform:routes:write");
+    if (!context.permissions?.includes("platform:connections:manage")) {
+      if (Object.keys(input).some((field) => !OPERATOR_ROUTE_FIELDS.has(field))) {
+        throw new AiGatewayApiError(403, "FORBIDDEN", "Operators may only update route label, status, priority, weight, and default");
+      }
+      return this.updateOperationalRoute(context, routeId, input);
+    }
+    requestConfigSchema.parse(input.requestConfig ?? {});
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
+      const existing = await this.getRouteRow(client, routeId, true);
       const routeTenantId = existing.tenant_id ?? PLATFORM_TENANT_ID;
       const modelId = input.modelId !== undefined ? input.modelId : existing.model_id;
       const model = modelId ? await this.getModelRow(client, modelId) : null;
@@ -1466,7 +1518,7 @@ export class AiGatewayAdminService {
           );
         }
         if (routeTenantId) {
-          this.assertAdminManageableProviderConnection(connection, context.tenantId);
+          this.assertAdminManageableProviderConnection(connection, routeTenantId);
         }
       }
       const nextEnvironment = connection?.environment ?? existing.environment ?? "production";
@@ -1474,7 +1526,7 @@ export class AiGatewayAdminService {
       const nextRequestConfig = buildNormalizedRouteRequestConfig({
         apiMode: input.apiMode === undefined ? existing.api_mode : input.apiMode,
         connectionId: nextConnectionId,
-        requestConfig: input.requestConfig ?? existing.request_config ?? {},
+        requestConfig: projectSafeRequestConfig(input.requestConfig ?? existing.request_config ?? {}),
         requestPath: input.requestPath === undefined ? existing.request_path : input.requestPath,
         upstreamModel: input.upstreamModel === undefined ? existing.upstream_model : input.upstreamModel,
       });
@@ -1600,7 +1652,7 @@ export class AiGatewayAdminService {
       } else if (existing.is_default && !route.isDefault) {
         await this.clearCatalogDefaultForRoute(client, routeTenantId, existing.route_key);
       }
-      await safeRecordAuditLog(
+      await recordAuditLogWithClient(client,
         {
           action: "ai.route.update",
           actorType: context.userId ? "user" : "system",
@@ -1619,16 +1671,74 @@ export class AiGatewayAdminService {
           requestId: context.requestId,
           resourceId: route.id,
           resourceType: "ai_route",
-          tenantId: context.tenantId,
+          tenantId: existing.tenant_id ?? context.tenantId,
           traceId: context.traceId,
           userAgent: context.userAgent,
         },
-        {
-          pool: this.pool,
-        },
       );
       return route;
-    }, this.pool);
+    });
+  }
+
+  /** Operational edits deliberately never normalize or rewrite runtime bindings. */
+  private async updateOperationalRoute(
+    context: TenantContext,
+    routeId: string,
+    input: Pick<UpdateRouteInput, "routeLabel" | "status" | "priority" | "weight" | "isDefault">,
+  ): Promise<RouteView> {
+    return withPlatformTransaction(this.pool, context, "platform:routes:write", async (client) => {
+      const candidate = await this.getRouteRow(client, routeId);
+      const groupKey = (route: RouteRecord) => `${route.tenant_id ?? "platform"}:${route.modality}:${route.model_family}:${route.environment}`;
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [groupKey(candidate)]);
+      const existing = await this.getRouteRow(client, routeId, true);
+      if (groupKey(existing) !== groupKey(candidate)) {
+        throw new AiGatewayApiError(409, "ROUTE_CONFIGURATION_CHANGED", "Route configuration changed; reload and retry");
+      }
+      if (existing.deleted_at) throw new AiGatewayApiError(409, "ROUTE_DELETED", "Route has been deleted");
+      const nextStatus = input.status ?? existing.status;
+      const nextDefault = nextStatus === "active" && (input.isDefault ?? existing.is_default);
+      if (input.isDefault && nextStatus !== "active") {
+        throw new AiGatewayApiError(409, "ROUTE_NOT_ACTIVE", "Only active routes can be set as default");
+      }
+      if ((input.status === "active" || input.isDefault === true)
+        && (existing.tested_revision == null || existing.tested_revision !== existing.configuration_revision || existing.health_status !== "ok")) {
+        throw new AiGatewayApiError(409, "ROUTE_TEST_REQUIRED", "The current route configuration must pass a test before activation or default selection");
+      }
+      if (input.status === "active" || input.isDefault === true) {
+        const pricing = await client.query(`SELECT mp.id FROM model_pricing mp
+          JOIN ai_providers provider ON provider.key=mp.provider
+          LEFT JOIN ai_models model ON model.id=$2::uuid
+          WHERE provider.id=$1::uuid AND mp.model=COALESCE(model.model_key,$3)
+            AND mp.route=$4 AND mp.unit=$5 AND mp.active=true
+            AND mp.unit_credits>0 AND mp.min_charge_credits>0 LIMIT 1`,
+          [existing.provider_id, existing.model_id, existing.model_family, existing.route_key, `${existing.modality}_generation`]);
+        if (!pricing.rows.length) throw new AiGatewayApiError(409, "PRICING_NOT_FOUND", "An active positive route price is required before activation or default selection");
+      }
+      await client.query(
+        `UPDATE ai_routes SET route_label = $2, status = $3, priority = $4::int,
+           weight = $5::int, is_default = $6::boolean, updated_at = now()
+         WHERE id = $1::uuid`,
+        [routeId, input.routeLabel === undefined ? existing.route_label : input.routeLabel,
+          nextStatus, input.priority ?? existing.priority, input.weight ?? existing.weight, nextDefault],
+      );
+      const updated = await this.getRouteRow(client, routeId);
+      const next = mapRoute(updated);
+      if (next.isDefault) await this.applyDefaultRouteState(client, existing.tenant_id, next);
+      else if (existing.is_default) await this.clearCatalogDefaultForRoute(client, existing.tenant_id, existing.route_key);
+      await recordAuditLogWithClient(client, {
+        action: "ai.route.operate", actorType: "user", actorUserId: context.userId,
+        ipHash: context.ipHash, requestId: context.requestId, traceId: context.traceId, userAgent: context.userAgent,
+        resourceId: routeId, resourceType: "ai_route", tenantId: existing.tenant_id ?? context.tenantId,
+        metadata: {
+          routeKey: existing.route_key, fields: Object.keys(input),
+          before: { routeLabel: existing.route_label, status: existing.status, priority: existing.priority,
+            weight: existing.weight, isDefault: existing.is_default },
+          after: { routeLabel: next.routeLabel, status: next.status, priority: next.priority,
+            weight: next.weight, isDefault: next.isDefault },
+        },
+      });
+      return mapRouteForViewer(updated, context);
+    });
   }
 
   async duplicateRoute(
@@ -1636,7 +1746,8 @@ export class AiGatewayAdminService {
     routeId: string,
     input: DuplicateRouteInput = {},
   ): Promise<RouteView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getRouteRow(client, routeId);
       this.assertAdminManageableRoute(existing, context.tenantId);
 
@@ -1660,7 +1771,7 @@ export class AiGatewayAdminService {
         priority: existing.priority,
         providerId: existing.provider_id,
         rateLimit: existing.rate_limit ?? {},
-        requestConfig: existing.request_config ?? {},
+        requestConfig: projectSafeRequestConfig(existing.request_config ?? {}),
         requestPath: existing.request_path,
         routeKey: input.routeKey?.trim() ?? buildDuplicatedRouteKey(existing.route_key),
         routeLabel:
@@ -1675,72 +1786,16 @@ export class AiGatewayAdminService {
       };
 
       return this.createRoute(context, duplicateInput);
-    }, this.pool);
+    });
   }
 
   async setDefaultRoute(context: TenantContext, routeId: string): Promise<RouteView> {
-    return withTenantTransaction(context, async (client) => {
-      const route = await this.getRouteRow(client, routeId);
-      this.assertAdminManageableRoute(route, context.tenantId);
-      const routeTenantId = route.tenant_id ?? PLATFORM_TENANT_ID;
-      if (route.deleted_at) {
-        throw new AiGatewayApiError(409, "ROUTE_DELETED", "Route has been deleted");
-      }
-      if (route.status !== "active") {
-        throw new AiGatewayApiError(409, "ROUTE_NOT_ACTIVE", "Only active routes can be set as default");
-      }
-
-      const updated = await client.query<RouteRecord>(
-        `
-          UPDATE ai_routes
-          SET
-            is_default = true,
-            updated_at = now()
-          WHERE id = $1::uuid
-          RETURNING
-            id::text AS id,
-            tenant_id::text AS tenant_id,
-            provider_id::text AS provider_id,
-            model_id::text AS model_id,
-            plugin_install_id::text AS plugin_install_id,
-            credential_id::text AS credential_id,
-            connection_id::text AS connection_id,
-            route_key,
-            route_label,
-            modality,
-            model_family,
-            environment,
-            priority,
-            weight,
-            fallback_group,
-            base_url_override,
-            upstream_model,
-            api_mode,
-            request_path,
-            internal_label,
-            admin_notes,
-            is_default,
-            health_status,
-            last_health_checked_at::text AS last_health_checked_at,
-            deleted_at::text AS deleted_at,
-            request_config,
-            pricing,
-            rate_limit,
-            status,
-            created_at::text AS created_at,
-            updated_at::text AS updated_at
-        `,
-        [routeId],
-      );
-
-      const nextRoute = mapRoute(updated.rows[0]);
-      await this.applyDefaultRouteState(client, routeTenantId, nextRoute);
-      return nextRoute;
-    }, this.pool);
+    requireGatewayCapability(context, "platform:routes:write");
+    return this.updateOperationalRoute(context, routeId, { isDefault: true });
   }
-
   async deleteRoute(context: TenantContext, routeId: string): Promise<{ ok: true }> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getRouteRow(client, routeId);
       this.assertAdminManageableRoute(existing, context.tenantId);
       const routeTenantId = existing.tenant_id ?? PLATFORM_TENANT_ID;
@@ -1789,11 +1844,12 @@ export class AiGatewayAdminService {
       );
 
       return { ok: true as const };
-    }, this.pool);
+    });
   }
 
   async listCredentials(context: TenantContext): Promise<CredentialResponseView[]> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:read");
+    return withPlatformTransaction(this.pool, context, "platform:connections:read", async (client) => {
       const result = await client.query<CredentialRecord>(
         `
           SELECT
@@ -1801,11 +1857,6 @@ export class AiGatewayAdminService {
             tenant_id::text AS tenant_id,
             provider_id::text AS provider_id,
             name,
-            encrypted_secret,
-            nonce,
-            auth_tag,
-            key_version,
-            secret_fingerprint,
             status,
             last_used_at::text AS last_used_at,
             rotated_at::text AS rotated_at,
@@ -1814,24 +1865,28 @@ export class AiGatewayAdminService {
             updated_at::text AS updated_at
           FROM api_credentials
           WHERE status <> 'deleted'
-            AND (tenant_id IS NULL OR tenant_id = $1::uuid)
           ORDER BY
             CASE WHEN tenant_id IS NULL THEN 0 ELSE 1 END ASC,
             created_at ASC,
             id ASC
         `,
-        [context.tenantId],
+        [],
       );
 
-      return result.rows.map((row) => this.mapCredential(row));
-    }, this.pool);
+      return result.rows.map((row) => ({
+        id: row.id, providerId: row.provider_id, name: row.name, status: row.status,
+        createdAt: row.created_at, lastUsedAt: row.last_used_at, rotatedAt: row.rotated_at,
+        maskedSecret: "••••••••",
+      }));
+    });
   }
 
   async createCredential(
     context: TenantContext,
     input: CreateCredentialInput,
   ): Promise<CredentialResponseView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       await this.ensureProviderExists(input.providerId, client);
       const encrypted = this.credentialVault.createCredential(input.secret);
 
@@ -1923,7 +1978,7 @@ export class AiGatewayAdminService {
       } catch (error) {
         this.rethrowKnownDatabaseError(error, "Unable to create credential");
       }
-    }, this.pool);
+    });
   }
 
   async updateCredential(
@@ -1931,7 +1986,8 @@ export class AiGatewayAdminService {
     credentialId: string,
     input: UpdateCredentialInput,
   ): Promise<CredentialResponseView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
       this.assertAdminManageableCredential(existing, context.tenantId);
       const result = await client.query<CredentialRecord>(
@@ -1967,7 +2023,7 @@ export class AiGatewayAdminService {
       );
 
       return this.mapCredential(result.rows[0]);
-    }, this.pool);
+    });
   }
 
   async rotateCredential(
@@ -1975,7 +2031,8 @@ export class AiGatewayAdminService {
     credentialId: string,
     secret: string,
   ): Promise<CredentialResponseView> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
       this.assertAdminManageableCredential(existing, context.tenantId);
       const encrypted = this.credentialVault.rotateCredential(secret);
@@ -2045,11 +2102,12 @@ export class AiGatewayAdminService {
         },
       );
       return credential;
-    }, this.pool);
+    });
   }
 
   async deleteCredential(context: TenantContext, credentialId: string): Promise<{ ok: true }> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getCredentialRow(client, credentialId);
       this.assertAdminManageableCredential(existing, context.tenantId);
       const references = await client.query<{ id: string; route_key: string; route_label: string | null }>(
@@ -2061,6 +2119,18 @@ export class AiGatewayAdminService {
         throw new AiGatewayApiError(409, "CREDENTIAL_IN_USE", "Credential is referenced by non-deleted route configurations", {
           routes: references.rows.map((route) => ({ id: route.id, key: route.route_key, label: route.route_label })),
         });
+      }
+      const connectionOrInstall = await client.query<{ id: string }>(
+        `SELECT id::text AS id FROM ai_provider_connections
+         WHERE credential_id=$1 AND status <> 'deleted'
+         UNION ALL
+         SELECT id::text AS id FROM tenant_ai_plugin_installs
+         WHERE credential_id=$1 AND status IN ('draft', 'published')
+         LIMIT 1`,
+        [credentialId],
+      );
+      if (connectionOrInstall.rows.length) {
+        throw new AiGatewayApiError(409, "CREDENTIAL_IN_USE", "Credential is referenced by a provider connection or installed plugin");
       }
       const result = await client.query<{ id: string }>(
         `
@@ -2098,14 +2168,15 @@ export class AiGatewayAdminService {
         },
       );
       return { ok: true as const };
-    }, this.pool);
+    });
   }
 
   async deleteProviderConnection(
     context: TenantContext,
     connectionId: string,
   ): Promise<{ ok: true }> {
-    return withTenantTransaction(context, async (client) => {
+    requireGatewayCapability(context, "platform:connections:manage");
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const existing = await this.getProviderConnectionRow(client, connectionId);
       this.assertAdminManageableProviderConnection(existing, context.tenantId);
 
@@ -2161,7 +2232,7 @@ export class AiGatewayAdminService {
         },
       );
       return { ok: true as const };
-    }, this.pool);
+    });
   }
 
   async generateText(
@@ -2311,7 +2382,7 @@ export class AiGatewayAdminService {
     }
   }
 
-  private async getRouteRow(client: PoolClient, routeId: string): Promise<RouteRecord> {
+  private async getRouteRow(client: PoolClient, routeId: string, lock = false): Promise<RouteRecord> {
     const result = await client.query<RouteRecord>(
       `
         SELECT
@@ -2351,6 +2422,7 @@ export class AiGatewayAdminService {
         FROM ai_routes
         WHERE id = $1::uuid
         LIMIT 1
+        ${lock ? "FOR UPDATE" : ""}
       `,
       [routeId],
     );

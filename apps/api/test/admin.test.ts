@@ -244,7 +244,7 @@ async function createTestAiRoute(
       provider.rows[0]?.id,
       model.rows[0]?.id,
       input.routeKey ?? `image.test.${randomUUID()}`,
-      input.routeLabel ?? "缁捐儻鐭炬稉鈧?,
+      input.routeLabel ?? "测试线路",
     ],
   );
 
@@ -1102,7 +1102,7 @@ describeWithDatabase("admin api", () => {
           tenantName: "Ops Tenant",
         });
         const route = await createTestAiRoute(adminPool, {
-          routeLabel: "缁捐儻鐭炬稉鈧?,
+          routeLabel: "测试线路",
           tenantId: adminUser.currentTenant.id,
         });
         await adminPool.query(
@@ -1113,13 +1113,16 @@ describeWithDatabase("admin api", () => {
               model_id,
               route_id,
               status,
+              record_level,
+              traffic_class,
               latency_ms,
               error,
               created_at
             )
             VALUES
-              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'succeeded', 1000, NULL, now()),
-              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'failed', 2000, '{"message":"timeout"}'::jsonb, now())
+              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'succeeded', 'request', 'user_generation', 1000, NULL, now()),
+              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'failed', 'request', 'user_generation', 2000, '{"message":"timeout"}'::jsonb, now()),
+              ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'http_succeeded', 'request', 'admin_test', 50, NULL, now())
           `,
           [adminUser.currentTenant.id, route.providerId, route.modelId, route.routeId],
         );
@@ -1150,7 +1153,7 @@ describeWithDatabase("admin api", () => {
         });
         expect(stats.json().routes[0]).toMatchObject({
           averageLatencyMs: 1500,
-          routeLabel: "缁捐儻鐭炬稉鈧?,
+          routeLabel: "测试线路",
           successfulCalls: 1,
           totalCalls: 2,
         });

@@ -7,6 +7,9 @@ import {
   requireTenant,
 } from "../../http/auth-middleware.js";
 import { AuditApiError } from "./audit.service.js";
+import { listPlatformAudit } from "./platform-audit.js";
+import { ConsoleQueryError } from "../console-query/console-query.schemas.js";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 import {
   type AuditLogsQuery,
   auditLogsQuerySchema,
@@ -61,7 +64,7 @@ function handleRouteError(
     );
   }
 
-  if (error instanceof AuditApiError) {
+  if (error instanceof AuditApiError || error instanceof PlatformTransactionError || error instanceof ConsoleQueryError) {
     return sendError(request, reply, error.statusCode, error.code, error.message);
   }
 
@@ -79,6 +82,10 @@ function handleRouteError(
 }
 
 export function registerAuditRoutes(app: FastifyInstance): void {
+  app.get("/api/v2/admin/audit/logs", { preHandler: [requireAuth, requirePermission("platform:audit:read")] }, async (request, reply) => {
+    try { return await listPlatformAudit(app.auditService.pool, request.ctx, request.query, app.auditService.cursorSecret); }
+    catch (error) { return handleRouteError(error, request, reply); }
+  });
   app.get(
     "/api/v2/audit/logs",
     {

@@ -1,3 +1,4 @@
+import { resolvePlatformCapabilities } from "../src/modules/platform-access/platform-access.policy.js";
 import { describe, expect, test } from "vitest";
 
 import { mouxiHubGptImage2Line3Manifest } from "../../../packages/ai-gateway-core/src/plugins/manifests/mouxihub-gpt-image-2-line3.js";
@@ -14,7 +15,7 @@ describe("AiPluginService route install statements", () => {
   test("requires a base URL when installing the PixelHub package", async () => {
     const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
     await expect(service.installPlugin(
-      { tenantId: "tenant", userId: null },
+      { tenantId: "tenant", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") },
       "pixelhub.video",
       {},
     )).rejects.toMatchObject({ code: "PLUGIN_BASE_URL_REQUIRED", statusCode: 422 });
@@ -94,7 +95,7 @@ describe("AiPluginService route install statements", () => {
     const resolved = await (service as unknown as { resolveCredentialId(
       client: typeof client, context: { tenantId: string; userId: null }, manifest: typeof openAiGptImage2Manifest,
       providerId: string, existingCredentialId: string, input: Record<string, never>): Promise<string> }).resolveCredentialId(
-      client, { tenantId: "tenant", userId: null }, openAiGptImage2Manifest,
+      client, { tenantId: "tenant", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") }, openAiGptImage2Manifest,
       "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000004", {},
     );
     expect(resolved).toBe("00000000-0000-0000-0000-000000000004");
@@ -108,7 +109,7 @@ describe("AiPluginService route install statements", () => {
     const service = new AiPluginService({ credentialVault: {} as never, pool: {} as never });
     const client = { async query() { return { rows: [] }; } };
     await expect((service as unknown as { resolveCredentialId(...args: unknown[]): Promise<string> }).resolveCredentialId(
-      client, { tenantId: "tenant", userId: null }, openAiGptImage2Manifest,
+      client, { tenantId: "tenant", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") }, openAiGptImage2Manifest,
       "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000004", {},
     )).rejects.toMatchObject({ code: "PLUGIN_CREDENTIAL_UNAVAILABLE", statusCode: 409 });
   });

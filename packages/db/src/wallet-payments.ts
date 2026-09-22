@@ -144,14 +144,19 @@ export class WalletPaymentService {
   }
 
   async listAdminPlans(): Promise<AdminRechargePlanView[]> {
-    return this.withSystemAdminTransaction(async (client) => {
-      const result = await client.query<PlanRow>("SELECT id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text FROM billing_recharge_plans ORDER BY sort_order ASC, id ASC");
-      return result.rows.map(mapAdminPlan);
-    });
+    return this.withSystemAdminTransaction((client) => this.listAdminPlansWithClient(client));
+  }
+
+  async listAdminPlansWithClient(client: PoolClient): Promise<AdminRechargePlanView[]> {
+    const result = await client.query<PlanRow>("SELECT id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text FROM billing_recharge_plans ORDER BY sort_order ASC, id ASC");
+    return result.rows.map(mapAdminPlan);
   }
 
   async createAdminPlan(input: { key: string; name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> {
-    return this.withSystemAdminTransaction(async (client) => {
+    return this.withSystemAdminTransaction((client) => this.createAdminPlanWithClient(client, input));
+  }
+
+  async createAdminPlanWithClient(client: PoolClient, input: { key: string; name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> {
       try {
         const result = await client.query<PlanRow>("INSERT INTO billing_recharge_plans (key, name, amount_cents, credits, validity_days, active, sort_order) VALUES ($1, $2, $3::bigint, $4::numeric, $5, $6, $7) RETURNING id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text", [input.key, input.name, input.amountCents, input.credits, input.validityDays, input.active, input.sortOrder]);
         if (!result.rows[0]) throw new WalletPaymentServiceError("RECHARGE_PLAN_CREATE_FAILED", "Unable to create recharge plan", 500);
@@ -160,19 +165,23 @@ export class WalletPaymentService {
         if (isUniqueViolation(error)) throw new WalletPaymentServiceError("RECHARGE_PLAN_KEY_CONFLICT", "Recharge plan key already exists", 409);
         throw error;
       }
-    });
   }
 
   async updateAdminPlan(planId: string, input: { name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> {
-    return this.withSystemAdminTransaction(async (client) => {
+    return this.withSystemAdminTransaction((client) => this.updateAdminPlanWithClient(client, planId, input));
+  }
+
+  async updateAdminPlanWithClient(client: PoolClient, planId: string, input: { name: string; amountCents: number; credits: number; validityDays: number; active: boolean; sortOrder: number }): Promise<AdminRechargePlanView> {
       const result = await client.query<PlanRow>("UPDATE billing_recharge_plans SET name = $2, amount_cents = $3::bigint, credits = $4::numeric, validity_days = $5, active = $6, sort_order = $7, updated_at = now() WHERE id = $1::uuid RETURNING id::text, key, name, amount_cents::text, credits::text, currency, validity_days, sort_order, active, created_at::text, updated_at::text", [planId, input.name, input.amountCents, input.credits, input.validityDays, input.active, input.sortOrder]);
       if (!result.rows[0]) throw new WalletPaymentServiceError("RECHARGE_PLAN_NOT_FOUND", "Recharge plan not found", 404);
       return mapAdminPlan(result.rows[0]);
-    });
   }
 
   async listAdminPayments(input?: { limit?: number; status?: string }): Promise<AdminWalletPaymentView[]> {
-    return this.withSystemAdminTransaction(async (client) => {
+    return this.withSystemAdminTransaction(client => this.listAdminPaymentsWithClient(client, input));
+  }
+
+  async listAdminPaymentsWithClient(client: PoolClient, input?: { limit?: number; status?: string }): Promise<AdminWalletPaymentView[]> {
       const result = await client.query<PaymentRow & { eligible: boolean; user_email: string | null }>(`SELECT ${joinedPaymentColumns}, users.email AS user_email,
         (billing_wallet_payments.status = 'paid' AND EXISTS (
           SELECT 1 FROM billing_wallet_credit_grants
@@ -181,20 +190,22 @@ export class WalletPaymentService {
             AND billing_wallet_credit_grants.source_id = billing_wallet_payments.id::text
             AND billing_wallet_credit_grants.original_credits = billing_wallet_credit_grants.remaining_credits
             AND billing_wallet_credit_grants.reserved_credits = 0
+            AND NOT COALESCE(billing_wallet_credit_grants.refund_hold, false)
         )) AS eligible
         FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id
         WHERE ($1::text IS NULL OR billing_wallet_payments.status = $1)
         ORDER BY billing_wallet_payments.created_at DESC, billing_wallet_payments.id DESC LIMIT $2`, [input?.status ?? null, input?.limit ?? 50]);
       return result.rows.map((row) => ({ ...mapPayment(row), eligible: row.eligible, userEmail: row.user_email }));
-    });
   }
 
   async getAdminPayment(paymentId: string): Promise<AdminWalletPaymentView> {
-    return this.withSystemAdminTransaction(async (client) => {
+    return this.withSystemAdminTransaction((client) => this.getAdminPaymentWithClient(client, paymentId));
+  }
+
+  async getAdminPaymentWithClient(client: PoolClient, paymentId: string): Promise<AdminWalletPaymentView> {
       const result = await client.query<PaymentRow & { user_email: string | null }>(`SELECT ${joinedPaymentColumns}, users.email AS user_email FROM billing_wallet_payments JOIN users ON users.id = billing_wallet_payments.user_id WHERE billing_wallet_payments.id = $1::uuid`, [paymentId]);
       if (!result.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
       return { ...mapPayment(result.rows[0]), eligible: false, userEmail: result.rows[0].user_email };
-    });
   }
 
   async getEligibleRefundPayment(paymentId: string): Promise<EligibleRefundPayment> {
@@ -202,38 +213,82 @@ export class WalletPaymentService {
       const result = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid FOR UPDATE`, [paymentId]);
       const row = result.rows[0];
       if (!row) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
-      const grant = await client.query<{ original_credits: string; remaining_credits: string; reserved_credits: string }>("SELECT original_credits::text, remaining_credits::text, reserved_credits::text FROM billing_wallet_credit_grants WHERE wallet_id = $1::uuid AND source_type = 'payment' AND source_id = $2 FOR UPDATE", [row.wallet_id, row.id]);
+      const grant = await client.query<{ original_credits: string; remaining_credits: string; reserved_credits: string; refund_hold: boolean }>("SELECT original_credits::text, remaining_credits::text, reserved_credits::text, refund_hold FROM billing_wallet_credit_grants WHERE wallet_id = $1::uuid AND source_type = 'payment' AND source_id = $2 FOR UPDATE", [row.wallet_id, row.id]);
       const payment = mapPayment(row);
       const grantRow = grant.rows[0];
-      const eligible = payment.status === "paid" && grantRow?.original_credits === grantRow.remaining_credits && Number(grantRow.reserved_credits ?? "1") === 0;
+      const eligible = payment.status === "paid" && grantRow?.original_credits === grantRow.remaining_credits && Number(grantRow.reserved_credits ?? "1") === 0 && !grantRow.refund_hold;
       if (!eligible) throw new WalletPaymentServiceError("PAYMENT_CREDITS_ALREADY_USED", "Payment credits have been used or reserved", 409);
       return { ...payment, eligible };
     });
   }
 
+  /**
+   * Atomically reserves a refund attempt before the network call. A timeout
+   * remains reconcilable as `refund_pending`, while a second admin click can
+   * no longer submit the same upstream refund twice.
+   */
+  async claimEligibleRefundPayment(paymentId: string): Promise<EligibleRefundPayment> {
+    return this.withSystemAdminTransaction((client) => this.claimEligibleRefundPaymentWithClient(client, paymentId));
+  }
+
+  async claimEligibleRefundPaymentWithClient(client: PoolClient, paymentId: string): Promise<EligibleRefundPayment> {
+      const result = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid FOR UPDATE`, [paymentId]);
+      const row = result.rows[0];
+      if (!row) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+      const payment = mapPayment(row);
+      if (payment.status === "refund_pending") throw new WalletPaymentServiceError("PAYMENT_REFUND_IN_PROGRESS", "Payment refund is already being reconciled", 409);
+      const grant = await client.query<{ id: string; original_credits: string; remaining_credits: string; reserved_credits: string; refund_hold: boolean }>("SELECT id::text, original_credits::text, remaining_credits::text, reserved_credits::text, refund_hold FROM billing_wallet_credit_grants WHERE wallet_id = $1::uuid AND source_type = 'payment' AND source_id = $2 FOR UPDATE", [row.wallet_id, row.id]);
+      const grantRow = grant.rows[0];
+      const eligible = payment.status === "paid" && grantRow?.original_credits === grantRow.remaining_credits && Number(grantRow.reserved_credits ?? "1") === 0 && !grantRow.refund_hold;
+      if (!eligible) throw new WalletPaymentServiceError("PAYMENT_CREDITS_ALREADY_USED", "Payment credits have been used or reserved", 409);
+      await client.query("UPDATE billing_wallet_credit_grants SET refund_hold = true, updated_at = now() WHERE id = $1::uuid AND refund_hold = false", [grantRow.id]);
+      const claimed = await client.query<PaymentRow>(`UPDATE billing_wallet_payments
+        SET status = 'refund_pending', failure_code = NULL, updated_at = now()
+        WHERE id = $1::uuid AND status = 'paid'
+        RETURNING ${paymentColumns}`, [paymentId]);
+      if (!claimed.rows[0]) throw new WalletPaymentServiceError("PAYMENT_REFUND_IN_PROGRESS", "Payment refund is already being reconciled", 409);
+      return { ...mapPayment(claimed.rows[0]), eligible: true };
+  }
+
+  /** A provider-confirmed rejection releases a claim; unknown network outcomes stay held for reconciliation. */
+  async releaseRefundPaymentClaim(paymentId: string, failureCode: string): Promise<WalletPaymentView> {
+    return this.withSystemAdminTransaction((client) => this.releaseRefundPaymentClaimWithClient(client, paymentId, failureCode));
+  }
+
+  async releaseRefundPaymentClaimWithClient(client: PoolClient, paymentId: string, failureCode: string): Promise<WalletPaymentView> {
+      const result = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid FOR UPDATE`, [paymentId]);
+      const row = result.rows[0];
+      if (!row) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+      if (row.status !== "refund_pending") throw new WalletPaymentServiceError("PAYMENT_STATE_CONFLICT", "Payment refund is not pending", 409);
+      await client.query("UPDATE billing_wallet_credit_grants SET refund_hold = false, updated_at = now() WHERE wallet_id = $1::uuid AND source_type = 'payment' AND source_id = $2", [row.wallet_id, row.id]);
+      const released = await client.query<PaymentRow>(`UPDATE billing_wallet_payments SET status = 'paid', failure_code = $2, updated_at = now() WHERE id = $1::uuid AND status = 'refund_pending' RETURNING ${paymentColumns}`, [paymentId, failureCode]);
+      if (!released.rows[0]) throw new WalletPaymentServiceError("PAYMENT_STATE_CONFLICT", "Payment refund is not pending", 409);
+      return mapPayment(released.rows[0]);
+  }
+
   async markProviderCancelled(paymentId: string): Promise<WalletPaymentView> {
-    return this.withSystemAdminTransaction(async (client) => {
-      const result = await client.query<PaymentRow>(`UPDATE billing_wallet_payments
+    return this.withSystemAdminTransaction((client) => this.markProviderCancelledWithClient(client, paymentId));
+  }
+
+  async markProviderCancelledWithClient(client: PoolClient, paymentId: string): Promise<WalletPaymentView> {
+    const result = await client.query<PaymentRow>(`UPDATE billing_wallet_payments
         SET status = 'cancelled', failure_code = 'PROVIDER_CANCELLED', updated_at = now()
         WHERE id = $1::uuid AND status IN ('pending', 'checkout_created')
         RETURNING ${paymentColumns}`,
       [paymentId]);
-      if (result.rows[0]) return mapPayment(result.rows[0]);
-      const existing = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid`, [paymentId]);
-      if (!existing.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
-      return mapPayment(existing.rows[0]);
-    });
+    if (result.rows[0]) return mapPayment(result.rows[0]);
+    const existing = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM billing_wallet_payments WHERE id = $1::uuid`, [paymentId]);
+    if (!existing.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+    return mapPayment(existing.rows[0]);
   }
 
   async applyVerifiedNotification(input: VerifiedXunhuNotification): Promise<{ mutated: boolean; payment: WalletPaymentView }> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const transition = await client.query<{ mutated: boolean }>("SELECT app.apply_xunhu_payment_notification($1, $2::bigint, $3, $4, $5, $6::timestamptz) AS mutated", [input.merchantOrderId, input.amountCents, input.providerState, input.transactionId, input.openOrderId, input.eventTime]);
-      const payment = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM app.get_wallet_payment_by_order($1)`, [input.merchantOrderId]);
-      if (!payment.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+      const result = await this.applyVerifiedNotificationWithClient(client, input);
       await client.query("COMMIT");
-      return { mutated: transition.rows[0]?.mutated ?? false, payment: mapPayment(payment.rows[0]) };
+      return result;
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       const message = error instanceof Error ? error.message : "";
@@ -242,6 +297,13 @@ export class WalletPaymentService {
       if (message.includes("incompatible") || message.includes("conflicting")) throw new WalletPaymentServiceError("PAYMENT_STATE_CONFLICT", "Payment notification state conflicts with the order", 409);
       throw error;
     } finally { client.release(); }
+  }
+
+  async applyVerifiedNotificationWithClient(client: PoolClient, input: VerifiedXunhuNotification): Promise<{ mutated: boolean; payment: WalletPaymentView }> {
+    const transition = await client.query<{ mutated: boolean }>("SELECT app.apply_xunhu_payment_notification($1, $2::bigint, $3, $4, $5, $6::timestamptz) AS mutated", [input.merchantOrderId, input.amountCents, input.providerState, input.transactionId, input.openOrderId, input.eventTime]);
+    const payment = await client.query<PaymentRow>(`SELECT ${paymentColumns} FROM app.get_wallet_payment_by_order($1)`, [input.merchantOrderId]);
+    if (!payment.rows[0]) throw new WalletPaymentServiceError("PAYMENT_NOT_FOUND", "Payment not found", 404);
+    return { mutated: transition.rows[0]?.mutated ?? false, payment: mapPayment(payment.rows[0]) };
   }
 
   private async withSystemAdminTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {

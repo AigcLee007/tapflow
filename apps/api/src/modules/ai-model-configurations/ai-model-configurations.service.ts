@@ -7,11 +7,13 @@ import {
   type AiPluginManifest,
   type AiPluginRegistry,
 } from "@aigc-flow/ai-gateway-core";
-import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import { createPgPool } from "@aigc-flow/db";
+import { withPlatformTransaction } from "../../http/platform-transaction.js";
 
 import type { PublishModelConfigurationInput, SaveModelConfigurationDraftInput } from "./ai-model-configurations.schemas.js";
 
 export type TenantContext = {
+  permissions?: readonly string[];
   tenantId: string;
   userId: string | null;
   requestId?: string | null;
@@ -19,6 +21,12 @@ export type TenantContext = {
   ipHash?: string | null;
   userAgent?: string | null;
 };
+
+function requireConfigurationManagement(context: TenantContext): void {
+  if (!context.permissions?.includes("platform:console:access") || !context.permissions.includes("platform:pricing:publish")) {
+    throw new AiModelConfigurationApiError(403, "FORBIDDEN", "Insufficient platform capability");
+  }
+}
 
 export type ModelConfigurationDraftView = {
   route: {
@@ -70,8 +78,9 @@ export class AiModelConfigurationsService {
   }
 
   async publish(context: TenantContext, input: PublishModelConfigurationInput): Promise<ModelConfigurationDraftView> {
+    requireConfigurationManagement(context);
     try {
-      return await withTenantTransaction(context, async (client) => {
+      return await withPlatformTransaction(this.pool, context, "platform:pricing:publish", async (client) => {
       const group = await client.query<{ environment: string; modality: string; model_family: string }>(
         `SELECT modality,model_family,environment FROM ai_routes
          WHERE id=$1 AND tenant_id IS NULL AND deleted_at IS NULL`, [input.routeId]);
@@ -149,7 +158,7 @@ export class AiModelConfigurationsService {
         credential: { id: row.credential_id, name: row.credential_name, providerId: row.credential_provider_id, status: row.credential_status, secretFingerprint: row.secret_fingerprint },
         pricing: { unit: row.unit, unitCredits: Number(row.unit_credits), minChargeCredits: Number(row.min_charge_credits), active: true },
       };
-      }, this.pool);
+      });
     } catch (error) {
       if (["40001", "40P01", "55P03"].includes((error as { code?: string }).code ?? "")) {
         throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
@@ -159,11 +168,20 @@ export class AiModelConfigurationsService {
   }
 
   async saveDraft(context: TenantContext, input: SaveModelConfigurationDraftInput): Promise<ModelConfigurationDraftView> {
+    requireConfigurationManagement(context);
     if (!input.pricing || input.pricing.unitCredits <= 0 || input.pricing.minChargeCredits <= 0) {
       throw new AiModelConfigurationApiError(400, "CONFIGURATION_PRICING_REQUIRED", "Positive pricing is required");
     }
     const definition = this.resolveDefinition(input);
-    return withTenantTransaction(context, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:pricing:publish", async (client) => {
+      if (input.routeId) {
+        const current = await client.query<{ configuration_revision: number }>(
+          `SELECT configuration_revision FROM ai_routes
+           WHERE id=$1 AND tenant_id IS NULL AND deleted_at IS NULL FOR UPDATE`, [input.routeId]);
+        if (!current.rows[0] || current.rows[0].configuration_revision !== input.expectedRevision) {
+          throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
+        }
+      }
       const providerId = await this.upsertProvider(client, definition);
       const modelId = await this.upsertModel(client, providerId, definition);
       const installId = definition.manifest
@@ -189,13 +207,13 @@ export class AiModelConfigurationsService {
         `INSERT INTO model_pricing (provider, model, route, unit, unit_credits, min_charge_credits, metadata, active)
          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,false)
          ON CONFLICT (provider,model,route,unit) DO UPDATE SET
-           unit_credits=CASE WHEN $8::boolean THEN EXCLUDED.unit_credits WHEN model_pricing.active THEN model_pricing.unit_credits ELSE EXCLUDED.unit_credits END,
-           min_charge_credits=CASE WHEN $8::boolean THEN EXCLUDED.min_charge_credits WHEN model_pricing.active THEN model_pricing.min_charge_credits ELSE EXCLUDED.min_charge_credits END,
-           metadata=CASE WHEN $8::boolean THEN EXCLUDED.metadata WHEN model_pricing.active THEN model_pricing.metadata ELSE EXCLUDED.metadata END,
-           active=CASE WHEN $8::boolean THEN false ELSE model_pricing.active END
+           unit_credits=EXCLUDED.unit_credits,
+           min_charge_credits=EXCLUDED.min_charge_credits,
+           metadata=EXCLUDED.metadata,
+           active=false
          RETURNING active`,
-        [definition.provider.key, input.route.upstreamModel, route.route_key, input.pricing.unit,
-          input.pricing.unitCredits, input.pricing.minChargeCredits, JSON.stringify({ configurationDraft: true }), Boolean(input.routeId)],
+        [definition.provider.key, definition.model.modelKey, route.route_key, input.pricing.unit,
+          input.pricing.unitCredits, input.pricing.minChargeCredits, JSON.stringify({ configurationDraft: true })],
       );
       return {
         route: {
@@ -211,7 +229,7 @@ export class AiModelConfigurationsService {
           status: credential.status, secretFingerprint: credential.secret_fingerprint ?? "" },
         pricing: { ...input.pricing, active: pricingResult.rows[0]!.active },
       };
-    }, this.pool);
+    });
   }
 
   private resolveDefinition(input: SaveModelConfigurationDraftInput): ResolvedDefinition {
@@ -383,11 +401,6 @@ export class AiModelConfigurationsService {
     const requestConfig = { ...(definition.routeDefaults.requestConfig ?? {}), ...(input.route.requestConfig ?? {}),
       ...(timeoutMs ? { timeoutMs } : {}), ...(requestPath ? { path: requestPath } : {}) };
     if (input.routeId) {
-      const current = await client.query<{ route_key: string; configuration_revision: number }>(
-        `SELECT route_key,configuration_revision FROM ai_routes WHERE id=$1 AND tenant_id IS NULL AND deleted_at IS NULL FOR UPDATE`, [input.routeId]);
-      if (!current.rows[0] || current.rows[0].configuration_revision !== input.expectedRevision) {
-        throw new AiModelConfigurationApiError(409, "MODEL_CONFIGURATION_CONFLICT", "Model configuration changed; reload and retry");
-      }
       const updated = await client.query<any>(
         `UPDATE ai_routes SET provider_id=$2,model_id=$3,credential_id=$4,connection_id=$5,plugin_install_id=$6,
          modality=$7,priority=$8,weight=$9,fallback_group=$10,request_config=$11::jsonb,status='inactive',model_family=$12,

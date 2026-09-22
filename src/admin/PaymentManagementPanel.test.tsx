@@ -31,14 +31,24 @@ const payment = {
 
 describe("PaymentManagementPanel", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     listPlans.mockResolvedValue([plan]);
     listPayments.mockResolvedValue([payment]);
     refundPayment.mockResolvedValue({ ...payment, status: "refund_pending" });
     updatePlan.mockResolvedValue(plan);
   });
 
+  test("lets operators read orders without loading plans or exposing financial writes", async () => {
+    render(<PaymentManagementPanel canManage={false} />);
+    expect(await screen.findByText(/user@example.com/)).toBeTruthy();
+    expect(listPlans).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("退款原因")).toBeNull();
+    expect(screen.queryByRole("button", { name: "退款 payment-1" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "查询 payment-1" })).toBeNull();
+  });
+
   test("saves administrator-controlled display order", async () => {
-    render(<PaymentManagementPanel />);
+    render(<PaymentManagementPanel canManage />);
     const sortOrder = await screen.findByLabelText("充值套餐排序：100 AI credits");
     fireEvent.change(sortOrder, { target: { value: "25" } });
     fireEvent.click(screen.getByRole("button", { name: "保存 100 AI credits" }));
@@ -47,16 +57,32 @@ describe("PaymentManagementPanel", () => {
   });
 
   test("allows refund only for an API-eligible paid payment", async () => {
-    render(<PaymentManagementPanel />);
-    const reason = await screen.findByLabelText("退款原因");
+    render(<PaymentManagementPanel canManage />);
+    const reason = await screen.findByLabelText("退款原因 payment-1");
     fireEvent.change(reason, { target: { value: "Duplicate charge" } });
     expect(screen.getByRole("button", { name: "退款 payment-1" }).hasAttribute("disabled")).toBe(true);
   });
 
   test("clearly labels the recharge-plan and payment administration surface", async () => {
-    render(<PaymentManagementPanel />);
+    render(<PaymentManagementPanel canManage />);
 
     expect(await screen.findByRole("heading", { name: "充值套餐与支付" })).toBeTruthy();
     expect(screen.getByText("修改仅影响新订单，已支付订单保留下单时的套餐快照。")).toBeTruthy();
+  });
+
+  test("keeps refund reasons and pending state attached to the selected order", async () => {
+    listPayments.mockResolvedValue([{ ...payment, eligible: true }, { ...payment, id: "payment-2", merchantOrderId: "TF0002", eligible: true }]);
+    let finish!: (value: unknown) => void;
+    refundPayment.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    render(<PaymentManagementPanel canManage />);
+    fireEvent.change(await screen.findByLabelText("退款原因 payment-1"), { target: { value: "Duplicate payment confirmed" } });
+    const first = screen.getByRole("button", { name: "退款 payment-1" });
+    expect(screen.getByRole("button", { name: "退款 payment-2" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(first);
+    fireEvent.click(first);
+    expect(refundPayment).toHaveBeenCalledTimes(1);
+    expect(refundPayment).toHaveBeenCalledWith("payment-1", "Duplicate payment confirmed");
+    finish({ ...payment, status: "refund_pending" });
+    expect(await screen.findByText("退款申请已提交，请以订单最终状态为准。")).toBeTruthy();
   });
 });

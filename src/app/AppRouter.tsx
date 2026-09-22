@@ -9,6 +9,8 @@ import { InspectionDashboardPage } from "../account/InspectionDashboardPage";
 import { AiSettingsPage } from "../account/ai-settings/AiSettingsPage";
 import { TemplateLibraryPage } from "../account/TemplateLibraryPage";
 import { AdminPage } from "../admin/AdminPage";
+import { AdminAccessDenied, AdminConsoleShell } from "../admin/AdminConsoleShell";
+import { getAdminPage, getAdminRedirect } from "../admin/adminNavigation";
 import { TemplateAdminEditorPage } from "../admin/templates/TemplateAdminEditorPage";
 import { TemplateAdminListPage } from "../admin/templates/TemplateAdminListPage";
 import { getTemplateIdFromAdminPath } from "../admin/templates/templateAdminNavigation";
@@ -22,14 +24,16 @@ import { HomePage } from "../workspace/HomePage";
 import { WorkspacePage } from "../workspace/WorkspacePage";
 import { AppVersionReminder } from "./version/AppVersionReminder";
 import { WorkspaceShell } from "./WorkspaceShell";
-import { canAccessOperationsConsole, canAccessProviderOperations, resolveProductRole } from "../auth/productRoles";
+import { ConsoleRecordsPage } from "../console/ConsoleRecordsPage";
+import { ConsoleOverviewPage } from "../console/ConsoleOverviewPage";
+import { PersonalConsoleShell } from "../console/PersonalConsoleShell";
+import { ConsoleUserPage } from "../console/ConsoleUserPage";
+import { PaymentManagementPanel } from "../admin/PaymentManagementPanel";
+import { PlatformAuditPage } from "../admin/PlatformAuditPage";
+import { hasPlatformCapability } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
 import {
   ACCOUNT_ROUTE,
-  ACCOUNT_AI_SETTINGS_ROUTE,
-  ACCOUNT_INSPECTION_ROUTE,
-  ACCOUNT_PROVIDER_SETTINGS_ROUTE,
-  ACCOUNT_TEMPLATE_LIBRARY_ROUTE,
   ADMIN_ROUTE,
   ADMIN_TEMPLATES_ROUTE,
   ASSETS_ROUTE,
@@ -73,7 +77,12 @@ function useCurrentLocation() {
   useEffect(() => {
     const handleChange = () => setLocation(getCurrentLocation());
     window.addEventListener("popstate", handleChange);
-    return () => window.removeEventListener("popstate", handleChange);
+    window.addEventListener("hashchange", handleChange);
+    handleChange();
+    return () => {
+      window.removeEventListener("popstate", handleChange);
+      window.removeEventListener("hashchange", handleChange);
+    };
   }, []);
 
   return location;
@@ -89,24 +98,47 @@ function Redirect({ to }: { to: string }) {
 
 function ProtectedRoutes({ pathname }: { pathname: string }) {
   const { permissions, roles } = useAuth();
-  const productRole = resolveProductRole({ permissions, roles });
+  const access = { permissions, roles };
+  const adminRedirect = getAdminRedirect(getCurrentLocation());
+  if (adminRedirect) return <Redirect to={adminRedirect} />;
 
   if (pathname === ROOT_ROUTE || isCompatibilityRoute(pathname) || isNonUserFacingRoute(pathname)) {
     return <Redirect to={HOME_ROUTE} />;
   }
 
   if (pathname === ADMIN_ROUTE || pathname.startsWith(`${ADMIN_ROUTE}/`)) {
-    if (!canAccessOperationsConsole(productRole)) {
-      return <Redirect to={ACCOUNT_ROUTE} />;
+    const page = getAdminPage(pathname);
+    if (!hasPlatformCapability(access, "platform:console:access") || (page && !hasPlatformCapability(access, page.capability))) {
+      return <AdminAccessDenied />;
     }
+    if (!page) return <section><h1 className="text-lg font-semibold">未找到管理页面</h1><a href="/admin/overview">返回概览</a></section>;
+    if (pathname === "/admin/overview") return <ConsoleOverviewPage scope="platform"/>;
+    if (pathname === "/admin/audit") return <PlatformAuditPage/>;
+    if (pathname === "/admin/payments" || pathname === "/admin/plans") return <section className="space-y-5"><h1 className="text-2xl font-semibold text-white">{pathname === "/admin/plans" ? "充值套餐" : "支付订单"}</h1><PaymentManagementPanel mode={pathname === "/admin/plans" ? "plans" : "payments"} canManage={hasPlatformCapability(access,"platform:billing:manage")}/></section>;
+    if (page.path === "/admin/users" && pathname !== page.path) {
+      try { return <ConsoleUserPage userId={decodeURIComponent(pathname.slice(page.path.length+1))}/>; }
+      catch { return <p role="alert">用户编号无效。</p>; }
+    }
+    const consoleResource = page.path.slice("/admin/".length);
+    if (consoleResource === "usage" || consoleResource === "tasks" || consoleResource === "calls") {
+      let detailId: string | null = null;
+      try { detailId = pathname === page.path ? null : decodeURIComponent(pathname.slice(page.path.length+1)); }
+      catch { return <p role="alert">记录编号无效。</p>; }
+      return <ConsoleRecordsPage scope="platform" resource={consoleResource} detailId={detailId}/>;
+    }
+    if (pathname === "/admin/models") return <AiSettingsPage />;
+    if (pathname === "/admin/connections") return <ProviderSettingsPage />;
+    if (pathname === "/admin/integrations") return <TemplateLibraryPage />;
+    if (pathname === "/admin/inspection") return <InspectionDashboardPage />;
     if (pathname === ADMIN_TEMPLATES_ROUTE) {
       return <TemplateAdminListPage />;
     }
-    const templateId = getTemplateIdFromAdminPath(pathname);
+    const templateId = getTemplateIdFromAdminPath(pathname)
+      ?? (page.path === ADMIN_TEMPLATES_ROUTE ? decodeURIComponent(pathname.split("/")[3]) : null);
     if (templateId) {
       return <TemplateAdminEditorPage templateId={templateId} />;
     }
-    return <AdminPage />;
+    return <AdminPage key={page.path} section={page.section} />;
   }
 
   if (pathname === HOME_ROUTE || pathname.startsWith(`${HOME_ROUTE}/`)) {
@@ -137,47 +169,15 @@ function ProtectedRoutes({ pathname }: { pathname: string }) {
     return <BillingCenterPage />;
   }
 
-  if (
-    pathname === ACCOUNT_AI_SETTINGS_ROUTE ||
-    pathname.startsWith(`${ACCOUNT_AI_SETTINGS_ROUTE}/`)
-  ) {
-    if (!canAccessProviderOperations(productRole)) {
-      return <Redirect to={ACCOUNT_ROUTE} />;
-    }
-    return <AiSettingsPage />;
-  }
-
-  if (
-    pathname === ACCOUNT_INSPECTION_ROUTE ||
-    pathname.startsWith(`${ACCOUNT_INSPECTION_ROUTE}/`)
-  ) {
-    if (!canAccessOperationsConsole(productRole)) {
-      return <Redirect to={ACCOUNT_ROUTE} />;
-    }
-    return <InspectionDashboardPage />;
-  }
-
-  if (
-    pathname === ACCOUNT_TEMPLATE_LIBRARY_ROUTE ||
-    pathname.startsWith(`${ACCOUNT_TEMPLATE_LIBRARY_ROUTE}/`)
-  ) {
-    if (!canAccessProviderOperations(productRole)) {
-      return <Redirect to={ACCOUNT_ROUTE} />;
-    }
-    return <TemplateLibraryPage />;
-  }
-
-  if (
-    pathname === ACCOUNT_PROVIDER_SETTINGS_ROUTE ||
-    pathname.startsWith(`${ACCOUNT_PROVIDER_SETTINGS_ROUTE}/`)
-  ) {
-    if (!canAccessProviderOperations(productRole)) {
-      return <Redirect to={ACCOUNT_ROUTE} />;
-    }
-    return <ProviderSettingsPage />;
-  }
-
   if (pathname === ACCOUNT_ROUTE || pathname.startsWith(`${ACCOUNT_ROUTE}/`)) {
+    if (pathname === "/account/overview") return <ConsoleOverviewPage scope="self"/>;
+    const match = /^\/account\/(usage|tasks)(?:\/([^/]+))?$/.exec(pathname);
+    if (match) {
+      let detailId: string | null = null;
+      try { detailId = match[2] ? decodeURIComponent(match[2]) : null; }
+      catch { return <p role="alert">记录编号无效。</p>; }
+      return <ConsoleRecordsPage scope="self" resource={match[1] as "usage" | "tasks"} detailId={detailId}/>;
+    }
     return <AccountPage />;
   }
 
@@ -216,6 +216,12 @@ export function AppRouter() {
             getProjectMode(pathname) === "workbench" ? <Redirect to={WORKBENCH_ROUTE} /> : <FlowProjectPage />
           ) : pathname === WORKBENCH_ROUTE || pathname.startsWith(`${WORKBENCH_ROUTE}/`) ? (
             <WorkbenchPage />
+          ) : pathname === ADMIN_ROUTE || pathname.startsWith(`${ADMIN_ROUTE}/`) ? (
+            <AdminConsoleShell pathname={pathname}>
+              <ProtectedRoutes pathname={pathname} />
+            </AdminConsoleShell>
+          ) : pathname === ACCOUNT_ROUTE || pathname.startsWith(`${ACCOUNT_ROUTE}/`) || pathname === BILLING_ROUTE ? (
+            <PersonalConsoleShell pathname={pathname}><ProtectedRoutes pathname={pathname}/></PersonalConsoleShell>
           ) : (
             <WorkspaceShell>
               <div className="app-route-transition" key={getAppRouteTransitionKey(pathname)}>

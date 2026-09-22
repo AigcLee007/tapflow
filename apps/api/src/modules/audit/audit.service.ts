@@ -5,6 +5,7 @@ import {
   createPgPool,
 } from "@aigc-flow/db";
 import type { Pool } from "pg";
+import { randomUUID } from "node:crypto";
 
 type PgPool = Pool;
 
@@ -27,9 +28,11 @@ export class AuditApiError extends Error {
 
 export class AuditApiService {
   readonly pool: PgPool;
+  readonly cursorSecret: string;
 
-  constructor(options?: { pool?: PgPool }) {
+  constructor(options?: { pool?: PgPool; cursorSecret?: string }) {
     this.pool = options?.pool ?? createPgPool();
+    this.cursorSecret = options?.cursorSecret ?? randomUUID();
   }
 
   async listAuditLogs(

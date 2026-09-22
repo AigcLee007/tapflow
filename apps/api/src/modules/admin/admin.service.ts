@@ -1,4 +1,5 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { decodeUserCursor, encodeUserCursor, type UserCursor } from "./admin-user-cursor.js";
 
 import {
   createPgPool,
@@ -6,6 +7,7 @@ import {
   PersonalWalletService,
   PersonalWalletServiceError,
   safeRecordAuditLog,
+  recordAuditLogWithClient,
   type MembershipTier,
   type WalletLedgerView,
   type WalletSummaryView,
@@ -14,11 +16,14 @@ import {
 import type { Pool, PoolClient } from "pg";
 
 import type { RequestContext } from "../../http/request-context.js";
+import { setPlatformContext, withPlatformTransaction } from "../../http/platform-transaction.js";
+import type { PlatformCapability } from "../platform-access/platform-access.policy.js";
 import { hashPassword } from "../auth/password.js";
 
 type PgPool = Pool;
 
 type AdminUserRow = {
+  platform_role?: string | null;
   created_at: string;
   display_name: string | null;
   email: string;
@@ -181,6 +186,7 @@ export type AdminUserWalletView = WalletSummaryView & {
 };
 
 export type AdminUserView = {
+  platformRole?: string | null;
   createdAt: string;
   displayName: string | null;
   email: string;
@@ -326,17 +332,28 @@ function parseNumericString(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function requireFinancialRetryKey(value: string | undefined): string {
+  const key = value?.trim();
+  if (!key || key.length > 255) throw new AdminApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "积分变更必须提供有效的重试编号。");
+  return key;
+}
+
+function financialFingerprint(actorUserId: string | null, action: string, input: object): string {
+  // Include the requested validity duration, not an expiry recalculated on retry.
+  const values = Object.entries(input).filter(([key, value]) => key !== "idempotencyKey" && value !== undefined).sort(([a], [b]) => a.localeCompare(b));
+  return createHash("sha256").update(JSON.stringify({ actorUserId, action, values })).digest("hex");
+}
+
 function normalizeMembershipTier(value: string | null | undefined): MembershipTier {
   return value === "silver" || value === "gold" || value === "platinum" ? value : "standard";
 }
 
 async function setAdminTenantContext(
   client: PoolClient,
-  context: { tenantId: string; userId: string | null },
-): Promise<void> {
-  await client.query("SELECT set_config('app.tenant_id', $1, true)", [context.tenantId]);
-  await client.query("SELECT set_config('app.user_id', $1, true)", [context.userId ?? ""]);
-  await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+  context: { tenantId?: string | null; userId: string | null },
+  capability: PlatformCapability = "platform:users:read",
+): Promise<string> {
+  return setPlatformContext(client, context, capability);
 }
 
 function addDays(base: Date, days: number): Date {
@@ -414,6 +431,7 @@ function mapUser(
   wallet: AdminUserWalletView,
 ): AdminUserView {
   return {
+    platformRole: row.platform_role ?? null,
     createdAt: row.created_at,
     displayName: row.display_name,
     email: row.email,
@@ -441,12 +459,19 @@ function emptyAdminUserWallet(): AdminUserWalletView {
   };
 }
 
+function operationalError(value: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!value) return null;
+  const code = typeof value.code === "string" && /^[A-Z][A-Z0-9_]{0,79}$/.test(value.code)
+    ? value.code : "EXECUTION_FAILED";
+  return { code };
+}
+
 function mapWorkflowRun(row: AdminWorkflowRunRow): AdminWorkflowRunView {
   return {
     createdAt: row.created_at,
     createdBy: row.created_by,
-    errorJson: row.error_json,
-    errorSummary: summarizeErrorJson(row.error_json),
+    errorJson: operationalError(row.error_json),
+    errorSummary: summarizeErrorJson(operationalError(row.error_json)),
     failedNodeRunCount: Number.parseInt(row.failed_node_run_count, 10) || 0,
     finishedAt: row.finished_at,
     flowId: row.flow_id,
@@ -584,29 +609,46 @@ function mapAiRouteStats(
 export class AdminApiService {
   readonly personalWalletService: PersonalWalletService;
   readonly pool: PgPool;
+  private readonly cursorSecret: string;
 
   constructor(options?: {
+    cursorSecret?: string;
     personalWalletService?: PersonalWalletService;
     pool?: PgPool;
   }) {
     this.pool = options?.pool ?? createPgPool();
+    this.cursorSecret = options?.cursorSecret ?? randomUUID();
     this.personalWalletService = options?.personalWalletService ?? new PersonalWalletService({ pool: this.pool });
   }
 
   async searchUsers(
     context: AdminContext,
     input?: {
+      cursor?: string;
       limit?: number;
       query?: string;
+      status?: "active" | "disabled";
+      tenantId?: string;
+      platformRole?: "platform_operator" | "platform_super_admin" | "none";
     },
   ): Promise<{
     items: AdminUserView[];
     query: string;
+    nextCursor: string | null;
+    hasMore: boolean;
+    asOf: string;
   }> {
-    const tenantContext = requireTenantContext(context);
+    const tenantContext = { tenantId: context.tenantId, userId: context.userId };
     const limit = Math.max(1, Math.min(input?.limit ?? 20, 50));
     const query = input?.query?.trim() ?? "";
     const likeQuery = query ? `%${query.replace(/\s+/g, "%")}%` : null;
+    const binding = createHash("sha256").update(JSON.stringify({ userId: context.userId, query, status: input?.status ?? null, tenantId: input?.tenantId ?? null, platformRole: input?.platformRole ?? null })).digest("hex");
+    let cursor: UserCursor | undefined;
+    if (input?.cursor) {
+      try { cursor = decodeUserCursor(input.cursor, binding, this.cursorSecret); }
+      catch { throw new AdminApiError(400, "INVALID_CURSOR", "用户列表筛选已改变或分页标识无效，请重新查询。"); }
+    }
+    const asOf = cursor?.asOf ?? new Date().toISOString();
 
     const client = await this.pool.connect();
     let users: { rows: AdminUserRow[] };
@@ -616,6 +658,7 @@ export class AdminApiService {
       users = await client.query<AdminUserRow>(
         `
           SELECT
+            app.platform_user_role(users.id) AS platform_role,
             users.id::text AS id,
             users.email,
             users.display_name,
@@ -625,13 +668,19 @@ export class AdminApiService {
             users.created_at::text AS created_at
           FROM users
           WHERE
-            $1::text IS NULL
+            ($1::text IS NULL
             OR users.email ILIKE $1::text
-            OR COALESCE(users.display_name, '') ILIKE $1::text
+            OR users.id::text = $8::text
+            OR COALESCE(users.display_name, '') ILIKE $1::text)
+            AND users.created_at <= $3::timestamptz
+            AND ($4::timestamptz IS NULL OR (users.created_at, users.id) < ($4::timestamptz, $5::uuid))
+            AND ($6::text IS NULL OR users.status = $6)
+            AND ($7::uuid IS NULL OR EXISTS (SELECT 1 FROM tenant_memberships m WHERE m.user_id=users.id AND m.tenant_id=$7::uuid))
+            AND ($9::text IS NULL OR COALESCE(app.platform_user_role(users.id), 'none') = $9)
           ORDER BY users.created_at DESC, users.id DESC
           LIMIT $2::int
         `,
-        [likeQuery, limit],
+        [likeQuery, limit + 1, asOf, cursor?.createdAt ?? null, cursor?.id ?? null, input?.status ?? null, input?.tenantId ?? null, query, input?.platformRole ?? null],
       );
       await client.query("COMMIT");
     } catch (error) {
@@ -641,15 +690,20 @@ export class AdminApiService {
       client.release();
     }
 
-    const userDetails = await this.loadUserDetailsByUserIds(tenantContext, users.rows.map((row) => row.id));
+    const hasMore = users.rows.length > limit;
+    const pageRows = users.rows.slice(0, limit);
+    const last = pageRows.at(-1);
+    const nextCursor = hasMore && last ? encodeUserCursor({ id: last.id, createdAt: last.created_at, asOf, binding }, this.cursorSecret) : null;
+    const userDetails = await this.loadUserDetailsByUserIds(tenantContext, pageRows.map((row) => row.id));
 
     return {
-      items: users.rows.map((row) => mapUser(
+      items: pageRows.map((row) => mapUser(
         row,
         userDetails.membershipsByUserId.get(row.id) ?? [],
         userDetails.walletsByUserId.get(row.id) ?? emptyAdminUserWallet(),
       )),
       query,
+      nextCursor, hasMore, asOf,
     };
   }
 
@@ -657,7 +711,7 @@ export class AdminApiService {
     context: AdminContext,
     userId: string,
   ): Promise<AdminUserView> {
-    const tenantContext = requireTenantContext(context);
+    const tenantContext = { tenantId: context.tenantId, userId: context.userId };
     const client = await this.pool.connect();
     let user: { rows: AdminUserRow[] };
     try {
@@ -666,6 +720,7 @@ export class AdminApiService {
       user = await client.query<AdminUserRow>(
         `
           SELECT
+            app.platform_user_role(users.id) AS platform_role,
             users.id::text AS id,
             users.email,
             users.display_name,
@@ -717,7 +772,11 @@ export class AdminApiService {
     ledgerEntry: WalletLedgerView;
     wallet: WalletSummaryView;
   }> {
-    const idempotencyKey = input.idempotencyKey?.trim() || `admin-grant:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
+    if (!context.permissions.includes("platform:billing:adjust")) {
+      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "只有超级管理员可以赠送积分。");
+    }
+    const idempotencyKey = requireFinancialRetryKey(input.idempotencyKey);
+    const requestFingerprint = financialFingerprint(context.userId, "grant", input);
     const creditExpiresAt = resolveCreditGrantExpiresAt(input);
     let result: { ledgerEntry: WalletLedgerView; wallet: WalletSummaryView };
     try {
@@ -733,6 +792,7 @@ export class AdminApiService {
           idempotencyKey,
           sourceId: idempotencyKey,
           metadata: {
+            requestFingerprint,
             adminActorUserId: context.userId,
             creditExpiresAt,
             reason: input.reason.trim(),
@@ -741,6 +801,7 @@ export class AdminApiService {
             validityMode: input.validityMode ?? "lifetime",
           },
         }),
+        { action: "admin.user.grant_credits", idempotencyKey, requestFingerprint, metadata: { creditExpiresAt, credits: input.credits, idempotencyKey, reason: input.reason.trim(), validityMode: input.validityMode ?? "lifetime" } },
       );
     } catch (error) {
       if (error instanceof PersonalWalletServiceError) {
@@ -748,31 +809,6 @@ export class AdminApiService {
       }
       throw error;
     }
-
-    await safeRecordAuditLog(
-      {
-        action: "admin.user.grant_credits",
-        actorType: "user",
-        actorUserId: context.userId,
-        ipHash: context.ipHash,
-        metadata: {
-          creditExpiresAt,
-          credits: input.credits,
-          idempotencyKey,
-          reason: input.reason.trim(),
-          targetUserId: input.targetUserId,
-          tenantId: input.tenantId,
-          validityMode: input.validityMode ?? "lifetime",
-        },
-        requestId: context.requestId,
-        resourceId: input.targetUserId,
-        resourceType: "user",
-        tenantId: input.tenantId,
-        traceId: context.traceId,
-        userAgent: context.userAgent,
-      },
-      { pool: this.pool },
-    );
 
     return {
       ...result,
@@ -793,16 +829,18 @@ export class AdminApiService {
     ledgerEntry: WalletLedgerView;
     wallet: WalletSummaryView;
   }> {
-    const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
+    const hasSuperAdminSource = context.permissions.includes("platform:billing:adjust");
     if (!hasSuperAdminSource) {
       throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "Only super admins can manually adjust user credits.");
     }
 
-    const idempotencyKey = input.idempotencyKey?.trim() || `admin-adjust:${input.direction}:${input.tenantId}:${input.targetUserId}:${randomUUID()}`;
+    const idempotencyKey = requireFinancialRetryKey(input.idempotencyKey);
+    const requestFingerprint = financialFingerprint(context.userId, "adjust", input);
     let result: { ledgerEntry: WalletLedgerView; wallet: WalletSummaryView };
     try {
       result = await this.mutateTargetWallet(context, input.tenantId, input.targetUserId, (client) => {
         const metadata = {
+          requestFingerprint,
           adminActorUserId: context.userId,
           adjustmentDirection: input.direction,
           reason: input.reason.trim(),
@@ -832,37 +870,13 @@ export class AdminApiService {
             idempotencyKey,
             metadata,
           });
-      });
+      }, { action: `admin.user.adjust_credits.${input.direction}`, idempotencyKey, requestFingerprint, metadata: { credits: input.credits, direction: input.direction, idempotencyKey, reason: input.reason.trim() } });
     } catch (error) {
       if (error instanceof PersonalWalletServiceError) {
         throw new AdminApiError(error.statusCode, error.code, error.message);
       }
       throw error;
     }
-
-    await safeRecordAuditLog(
-      {
-        action: input.direction === "add" ? "admin.user.adjust_credits.add" : "admin.user.adjust_credits.subtract",
-        actorType: "user",
-        actorUserId: context.userId,
-        ipHash: context.ipHash,
-        metadata: {
-          credits: input.credits,
-          direction: input.direction,
-          idempotencyKey,
-          reason: input.reason.trim(),
-          targetUserId: input.targetUserId,
-          tenantId: input.tenantId,
-        },
-        requestId: context.requestId,
-        resourceId: input.targetUserId,
-        resourceType: "user",
-        tenantId: input.tenantId,
-        traceId: context.traceId,
-        userAgent: context.userAgent,
-      },
-      { pool: this.pool },
-    ).catch(() => undefined);
 
     return {
       ...result,
@@ -874,12 +888,12 @@ export class AdminApiService {
     tenantId: string,
     targetUserId: string,
     mutate: (client: PoolClient) => Promise<WalletLedgerView>,
+    audit: { action: string; idempotencyKey: string; requestFingerprint: string; metadata: Record<string, unknown> },
   ): Promise<{ ledgerEntry: WalletLedgerView; wallet: WalletSummaryView }> {
-    const tenantContext = requireTenantContext(context);
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, context, "platform:billing:adjust");
       const membership = await client.query<{ exists_flag: number }>(
         `SELECT 1 AS exists_flag FROM tenant_memberships
          WHERE tenant_id = $1::uuid AND user_id = $2::uuid AND status = 'active' LIMIT 1`,
@@ -888,8 +902,27 @@ export class AdminApiService {
       if (!membership.rows[0]) {
         throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
       }
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('wallet-admin:' || $1, 0))", [audit.idempotencyKey]);
+      const previous = await client.query(`SELECT id, wallet_id, user_id, tenant_id, usage_event_id, entry_type, amount_credits, idempotency_key, created_at, metadata->>'requestFingerprint' AS fingerprint FROM billing_wallet_ledger WHERE idempotency_key=$1`, [audit.idempotencyKey]);
+      if (previous.rows[0]) {
+        const row = previous.rows[0];
+        if (row.user_id !== targetUserId || row.tenant_id !== tenantId || row.fingerprint !== audit.requestFingerprint) {
+          throw new AdminApiError(409, "WALLET_IDEMPOTENCY_CONFLICT", "该重试编号已用于其他积分变更。");
+        }
+        const ledgerEntry: WalletLedgerView = { id: row.id, walletId: row.wallet_id, userId: row.user_id, tenantId: row.tenant_id, usageEventId: row.usage_event_id, entryType: row.entry_type, amountCredits: Number(row.amount_credits), idempotencyKey: row.idempotency_key, createdAt: new Date(row.created_at).toISOString() };
+        const wallet = await this.personalWalletService.getSummaryWithClient(client, targetUserId);
+        await client.query("COMMIT");
+        return { ledgerEntry, wallet };
+      }
       const ledgerEntry = await mutate(client);
       const wallet = await this.personalWalletService.getSummaryWithClient(client, targetUserId);
+      await recordAuditLogWithClient(client, {
+        action: audit.action, actorType: "user", actorUserId: context.userId,
+        ipHash: context.ipHash, requestId: context.requestId, traceId: context.traceId,
+        resourceId: targetUserId, resourceType: "user", tenantId, userAgent: context.userAgent,
+        metadata: { ...audit.metadata, targetUserId, tenantId, ledgerEntryId: ledgerEntry.id,
+          scope: "platform", capability: "platform:billing:adjust", role: "platform_super_admin" },
+      });
       await client.query("COMMIT");
       return { ledgerEntry, wallet };
     } catch (error) {
@@ -903,14 +936,16 @@ export class AdminApiService {
   async updateUserStatus(
     context: AdminContext,
     input: {
+      reason: string;
       status: "active" | "disabled";
       targetUserId: string;
     },
   ): Promise<Pick<AdminUserView, "id" | "status">> {
-    const tenantContext = requireTenantContext(context);
-    const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
-    if (!hasSuperAdminSource) {
-      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "Only super admins can update user status.");
+    if (!context.permissions.includes("platform:users:operate")) {
+      throw new AdminApiError(403, "FORBIDDEN", "需要平台用户管理权限。");
+    }
+    if (!input.reason || input.reason.trim().length < 5 || input.reason.trim().length > 500) {
+      throw new AdminApiError(400, "REASON_REQUIRED", "请填写 5 至 500 字的变更原因。");
     }
     if (input.targetUserId === context.userId && input.status === "disabled") {
       throw new AdminApiError(409, "CANNOT_DISABLE_SELF", "Super admins cannot disable their own account.");
@@ -919,7 +954,12 @@ export class AdminApiService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('platform-role-assignments', 0))");
+      const actorRole = await setAdminTenantContext(client, context, "platform:users:operate");
+      const targetRole = await client.query<{ role_key: string | null }>("SELECT app.platform_user_role($1::uuid) AS role_key", [input.targetUserId]);
+      if (targetRole.rows[0]?.role_key && actorRole !== "platform_super_admin") {
+        throw new AdminApiError(403, "PLATFORM_TARGET_PROTECTED", "运营管理员只能管理普通用户。");
+      }
       const updated = await client.query<{ id: string; status: string }>(
         `
           UPDATE users
@@ -952,27 +992,26 @@ export class AdminApiService {
           [input.targetUserId],
         );
       }
-      await client.query("COMMIT");
-
-      await safeRecordAuditLog(
+      await recordAuditLogWithClient(client,
         {
           action: "admin.user.update_status",
           actorType: "user",
           actorUserId: context.userId,
           ipHash: context.ipHash,
           metadata: {
+            reason: input.reason.trim(),
             status: input.status,
             targetUserId: input.targetUserId,
           },
           requestId: context.requestId,
           resourceId: input.targetUserId,
           resourceType: "user",
-          tenantId: tenantContext.tenantId,
+          tenantId: context.tenantId ?? null,
           traceId: context.traceId,
           userAgent: context.userAgent,
         },
-        { pool: this.pool },
-      ).catch(() => undefined);
+      );
+      await client.query("COMMIT");
 
       return updated.rows[0];
     } catch (error) {
@@ -991,7 +1030,7 @@ export class AdminApiService {
     input: {
       expiresAt?: string;
       targetUserId: string;
-      tenantId?: string;
+      tenantId: string;
       tier: MembershipTier;
     },
   ): Promise<{
@@ -1000,11 +1039,14 @@ export class AdminApiService {
     targetUserId: string;
     tenantId: string;
   }> {
-    const tenantContext = requireTenantContext(context);
+    if (!context.permissions.includes("platform:billing:adjust")) {
+      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "需要超级管理员权限。");
+    }
+    if (!input.tenantId) throw new AdminApiError(400, "TENANT_REQUIRED", "请选择需要调整会员权益的工作区。");
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, context, "platform:billing:adjust");
 
       const membership = await client.query<{ tenant_id: string }>(
         `
@@ -1012,7 +1054,7 @@ export class AdminApiService {
           FROM tenant_memberships
           WHERE user_id = $1::uuid
             AND status = 'active'
-            AND ($2::uuid IS NULL OR tenant_id = $2::uuid)
+            AND tenant_id = $2::uuid
           ORDER BY created_at ASC, id ASC
           LIMIT 1
         `,
@@ -1049,9 +1091,7 @@ export class AdminApiService {
         throw new AdminApiError(404, "BILLING_ACCOUNT_NOT_FOUND", "Billing account was not found for the selected workspace.");
       }
 
-      await client.query("COMMIT");
-
-      await safeRecordAuditLog(
+      await recordAuditLogWithClient(client,
         {
           action: "admin.user.update_membership_tier",
           actorType: "user",
@@ -1069,8 +1109,8 @@ export class AdminApiService {
           traceId: context.traceId,
           userAgent: context.userAgent,
         },
-        { pool: this.pool },
-      ).catch(() => undefined);
+      );
+      await client.query("COMMIT");
 
       return {
         membershipTier: normalizeMembershipTier(updated.rows[0].membership_tier),
@@ -1108,7 +1148,8 @@ export class AdminApiService {
     tenantId: string | null;
   }> {
     const tenantContext = requireTenantContext(context);
-    const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
+    const hasSuperAdminSource = context.permissions.includes("platform:billing:adjust");
+    if (!hasSuperAdminSource) throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "需要超级管理员权限。");
     const tenantId = input.tenantId !== undefined
       ? input.tenantId
       : hasSuperAdminSource
@@ -1121,7 +1162,7 @@ export class AdminApiService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, tenantContext, "platform:billing:adjust");
 
       let created: {
         code: string;
@@ -1266,7 +1307,7 @@ export class AdminApiService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, tenantContext, "platform:redeem:operate");
       const result = await client.query<AdminRedeemCodeRow>(
         `
           SELECT
@@ -1296,7 +1337,7 @@ export class AdminApiService {
       );
       await client.query("COMMIT");
       return {
-        items: result.rows.map(mapRedeemCode),
+        items: result.rows.map(row => mapRedeemCode({ ...row, code: context.permissions.includes("platform:billing:adjust") ? row.code : null })),
       };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -1316,7 +1357,7 @@ export class AdminApiService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, tenantContext, "platform:redeem:operate");
       const result = await client.query<AdminRedeemCodeRedemptionRow>(
         `
           SELECT
@@ -1347,11 +1388,14 @@ export class AdminApiService {
   }
 
   async deleteRedeemCode(context: AdminContext, codeId: string): Promise<void> {
+    if (!context.permissions.includes("platform:billing:adjust")) {
+      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "需要超级管理员权限。");
+    }
     const tenantContext = requireTenantContext(context);
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, tenantContext, "platform:billing:adjust");
       const existing = await client.query<{
         id: string;
         redeemed_count: number;
@@ -1419,7 +1463,7 @@ export class AdminApiService {
   async updateUserRole(
     context: AdminContext,
     input: {
-      roleKey: "system_admin" | "tenant_admin" | "flow_developer";
+      roleKey: "tenant_admin" | "flow_developer";
       targetUserId: string;
       tenantId: string;
     },
@@ -1428,8 +1472,7 @@ export class AdminApiService {
     targetUserId: string;
     tenantId: string;
   }> {
-    const tenantContext = requireTenantContext(context);
-    const hasSuperAdminSource = context.roles.includes("system_admin") || context.roles.includes("admin_email");
+    const hasSuperAdminSource = context.permissions.includes("platform:roles:manage");
     if (!hasSuperAdminSource) {
       throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "只有超级管理员可以调整管理员身份");
     }
@@ -1437,7 +1480,7 @@ export class AdminApiService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await setAdminTenantContext(client, tenantContext);
+      await setAdminTenantContext(client, context, "platform:roles:manage");
       const updated = await client.query<{ role_key: string }>(
         `
           UPDATE tenant_memberships
@@ -1453,6 +1496,14 @@ export class AdminApiService {
       if (!updated.rows[0]) {
         throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "Target user does not belong to the selected workspace.");
       }
+      await client.query("UPDATE auth_sessions SET status='revoked', revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND status='active'", [input.targetUserId]);
+      await client.query("UPDATE refresh_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND revoked_at IS NULL", [input.targetUserId]);
+      await recordAuditLogWithClient(client, {
+        action: "admin.user.update_role", actorType: "user", actorUserId: context.userId,
+        requestId: context.requestId, traceId: context.traceId, ipHash: context.ipHash, userAgent: context.userAgent,
+        resourceType: "user", resourceId: input.targetUserId, tenantId: input.tenantId,
+        metadata: { roleKey: input.roleKey, targetUserId: input.targetUserId, tenantId: input.tenantId, scope: "tenant" },
+      });
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -1463,27 +1514,6 @@ export class AdminApiService {
     } finally {
       client.release();
     }
-
-    await safeRecordAuditLog(
-      {
-        action: "admin.user.update_role",
-        actorType: "user",
-        actorUserId: context.userId,
-        ipHash: context.ipHash,
-        metadata: {
-          roleKey: input.roleKey,
-          targetUserId: input.targetUserId,
-          tenantId: input.tenantId,
-        },
-        requestId: context.requestId,
-        resourceId: input.targetUserId,
-        resourceType: "user",
-        tenantId: input.tenantId,
-        traceId: context.traceId,
-        userAgent: context.userAgent,
-      },
-      { pool: this.pool },
-    ).catch(() => undefined);
 
     return {
       roleKey: input.roleKey,
@@ -1504,27 +1534,14 @@ export class AdminApiService {
       emailVerifiedAt: string | null;
     };
   }> {
-    const tenantContext = requireTenantContext(context);
+    if (!context.permissions.includes("platform:roles:manage")) {
+      throw new AdminApiError(403, "SUPER_ADMIN_REQUIRED", "需要超级管理员权限。");
+    }
     const nextPassword = input.password?.trim() || generateTemporaryPassword();
     const passwordHash = await hashPassword(nextPassword);
 
-    const membership = await withTenantTransaction<{ rows: Array<{ exists_flag: number }> }>(tenantContext, async (client) => {
-      return client.query<{ exists_flag: number }>(
-        `
-          SELECT 1 AS exists_flag
-          FROM tenant_memberships
-          WHERE tenant_id = $1::uuid
-            AND user_id = $2::uuid
-          LIMIT 1
-        `,
-        [tenantContext.tenantId, input.userId],
-      );
-    }, this.pool);
-    if (!membership.rows[0]) {
-      throw new AdminApiError(404, "TENANT_MEMBERSHIP_NOT_FOUND", "该用户不属于当前工作区");
-    }
-
-    const updated = await this.pool.query<{
+    const row = await withPlatformTransaction(this.pool, context, "platform:roles:manage", async client => {
+    const updated = await client.query<{
       display_name: string | null;
       email: string;
       email_verified_at: string | null;
@@ -1535,8 +1552,6 @@ export class AdminApiService {
         UPDATE users
         SET
           password_hash = $2,
-          status = 'active',
-          email_verified_at = COALESCE(email_verified_at, now()),
           updated_at = now()
         WHERE id = $1::uuid
         RETURNING
@@ -1554,7 +1569,9 @@ export class AdminApiService {
       throw new AdminApiError(404, "USER_NOT_FOUND", "未找到对应用户");
     }
 
-    await safeRecordAuditLog(
+    await client.query("UPDATE auth_sessions SET status='revoked', revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND status='active'", [input.userId]);
+    await client.query("UPDATE refresh_tokens SET revoked_at=COALESCE(revoked_at,now()) WHERE user_id=$1 AND revoked_at IS NULL", [input.userId]);
+    await recordAuditLogWithClient(client,
       {
         action: "admin.user.reset_password",
         actorType: "user",
@@ -1566,12 +1583,13 @@ export class AdminApiService {
         requestId: context.requestId,
         resourceId: input.userId,
         resourceType: "user",
-        tenantId: tenantContext.tenantId,
+        tenantId: context.tenantId ?? null,
         traceId: context.traceId,
         userAgent: context.userAgent,
       },
-      { pool: this.pool },
-    ).catch(() => undefined);
+    );
+    return row;
+    });
 
     return {
       passwordShownOnce: nextPassword,
@@ -1596,12 +1614,8 @@ export class AdminApiService {
   ): Promise<{
     items: AdminWorkflowRunView[];
   }> {
-    const tenantContext = requireTenantContext(context);
     const limit = Math.max(1, Math.min(input?.limit ?? 20, 100));
-    if (input?.tenantId && input.tenantId !== tenantContext.tenantId) {
-      throw new AdminApiError(403, "TENANT_SCOPE_MISMATCH", "当前只能查看当前工作区的任务记录");
-    }
-    const result = await withTenantTransaction<{ rows: AdminWorkflowRunRow[] }>(tenantContext, async (client) => {
+    const result = await withPlatformTransaction(this.pool, context, "platform:tasks:read", async (client) => {
       return client.query<AdminWorkflowRunRow>(
         `
           SELECT
@@ -1622,7 +1636,7 @@ export class AdminApiService {
           FROM workflow_runs
           LEFT JOIN node_runs
             ON node_runs.workflow_run_id = workflow_runs.id
-          WHERE workflow_runs.tenant_id = $1::uuid
+          WHERE ($1::uuid IS NULL OR workflow_runs.tenant_id = $1::uuid)
             AND ($2::uuid IS NULL OR workflow_runs.created_by = $2::uuid)
             AND ($3::text IS NULL OR workflow_runs.status = $3::text)
           GROUP BY workflow_runs.id
@@ -1630,13 +1644,13 @@ export class AdminApiService {
           LIMIT $4::int
         `,
         [
-          tenantContext.tenantId,
+          input?.tenantId ?? null,
           input?.userId ?? null,
           input?.status?.trim() || null,
           limit,
         ],
       );
-    }, this.pool);
+    });
 
     return {
       items: result.rows.map(mapWorkflowRun),
@@ -1647,8 +1661,7 @@ export class AdminApiService {
     context: AdminContext,
     runId: string,
   ): Promise<AdminWorkflowRunDetailView> {
-    const tenantContext = requireTenantContext(context);
-    const workflowRun = await withTenantTransaction<{ rows: AdminWorkflowRunRow[] }>(tenantContext, async (client) => {
+    const workflowRun = await withPlatformTransaction(this.pool, context, "platform:tasks:read", async (client) => {
       return client.query<AdminWorkflowRunRow>(
         `
           SELECT
@@ -1669,21 +1682,20 @@ export class AdminApiService {
           FROM workflow_runs
           LEFT JOIN node_runs
             ON node_runs.workflow_run_id = workflow_runs.id
-          WHERE workflow_runs.tenant_id = $1::uuid
-            AND workflow_runs.id = $2::uuid
+          WHERE workflow_runs.id = $1::uuid
           GROUP BY workflow_runs.id
           LIMIT 1
         `,
-        [tenantContext.tenantId, runId],
+        [runId],
       );
-    }, this.pool);
+    });
 
     const row = workflowRun.rows[0];
     if (!row) {
       throw new AdminApiError(404, "WORKFLOW_RUN_NOT_FOUND", "未找到对应任务记录");
     }
 
-    const nodeRuns = await withTenantTransaction<{ rows: AdminNodeRunRow[] }>(tenantContext, async (client) => {
+    const nodeRuns = await withPlatformTransaction(this.pool, context, "platform:tasks:read", async (client) => {
       return client.query<AdminNodeRunRow>(
         `
           SELECT
@@ -1693,7 +1705,7 @@ export class AdminApiService {
             node_runs.node_type,
             node_runs.status,
             node_runs.error_json,
-            node_runs.output_json,
+            NULL::jsonb AS output_json,
             node_runs.started_at::text AS started_at,
             node_runs.finished_at::text AS finished_at
           FROM node_runs
@@ -1702,16 +1714,16 @@ export class AdminApiService {
         `,
         [runId],
       );
-    }, this.pool);
+    });
 
     return {
       nodeRuns: nodeRuns.rows.map((nodeRun) => ({
-        errorJson: nodeRun.error_json,
+        errorJson: operationalError(nodeRun.error_json),
         finishedAt: nodeRun.finished_at,
         id: nodeRun.id,
         nodeId: nodeRun.node_id,
         nodeType: nodeRun.node_type,
-        outputSummary: summarizeJson(nodeRun.output_json),
+        outputSummary: null,
         startedAt: nodeRun.started_at,
         status: nodeRun.status,
         workflowRunId: nodeRun.workflow_run_id,
@@ -1731,7 +1743,7 @@ export class AdminApiService {
   }> {
     const tenantContext = requireTenantContext(context);
     const limit = Math.max(1, Math.min(input?.limit ?? 50, 100));
-    return withTenantTransaction(tenantContext, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:content:manage", async (client) => {
       const result = await client.query<AdminAnnouncementRow>(
         `
           SELECT
@@ -1765,7 +1777,7 @@ export class AdminApiService {
       return {
         items: result.rows.map(mapAnnouncement),
       };
-    }, this.pool);
+    });
   }
 
   async createAnnouncement(
@@ -1783,7 +1795,7 @@ export class AdminApiService {
     },
   ): Promise<AdminAnnouncementView> {
     const tenantContext = requireTenantContext(context);
-    return withTenantTransaction(tenantContext, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:content:manage", async (client) => {
       const result = await client.query<AdminAnnouncementRow>(
         `
           INSERT INTO announcements (
@@ -1849,11 +1861,25 @@ export class AdminApiService {
           context.userId,
         ],
       );
-      return mapAnnouncement({
+      const announcement = mapAnnouncement({
         ...result.rows[0],
         created_by_email: null,
       });
-    }, this.pool);
+      await recordAuditLogWithClient(client, {
+        action: "admin.announcement.create",
+        actorType: "user",
+        actorUserId: context.userId,
+        tenantId: tenantContext.tenantId,
+        requestId: context.requestId,
+        traceId: context.traceId,
+        ipHash: context.ipHash,
+        userAgent: context.userAgent,
+        resourceType: "announcement",
+        resourceId: announcement.id,
+        metadata: { after: announcement },
+      });
+      return announcement;
+    });
   }
 
   async updateAnnouncement(
@@ -1872,7 +1898,7 @@ export class AdminApiService {
     }>,
   ): Promise<AdminAnnouncementView> {
     const tenantContext = requireTenantContext(context);
-    return withTenantTransaction(tenantContext, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:content:manage", async (client) => {
       const existing = await client.query<AdminAnnouncementRow>(
         `
           SELECT
@@ -1960,25 +1986,70 @@ export class AdminApiService {
           input.endsAt === undefined ? row.ends_at : input.endsAt,
         ],
       );
-      return mapAnnouncement(result.rows[0]);
-    }, this.pool);
+      const announcement = mapAnnouncement(result.rows[0]);
+      await recordAuditLogWithClient(client, {
+        action: "admin.announcement.update",
+        actorType: "user",
+        actorUserId: context.userId,
+        tenantId: tenantContext.tenantId,
+        requestId: context.requestId,
+        traceId: context.traceId,
+        ipHash: context.ipHash,
+        userAgent: context.userAgent,
+        resourceType: "announcement",
+        resourceId: announcement.id,
+        metadata: { before: mapAnnouncement(row), after: announcement },
+      });
+      return announcement;
+    });
   }
 
   async deleteAnnouncement(context: AdminContext, announcementId: string): Promise<void> {
     const tenantContext = requireTenantContext(context);
-    await withTenantTransaction(tenantContext, async (client) => {
-      const result = await client.query(
+    await withPlatformTransaction(this.pool, context, "platform:content:manage", async (client) => {
+      const result = await client.query<AdminAnnouncementRow>(
         `
           DELETE FROM announcements
           WHERE id = $1::uuid
             AND tenant_id = $2::uuid
+          RETURNING
+            id::text AS id,
+            tenant_id::text AS tenant_id,
+            title,
+            body,
+            link_url,
+            image_url,
+            pinned,
+            status,
+            audience,
+            published_at::text AS published_at,
+            starts_at::text AS starts_at,
+            ends_at::text AS ends_at,
+            created_by::text AS created_by,
+            NULL::text AS created_by_email,
+            false AS is_read,
+            created_at::text AS created_at,
+            updated_at::text AS updated_at
         `,
         [announcementId, tenantContext.tenantId],
       );
       if (result.rowCount === 0) {
         throw new AdminApiError(404, "ANNOUNCEMENT_NOT_FOUND", "Announcement not found");
       }
-    }, this.pool);
+      await recordAuditLogWithClient(client, {
+        action: "admin.announcement.delete",
+        actorType: "user",
+        actorUserId: context.userId,
+        tenantId: tenantContext.tenantId,
+        requestId: context.requestId,
+        traceId: context.traceId,
+        ipHash: context.ipHash,
+        userAgent: context.userAgent,
+        resourceType: "announcement",
+        resourceId: result.rows[0]?.id ?? announcementId,
+        metadata: { before: result.rows[0] ? mapAnnouncement(result.rows[0]) : { id: announcementId } },
+      });
+    });
   }
 
   async listPublishedAnnouncements(
@@ -1991,10 +2062,7 @@ export class AdminApiService {
   }> {
     const tenantContext = requireTenantContext(context);
     const limit = Math.max(1, Math.min(input?.limit ?? 10, 50));
-    const canSeeAdminAnnouncements =
-      context.permissions.includes("admin:system") ||
-      context.roles.includes("tenant_admin") ||
-      context.roles.includes("system_admin");
+    const canSeeAdminAnnouncements = context.permissions.includes("platform:console:access");
     const audiences = canSeeAdminAnnouncements ? ["all", "admin"] : ["all", "creator"];
     return withTenantTransaction(tenantContext, async (client) => {
       const result = await client.query<AdminAnnouncementRow>(
@@ -2094,16 +2162,16 @@ export class AdminApiService {
       windowMinutes?: number;
     },
   ): Promise<AdminAiRouteStatsView> {
-    const tenantContext = requireTenantContext(context);
     const windowMinutes = Math.max(1, Math.min(input?.windowMinutes ?? 30, 24 * 60));
-    return withTenantTransaction(tenantContext, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:routes:read", async (client) => {
       const result = await client.query<AdminAiRouteStatsRow>(
         `
           WITH scoped_logs AS (
             SELECT *
             FROM ai_call_logs
-            WHERE tenant_id = $1::uuid
-              AND created_at >= now() - ($2::int || ' minutes')::interval
+            WHERE created_at >= now() - ($1::int || ' minutes')::interval
+              AND record_level = 'request'
+              AND COALESCE(traffic_class, 'unknown') IN ('user_generation', 'unknown')
           ),
           latest_failures AS (
             SELECT DISTINCT ON (route_id)
@@ -2111,7 +2179,7 @@ export class AdminApiService {
               error,
               created_at
             FROM scoped_logs
-            WHERE status <> 'succeeded'
+            WHERE status NOT IN ('http_succeeded', 'succeeded')
             ORDER BY route_id, created_at DESC
           )
           SELECT
@@ -2121,11 +2189,11 @@ export class AdminApiService {
             ai_models.display_name AS model_display_name,
             ai_providers.name AS provider_name,
             COUNT(scoped_logs.id)::text AS total_calls,
-            COUNT(scoped_logs.id) FILTER (WHERE scoped_logs.status = 'succeeded')::text AS successful_calls,
-            COUNT(scoped_logs.id) FILTER (WHERE scoped_logs.status <> 'succeeded')::text AS failed_calls,
+            COUNT(scoped_logs.id) FILTER (WHERE scoped_logs.status IN ('http_succeeded', 'succeeded'))::text AS successful_calls,
+            COUNT(scoped_logs.id) FILTER (WHERE scoped_logs.status NOT IN ('http_succeeded', 'succeeded'))::text AS failed_calls,
             AVG(scoped_logs.latency_ms)::text AS average_latency_ms,
-            MAX(scoped_logs.created_at) FILTER (WHERE scoped_logs.status = 'succeeded')::text AS last_success_at,
-            MAX(scoped_logs.created_at) FILTER (WHERE scoped_logs.status <> 'succeeded')::text AS last_failure_at,
+            MAX(scoped_logs.created_at) FILTER (WHERE scoped_logs.status IN ('http_succeeded', 'succeeded'))::text AS last_success_at,
+            MAX(scoped_logs.created_at) FILTER (WHERE scoped_logs.status NOT IN ('http_succeeded', 'succeeded'))::text AS last_failure_at,
             latest_failures.error AS last_error
           FROM scoped_logs
           LEFT JOIN ai_routes
@@ -2145,14 +2213,14 @@ export class AdminApiService {
             latest_failures.error
           ORDER BY COUNT(scoped_logs.id) DESC, ai_routes.route_label ASC NULLS LAST
         `,
-        [tenantContext.tenantId, windowMinutes],
+        [windowMinutes],
       );
       return mapAiRouteStats(result.rows, windowMinutes);
-    }, this.pool);
+    });
   }
 
   private async loadUserDetailsByUserIds(
-    context: { tenantId: string; userId: string | null },
+    context: { tenantId?: string | null; userId: string | null },
     userIds: string[],
   ): Promise<{
     membershipsByUserId: Map<string, AdminUserMembershipView[]>;
@@ -2198,6 +2266,7 @@ export class AdminApiService {
               MAX(occurred_at) FILTER (WHERE status = 'settled') AS latest_usage_at
             FROM usage_events
             WHERE usage_events.tenant_id = tenant_memberships.tenant_id
+              AND usage_events.billed_user_id = tenant_memberships.user_id
           ) AS usage_stats ON true
           WHERE tenant_memberships.user_id = ANY($1::uuid[])
           ORDER BY tenant_memberships.created_at ASC, tenant_memberships.id ASC
@@ -2247,6 +2316,7 @@ export class AdminApiService {
               COUNT(*)::text AS credit_grant_count,
               COUNT(*) FILTER (
                 WHERE status = 'active'
+                  AND NOT COALESCE(refund_hold, false)
                   AND remaining_credits > reserved_credits
                   AND (expires_at IS NULL OR expires_at > now())
               )::text AS active_credit_grant_count,

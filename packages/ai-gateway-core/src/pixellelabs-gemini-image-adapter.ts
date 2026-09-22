@@ -1,3 +1,4 @@
+import { observeProviderFetch } from "./provider-request-telemetry.js";
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import { buildProductionImagePrompt } from "./production-image-prompt.js";
@@ -235,7 +236,7 @@ export class PixelleLabsGeminiImageAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "generate", this.fetchImplementation, providerRequest.url, {
         body: JSON.stringify(payload),
         headers: providerRequest.headers,
         method: "POST",

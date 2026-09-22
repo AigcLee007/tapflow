@@ -13,10 +13,15 @@ export const BILLING_ROUTE = "/billing";
 export const ACCOUNT_ROUTE = "/account";
 export const ADMIN_ROUTE = "/admin";
 export const ADMIN_TEMPLATES_ROUTE = "/admin/templates";
-export const ACCOUNT_AI_SETTINGS_ROUTE = "/account/ai-settings";
-export const ACCOUNT_PROVIDER_SETTINGS_ROUTE = "/account/provider-settings";
-export const ACCOUNT_INSPECTION_ROUTE = "/account/inspection";
-export const ACCOUNT_TEMPLATE_LIBRARY_ROUTE = "/account/template-library";
+export const ADMIN_MODELS_ROUTE = "/admin/models";
+export const ADMIN_CONNECTIONS_ROUTE = "/admin/connections";
+export const ADMIN_INSPECTION_ROUTE = "/admin/inspection";
+export const ADMIN_INTEGRATIONS_ROUTE = "/admin/integrations";
+// Keep existing imports compatible while all outgoing links use canonical paths.
+export const ACCOUNT_AI_SETTINGS_ROUTE = ADMIN_MODELS_ROUTE;
+export const ACCOUNT_PROVIDER_SETTINGS_ROUTE = ADMIN_CONNECTIONS_ROUTE;
+export const ACCOUNT_INSPECTION_ROUTE = ADMIN_INSPECTION_ROUTE;
+export const ACCOUNT_TEMPLATE_LIBRARY_ROUTE = ADMIN_INTEGRATIONS_ROUTE;
 
 export const PRODUCT_ROUTES = [
   LOGIN_ROUTE,

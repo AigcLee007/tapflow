@@ -1,13 +1,14 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../../auth/useAuth";
 import { AiSettingsPage } from "./AiSettingsPage";
 import type { ModelConfigurationWizardProps } from "./ModelConfigurationWizard";
+import { platformAuth } from "../../test/platformAuth";
 
-const listAiModelCatalogMock = vi.fn();
-const listAiModelRoutesMock = vi.fn();
+const listAdminAiModelCatalogMock = vi.fn();
+const listAdminAiModelRoutesMock = vi.fn();
 const listAdminRoutesMock = vi.fn();
 const listAdminProvidersMock = vi.fn();
 const listAdminModelsMock = vi.fn();
@@ -33,10 +34,10 @@ vi.mock("../../services/v2AiModelCatalogApi", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../services/v2AiModelCatalogApi")>();
   return {
     ...actual,
-    listAiModelCatalog: (...args: Parameters<typeof actual.listAiModelCatalog>) =>
-      listAiModelCatalogMock(...args),
-    listAiModelRoutes: (...args: Parameters<typeof actual.listAiModelRoutes>) =>
-      listAiModelRoutesMock(...args),
+    listAdminAiModelCatalog: (...args: Parameters<typeof actual.listAdminAiModelCatalog>) =>
+      listAdminAiModelCatalogMock(...args),
+    listAdminAiModelRoutes: (...args: Parameters<typeof actual.listAdminAiModelRoutes>) =>
+      listAdminAiModelRoutesMock(...args),
     testAiRoute: vi.fn(),
   };
 });
@@ -60,12 +61,11 @@ function createAuthState(): AuthState {
     authenticated: true,
     error: null,
     loading: false,
-    permissions: ["admin:system"],
+    ...platformAuth(),
     refreshMe: vi.fn(async () => undefined),
     register: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
-    roles: ["tenant_owner"],
     sessionId: "session-1",
     tenant: { id: "tenant-1", name: "Test Tenant", plan: "pro", slug: "test", status: "active" },
     user: { displayName: "Tester", email: "tester@example.com", id: "user-1", status: "active" },
@@ -73,18 +73,63 @@ function createAuthState(): AuthState {
 }
 
 describe("AiSettingsPage", () => {
+  test("opens the requested non-default route from a detail link", async () => {
+    window.history.replaceState(null,"","/admin/models?model=test-image&route=admin-route-2");
+    const route={estimatedCredits:10,minChargeCredits:10,modality:"image",modelFamily:"test-image",modelKey:"test-image",pricingUnit:"image_generation",providerKey:"openai",providerName:"OpenAI"};
+    listAdminAiModelRoutesMock.mockResolvedValue([{...route,routeId:"admin-route-1",routeKey:"image.test.line1",routeLabel:"线路一"},{...route,routeId:"admin-route-2",routeKey:"image.test.line2",routeLabel:"第二线路"}]);
+    const adminRoute={providerId:"provider-1",modelId:"model-1",credentialId:null,modality:"image",status:"active",baseUrlOverride:null,requestConfig:{},pricing:{},tenantId:"tenant-1",connectionId:"connection-1"};
+    listAdminRoutesMock.mockResolvedValue([{...adminRoute,id:"admin-route-1",routeKey:"image.test.line1",routeLabel:"线路一"},{...adminRoute,id:"admin-route-2",routeKey:"image.test.line2",routeLabel:"第二线路"}]);
+    render(<AuthContext.Provider value={createAuthState()}><AiSettingsPage/></AuthContext.Provider>);
+    await waitFor(()=>expect(screen.getByLabelText("显示线路名称")).toHaveProperty("value","第二线路"));
+  });
+  test("resolves usage deep links by model id and modality", async () => {
+    window.history.replaceState(null,"","/admin/models?modelId=model-2&modality=text");
+    const base={id:"catalog-x",capabilities:{},defaultRouteKey:null,displayName:"Target",modality:"text",modelFamily:"test",sortOrder:1,status:"active",uiSchema:{}};
+    listAdminAiModelCatalogMock.mockResolvedValue([{...base,modelId:"model-1",modelKey:"first-model"},{...base,id:"catalog-target",modelId:"model-2",modelKey:"target-model"}]);
+    render(<AuthContext.Provider value={createAuthState()}><AiSettingsPage/></AuthContext.Provider>);
+    await waitFor(()=>expect(listAdminAiModelRoutesMock).toHaveBeenCalledWith("target-model"));
+    expect(listAdminAiModelCatalogMock).toHaveBeenCalledWith("text");
+    window.history.replaceState(null,"","/");
+  });
+  test.each(["tenant-1", null])("lets an operator save only permitted fields for a route in %s", async (tenantId) => {
+    listAdminRoutesMock.mockResolvedValue([{
+      id: "admin-route-1", routeKey: "image.test.line1", routeLabel: "线路一", providerId: "provider-1",
+      modelId: "model-1", credentialId: null, modality: "image", status: "active", baseUrlOverride: null,
+      requestConfig: {}, pricing: {}, tenantId, connectionId: "connection-1",
+    }]);
+    updateAdminRouteMock.mockResolvedValue({ routeLabel: "运营线路", routeKey: "image.test.line1" });
+    render(<AuthContext.Provider value={{ ...createAuthState(), ...platformAuth("platform_operator") }}><AiSettingsPage /></AuthContext.Provider>);
+
+    expect((await screen.findByRole("button", { name: "停用线路" }, { timeout: 5000 })).hasAttribute("disabled")).toBe(false);
+    for (const name of ["配置新模型", "新增线路", "使用当前线路配置新模型", "复制为新线路", "删除"]) {
+      expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    }
+    for (const name of ["上游模型", "API 模式", "请求路径", "内部备注名称", "管理备注"]) {
+      expect(screen.getByLabelText(name).hasAttribute("disabled")).toBe(true);
+    }
+    fireEvent.change(screen.getByLabelText("显示线路名称"), { target: { value: "运营线路" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "保存", exact: true })); });
+    expect(updateAdminRouteMock).toHaveBeenCalledWith("admin-route-1", { routeLabel: "运营线路", status: "active" });
+  });
+
+  test("denies the former tenant-admin permission", () => {
+    render(<AuthContext.Provider value={{ ...createAuthState(), roles: ["tenant_admin"], permissions: ["admin:system"] }}><AiSettingsPage /></AuthContext.Provider>);
+    expect(screen.getByText("当前账号没有模型中心访问权限。")).toBeTruthy();
+    expect(listAdminRoutesMock).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
+    window.history.replaceState(null,"","/");
     wizardMock.mockReset();
     updateAdminRouteMock.mockReset();
-    listAiModelCatalogMock.mockReset();
-    listAiModelRoutesMock.mockReset();
+    listAdminAiModelCatalogMock.mockReset();
+    listAdminAiModelRoutesMock.mockReset();
     listAdminRoutesMock.mockReset();
     listAdminProvidersMock.mockReset();
     listAdminModelsMock.mockReset();
     listAdminProviderConnectionsMock.mockReset();
     listAdminCredentialsMock.mockReset();
 
-    listAiModelCatalogMock.mockResolvedValue([
+    listAdminAiModelCatalogMock.mockResolvedValue([
       {
         id: "catalog-1",
         capabilities: {},
@@ -99,7 +144,7 @@ describe("AiSettingsPage", () => {
         uiSchema: {},
       },
     ]);
-    listAiModelRoutesMock.mockResolvedValue([
+    listAdminAiModelRoutesMock.mockResolvedValue([
       {
         estimatedCredits: 10,
         minChargeCredits: 10,
@@ -195,7 +240,7 @@ describe("AiSettingsPage", () => {
 
   test("publishing from the wizard reloads all admin data and closes the wizard", async () => {
     let refreshCount = 0;
-    listAiModelCatalogMock.mockImplementation(async () => {
+    listAdminAiModelCatalogMock.mockImplementation(async () => {
       refreshCount += 1;
       return refreshCount === 1
         ? [
@@ -229,7 +274,7 @@ describe("AiSettingsPage", () => {
             },
           ];
     });
-    listAiModelRoutesMock.mockImplementation(async () => [
+    listAdminAiModelRoutesMock.mockImplementation(async () => [
       {
         estimatedCredits: 10,
         minChargeCredits: 10,
@@ -264,7 +309,7 @@ describe("AiSettingsPage", () => {
       });
     });
 
-    expect(listAiModelCatalogMock).toHaveBeenCalledTimes(2);
+    expect(listAdminAiModelCatalogMock).toHaveBeenCalledTimes(2);
     expect(listAdminRoutesMock).toHaveBeenCalledTimes(2);
     expect(listAdminProvidersMock).toHaveBeenCalledTimes(2);
     expect(listAdminModelsMock).toHaveBeenCalledTimes(2);
@@ -309,7 +354,7 @@ describe("AiSettingsPage", () => {
   });
 
   test("allows disabling a system route when it is not the default route", async () => {
-    listAiModelCatalogMock.mockResolvedValueOnce([
+    listAdminAiModelCatalogMock.mockResolvedValueOnce([
       {
         id: "catalog-1",
         capabilities: {},
@@ -366,7 +411,7 @@ describe("AiSettingsPage", () => {
     const disableButton = await screen.findByRole("button", { name: "停用线路" });
     expect(disableButton.hasAttribute("disabled")).toBe(false);
     expect(
-      screen.getByText("当前是系统线路，参数只能查看和测试；你仍可以启停线路。需要修改参数时，请先复制成租户线路。"),
+      screen.getByText("当前是平台线路，修改会影响使用这条线路的工作区。"),
     ).toBeTruthy();
     await act(async () => {
       fireEvent.click(disableButton);

@@ -15,6 +15,7 @@ import {
   saveFlowTemplateDraftSchema,
 } from './flow-templates.schemas.js';
 import { FlowTemplatesApiError } from './flow-templates.service.js';
+import { PlatformTransactionError } from '../../http/platform-transaction.js';
 
 function sendError(
   request: FastifyRequest,
@@ -62,7 +63,7 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
     return sendError(request, reply, 400, 'VALIDATION_ERROR', 'Request validation failed', error.issues);
   }
 
-  if (error instanceof FlowTemplatesApiError) {
+  if (error instanceof FlowTemplatesApiError || error instanceof PlatformTransactionError) {
     return sendError(request, reply, error.statusCode, error.code, error.message);
   }
 
@@ -72,7 +73,7 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
 
 export function registerFlowTemplateRoutes(app: FastifyInstance): void {
   const readHandlers = [requireAuth, requireTenant, requirePermission('flow:read')];
-  const adminHandlers = [requireAuth, requireTenant, requirePermission('admin:system')];
+  const adminHandlers = [requireAuth, requireTenant, requirePermission('console:access')];
 
   app.get('/api/v2/admin/flow-templates', { preHandler: adminHandlers }, async (request, reply) => {
     try {
