@@ -273,7 +273,7 @@ export class AgentRuntimeRepository {
   async claimExecution(ctx: AgentRuntimeContext, input: { sessionId: string; turnId: string; owner: string; leaseMs?: number }): Promise<boolean> {
     return withTenantTransaction(ctx, async client => {
       await requireSession(client, ctx, input.sessionId, true);
-      const result = await client.query("UPDATE agent_turns SET lease_owner=$4,lease_expires_at=now()+($5::double precision*interval '1 millisecond') WHERE tenant_id=$1::uuid AND session_id=$2::uuid AND id=$3::uuid AND runtime_version='runtime' AND status NOT IN ('succeeded','failed','cancelled') AND (lease_expires_at IS NULL OR lease_expires_at<=now()) RETURNING id", [ctx.tenantId, input.sessionId, input.turnId, input.owner, Math.max(1000, Math.min(300000, input.leaseMs ?? 60000))]);
+      const result = await client.query("UPDATE agent_turns SET lease_owner=$4,lease_expires_at=now()+($5::double precision*interval '1 millisecond') WHERE tenant_id=$1::uuid AND session_id=$2::uuid AND id=$3::uuid AND runtime_version='runtime' AND status NOT IN ('succeeded','cancelled') AND (lease_expires_at IS NULL OR lease_expires_at<=now()) RETURNING id", [ctx.tenantId, input.sessionId, input.turnId, input.owner, Math.max(1000, Math.min(300000, input.leaseMs ?? 60000))]);
       return Boolean(result.rowCount);
     }, this.pool);
   }

@@ -19,6 +19,6 @@ export const agentRuntimeDecisionSchema = z.discriminatedUnion("type", [
 ]);
 export type AgentRuntimeDecisionRequest = z.infer<typeof agentRuntimeDecisionSchema>;
 export const agentRuntimeTurnSchema = z.object({ prompt: safeText, contextSnapshot: agentContextSnapshotSchema, idempotencyKey: stableId }).strict();
-export const agentRuntimeCreateSessionSchema = z.object({ projectId: z.uuid(), flowId: z.uuid(), title: z.string().trim().min(1).max(200).optional(), mode: z.enum(["auto", "manual_confirmation"]).optional() }).strict();
-export const agentRuntimeSessionFilterSchema = z.object({ projectId: z.uuid().optional(), flowId: z.uuid().optional(), limit: z.coerce.number().int().min(1).max(100).optional() }).strict();
+export const agentRuntimeCreateSessionSchema = z.object({ projectId: z.uuid().nullable(), flowId: z.uuid().nullable(), title: z.string().trim().min(1).max(200).optional(), mode: z.enum(["auto", "manual_confirmation"]).optional() }).strict();
+export const agentRuntimeSessionFilterSchema = z.object({ projectId: z.uuid().nullable().optional(), flowId: z.uuid().nullable().optional(), limit: z.coerce.number().int().min(1).max(100).optional() }).strict();
 export const agentRuntimeModeSchema = z.object({ mode: z.enum(["auto", "manual_confirmation"]) }).strict();

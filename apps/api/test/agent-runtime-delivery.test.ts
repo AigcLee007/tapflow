@@ -51,4 +51,9 @@ describe("Agent delivery verification", () => {
       nodeRuns: expectedSteps.slice(0, 2).map((step) => ({ nodeId: `node-${step.id}`, status: "succeeded" })),
     })).toThrow("AGENT_DELIVERY_NODE_MISSING");
   });
+
+  it("does not satisfy a run with a result from another run even when the step id matches", () => {
+    const stale = result("first", "image", { runId: "old-run" });
+    expect(() => verifyAgentDeliveryGroup([stale] as never, [expectedSteps[0]], { workflowStatus: "succeeded", runId: "current-run" })).toThrow("AGENT_DELIVERY_RESULT_MISSING");
+  });
 });

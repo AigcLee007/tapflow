@@ -52,6 +52,7 @@ function failureMessage(error: unknown): string {
 
 export type AgentDeliveryExecutionSnapshot = {
   workflowStatus?: string;
+  runId?: string | null;
   nodeRuns?: Array<{ nodeId?: string | null; status?: string | null }>;
   nodeIdsByStepId?: Record<string, string | undefined>;
 };
@@ -80,7 +81,7 @@ export function verifyAgentDeliveryGroup(
     throw new AgentDeliveryVerificationError("AGENT_DELIVERY_WORKFLOW_NOT_COMPLETED", `Workflow status ${execution.workflowStatus} is not complete.`);
   }
   for (const step of expectedSteps) {
-    const delivery = results.find((candidate) => candidate.lineage?.stepId === step.id || (step.label && candidate.label === step.label));
+    const delivery = results.find((candidate) => candidate.lineage?.stepId === step.id && (execution.runId === undefined || candidate.runId === execution.runId));
     if (!delivery) throw new AgentDeliveryVerificationError("AGENT_DELIVERY_RESULT_MISSING", `No result was delivered for step ${step.id}.`);
     if (delivery.kind !== step.kind || delivery.status === "failed" || delivery.status === "pending") {
       throw new AgentDeliveryVerificationError("AGENT_DELIVERY_INVALID_RESULT", `Result for step ${step.id} has the wrong kind or status.`);
@@ -119,8 +120,14 @@ export class AgentRuntimeService {
     if (!stored.execution?.runId || !session.flowId) return publicAgentTurn(turn);
     const run = await this.dependencies.execution.get(ctx, { flowId: session.flowId, runId: stored.execution.runId });
     const nodes = run.nodeRuns ?? [];
-    if (run.workflowRun.status === "failed" || run.workflowRun.status === "canceled" || run.workflowRun.status === "cancelled") {
-      return publicAgentTurn(await this.fail(ctx, turn, new Error(run.workflowRun.status === "canceled" || run.workflowRun.status === "cancelled" ? "AGENT_EXECUTION_CANCELLED" : "AGENT_EXECUTION_FAILED")));
+    if (run.workflowRun.status === "canceled" || run.workflowRun.status === "cancelled") {
+      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, {
+        phase: "cancelled", executionState: "cancelled", status: "cancelled", pendingDecision: null,
+        blocks: [...turn.blocks.filter(block => block.type !== "confirmation"), { type: "error_recovery", id: "cancelled", message: "任务已取消，预留费用已释放或退款。", actions: [] }],
+      })));
+    }
+    if (run.workflowRun.status === "failed") {
+      return publicAgentTurn(await this.fail(ctx, turn, new Error("AGENT_EXECUTION_FAILED")));
     }
     if (run.workflowRun.status === "succeeded" || run.workflowRun.status === "completed") {
       const groupId = stored.resultGroupId ?? await this.dependencies.repository.saveResultGroup(ctx, { sessionId, turnId, runId: stored.execution.runId, status: "ready", idempotencyKey: `group:${stored.execution.runId}` });
@@ -141,6 +148,7 @@ export class AgentRuntimeService {
       try {
         verifyAgentDeliveryGroup(results, stored.requirement?.steps ?? [], {
           workflowStatus: run.workflowRun.status,
+          runId: stored.execution.runId,
           nodeRuns: nodes.map((node) => ({ nodeId: node.nodeId, status: node.status })),
           nodeIdsByStepId: stored.execution.nodeIds,
         });
