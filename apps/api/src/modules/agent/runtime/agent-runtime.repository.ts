@@ -23,6 +23,7 @@ const json = (value: unknown) => JSON.stringify(value);
 function canonical(value: unknown): string { return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item); }
 function same(a: unknown, b: unknown): boolean { return canonical(a) === canonical(b); }
 function fail(code: string): never { throw new Error(code); }
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function assertUser(ctx: AgentRuntimeContext): void { if (!ctx.userId) fail("AGENT_USER_REQUIRED"); }
 function assertStorage(value: unknown): void {
   const seen = new Set<object>();
@@ -98,11 +99,29 @@ async function snapshotLocked(client: PoolClient, ctx: AgentRuntimeContext, turn
   await client.query("UPDATE agent_sessions SET conversation_phase=$3,graph_revision=$4,updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid", [ctx.tenantId, turn.sessionId, turn.phase, turn.graphRevision]);
   await appendLocked(client, ctx, { sessionId: turn.sessionId, turnId: turn.id, eventType: "snapshot", event: { turn: publicTurn(turn) }, graphRevision: turn.graphRevision, idempotencyKey: `snapshot:${turn.id}:${turn.stateVersion}` });
 }
+async function validateResultGroupBinding(client: PoolClient, ctx: AgentRuntimeContext, session: AgentRuntimeSession, turnId: string, block: ConversationBlock | undefined, resultIds: string[], expectedGroupId?: string): Promise<void> {
+  if (!block || block.type !== "result_group" || !uuidPattern.test(block.id ?? "") || (expectedGroupId !== undefined && expectedGroupId !== block.id)) fail("AGENT_RESULT_GROUP_CONFLICT");
+  const group = (await client.query("SELECT id,session_id,turn_id,run_id FROM agent_result_groups WHERE tenant_id=$1::uuid AND id=$2::uuid", [ctx.tenantId, block.id])).rows[0];
+  if (!group || group.session_id !== session.id || group.turn_id !== turnId) fail("AGENT_RESULT_GROUP_SCOPE_CONFLICT");
+  const ids = [...new Set(resultIds)];
+  if (!ids.length) return;
+  if (ids.some((id) => !uuidPattern.test(id))) fail("AGENT_RESULT_GROUP_SCOPE_CONFLICT");
+  const rows = (await client.query("SELECT r.id FROM agent_result_refs r WHERE r.tenant_id=$1::uuid AND r.result_group_id=$2::uuid AND r.id=ANY($3::uuid[]) AND r.run_id IS NOT DISTINCT FROM $4::uuid", [ctx.tenantId, block.id, ids, group.run_id])).rows;
+  if (rows.length !== ids.length) fail("AGENT_RESULT_GROUP_SCOPE_CONFLICT");
+}
 async function saveStateLocked(client: PoolClient, ctx: AgentRuntimeContext, session: AgentRuntimeSession, input: AgentRuntimeStateInput): Promise<AgentRuntimeTurn> {
   if (!Number.isSafeInteger(input.expectedStateVersion) || input.expectedStateVersion < 0) fail("AGENT_STATE_VERSION_REQUIRED");
   assertStorage(input.planJson); assertStorage(input.pendingDecision);
   const blocks = normalizeConversationBlocks(input.blocks);
   if (input.pendingDecision && (!input.pendingDecision.id || !input.pendingDecision.blockId || !blocks.some(block => block.id === input.pendingDecision!.blockId) || input.pendingDecision.graphRevision !== input.graphRevision)) fail("AGENT_PENDING_DECISION_INVALID");
+  if (input.pendingDecision && (Array.isArray(input.pendingDecision.allowedTypes) ? input.pendingDecision.allowedTypes : []).includes("result_action")) {
+    const block = blocks.find((candidate) => candidate.id === input.pendingDecision!.blockId);
+    const resultIds = block?.type === "result_group" ? block.results.map((result) => result.id) : [];
+    const currentTurn = await requireTurn(client, ctx, input.sessionId, input.turnId);
+    const planResultGroupId = typeof input.planJson?.resultGroupId === "string" ? input.planJson.resultGroupId : typeof currentTurn.planJson.resultGroupId === "string" ? currentTurn.planJson.resultGroupId : undefined;
+    if (!planResultGroupId) fail("AGENT_RESULT_GROUP_CONFLICT");
+    await validateResultGroupBinding(client, ctx, session, input.turnId, block, resultIds, planResultGroupId);
+  }
   await requireDraft(client, ctx, session, input.graphRevision, true);
   const result = await client.query(`UPDATE agent_turns SET blocks_json=$4::jsonb,conversation_phase=$5,execution_state=$6,pending_decision_json=$7::jsonb,graph_revision=$8,status=COALESCE($9,status),plan_json=COALESCE($10::jsonb,plan_json),state_version=state_version+1,updated_at=now() WHERE tenant_id=$1::uuid AND session_id=$2::uuid AND id=$3::uuid AND runtime_version='runtime' AND state_version=$11 AND graph_revision=$12 RETURNING ${turnColumns}`, [ctx.tenantId, input.sessionId, input.turnId, json(blocks), input.phase, input.executionState, json(input.pendingDecision ?? null), input.graphRevision, input.status ?? null, input.planJson === undefined ? null : json(input.planJson), input.expectedStateVersion, input.expectedGraphRevision]);
   if (!result.rows[0]) fail("AGENT_STATE_VERSION_CONFLICT");
@@ -213,6 +232,11 @@ export class AgentRuntimeRepository {
       if (!pending || pending.id !== input.decisionId || pending.blockId !== input.blockId || pending.graphRevision !== input.graphRevision || turn.graphRevision !== input.graphRevision) fail("AGENT_PENDING_DECISION_CONFLICT");
       const allowed = Array.isArray(pending.allowedTypes) ? pending.allowedTypes : pending.type ? [pending.type] : [];
       if (!allowed.includes(input.type)) fail("AGENT_DECISION_TYPE_INVALID");
+      if (input.type === "result_action") {
+        const block = turn.blocks.find((candidate) => candidate.id === input.blockId);
+        const resultIds = Array.isArray(input.payload.resultIds) ? input.payload.resultIds.filter((id): id is string => typeof id === "string") : [];
+        await validateResultGroupBinding(client, ctx, session, input.turnId, block, resultIds, input.blockId);
+      }
       await requireDraft(client, ctx, session, input.graphRevision, true);
       const decision = mapDecision((await client.query("INSERT INTO agent_decisions(tenant_id,session_id,turn_id,decision_key,block_id,graph_revision,decision_type,payload_json,idempotency_key,created_by) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8::jsonb,$9,$10::uuid) RETURNING *", [ctx.tenantId, input.sessionId, input.turnId, input.decisionId, input.blockId, input.graphRevision, input.type, json(input.payload), input.idempotencyKey, ctx.userId])).rows[0]);
       const claimedTurn = mapTurn((await client.query(`UPDATE agent_turns SET pending_decision_json=NULL,state_version=state_version+1,updated_at=now() WHERE tenant_id=$1::uuid AND session_id=$2::uuid AND id=$3::uuid AND state_version=$4 RETURNING ${turnColumns}`, [ctx.tenantId, input.sessionId, input.turnId, turn.stateVersion])).rows[0]);

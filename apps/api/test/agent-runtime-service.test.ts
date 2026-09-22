@@ -103,6 +103,17 @@ describe("Agent runtime orchestration", () => {
     expect(response.blocks.find(block => block.type === "result_group")).toMatchObject({ id: "group-1" });
   });
 
+  it("rejects a result group id that disagrees with the rendered result block", async () => {
+    const h = harness();
+    const result = { id: "result-1", resultGroupId: "group-1", assetId: "asset-1", runId: "run", kind: "image", label: "首帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };
+    h.repository.getResultRefsForTurn.mockResolvedValue([result]);
+    h.getTurn().planJson = { resultGroupId: "group-1" };
+    h.getTurn().pendingDecision = { id: "decision", blockId: "group-2", graphRevision: 4, allowedTypes: ["result_action"] };
+    h.getTurn().blocks = [{ type: "result_group", id: "group-2", results: [{ id: "result-1", label: "首帧", kind: "image", status: "ready", assetId: "asset-1" }] }];
+    const response = await h.service.submitDecision(ctx, "session", "turn", { decisionId: "decision", blockId: "group-2", graphRevision: 4, idempotencyKey: "group-mismatch", type: "result_action", payload: { action: "select", resultIds: ["result-1"] } });
+    expect(response.phase).toBe("recoverable_error");
+  });
+
   it("persists reference actions without granting them a different result scope", async () => {
     const h = harness();
     const result = { id: "result-1", resultGroupId: "group", assetId: "asset-1", runId: "run", kind: "image", label: "尾帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };

@@ -32,8 +32,11 @@ const resultPending = (turn: AgentRuntimeTurn, resultGroupId: string | undefined
   if (!resultGroupId) throw new Error("AGENT_RESULT_GROUP_REQUIRED");
   return pending(turn, resultGroupId, ["result_action"]);
 };
-const resultGroupIdForTurn = (turn: AgentRuntimeTurn, stored: RuntimePlan): string | undefined =>
-  stored.resultGroupId ?? turn.blocks.find((block) => block.type === "result_group")?.id;
+const resultGroupIdForTurn = (turn: AgentRuntimeTurn, stored: RuntimePlan): string => {
+  const blockId = turn.blocks.find((block) => block.type === "result_group")?.id;
+  if (!blockId || (stored.resultGroupId !== undefined && stored.resultGroupId !== blockId)) throw new Error("AGENT_RESULT_GROUP_CONFLICT");
+  return stored.resultGroupId ?? blockId;
+};
 function state(turn: AgentRuntimeTurn, patch: Partial<AgentRuntimeStateInput>): AgentRuntimeStateInput {
   return { sessionId: turn.sessionId, turnId: turn.id, expectedStateVersion: turn.stateVersion, expectedGraphRevision: turn.graphRevision, graphRevision: turn.graphRevision, phase: turn.phase, executionState: turn.executionState, blocks: turn.blocks, pendingDecision: turn.pendingDecision, ...patch };
 }
