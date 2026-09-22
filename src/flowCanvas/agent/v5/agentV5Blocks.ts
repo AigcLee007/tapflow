@@ -115,14 +115,26 @@ function results(value: unknown): ResultRef[] {
       if (!resultId || !label) return undefined;
       const assetId = id(result.assetId);
       const nodeId = id(result.nodeId);
+      const refId = id(result.refId);
+      const runId = id(result.runId);
+      const placedNodeId = id(result.placedNodeId);
+      const sourceRefs = stringList(result.sourceRefs, 200);
+      const contentText = text(result.contentText);
+      const kind = result.kind === "image" || result.kind === "video" || result.kind === "text" ? result.kind : undefined;
       const status = result.status === "ready" || result.status === "selected" || result.status === "failed"
         ? result.status
         : undefined;
       return {
         id: resultId,
         label,
+        ...(kind ? { kind } : {}),
+        ...(contentText ? { contentText } : {}),
         ...(assetId ? { assetId } : {}),
         ...(nodeId ? { nodeId } : {}),
+        ...(refId ? { refId } : {}),
+        ...(runId ? { runId } : {}),
+        ...(placedNodeId ? { placedNodeId } : {}),
+        ...(sourceRefs.length ? { sourceRefs } : {}),
         ...(status ? { status } : {}),
       };
     })
@@ -156,6 +168,26 @@ function normalizeOne(raw: unknown): ConversationBlock | undefined {
   if (!isRecord(raw) || typeof raw.type !== "string") return undefined;
 
   switch (raw.type) {
+    case "understanding": {
+      const value = text(raw.text);
+      return value ? { type: "paragraph", text: value } : undefined;
+    }
+    case "question_set": {
+      const parsedOptions = Array.isArray(raw.questions) ? raw.questions.slice(0, 4).map((question) => isRecord(question) ? { id: id(question.id) ?? "question", label: text(question.prompt) ?? "请补充信息" } : undefined).filter((item): item is AgentOption => Boolean(item)) : [];
+      return parsedOptions.length ? { type: "choice_grid", id: id(raw.id), title: "需要补充的信息", options: parsedOptions, selectionMode: "single" } : undefined;
+    }
+    case "plan": {
+      const summary = text(raw.summary) ?? "已整理执行计划";
+      return { type: "confirmation_card", title: text(raw.title, AGENT_V5_LABEL_MAX_LENGTH) ?? "执行计划", text: summary, plan: plan({ ...raw, costCredits: raw.estimatedCredits, summary }) };
+    }
+    case "confirmation": {
+      const value = text(raw.text);
+      return value ? { type: "confirmation_card", title: text(raw.title, AGENT_V5_LABEL_MAX_LENGTH), text: value, plan: plan({ costCredits: raw.costCredits, summary: value }) } : undefined;
+    }
+    case "progress": {
+      const steps = progressSteps(raw.steps);
+      return steps.length ? { type: "progress_card", title: text(raw.title, AGENT_V5_LABEL_MAX_LENGTH), steps } : undefined;
+    }
     case "paragraph": {
       const value = text(raw.text);
       return value ? { type: "paragraph", text: value } : undefined;

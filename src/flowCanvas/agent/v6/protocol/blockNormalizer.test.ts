@@ -2,6 +2,23 @@ import { describe, expect, it } from "vitest";
 import { normalizeBlocks } from "./blockNormalizer";
 
 describe("normalizeBlocks", () => {
+  it("projects canonical questions, plan, confirmation, and recovery blocks into actionable UI blocks", () => {
+    const blocks = normalizeBlocks([
+      { type: "question_set", questions: [{ id: "subject", prompt: "主体是什么？", kind: "text", required: true }, { id: "ratio", prompt: "选择比例", kind: "single", options: [{ id: "vertical", label: "9:16" }] }] },
+      { type: "plan", summary: "生成首尾帧", deliverables: [{ id: "first", label: "首帧", kind: "image", quantity: 1 }], quantity: 3, estimatedCredits: 12, writes: ["素材库", "会话结果"] },
+      { type: "confirmation", id: "approval", text: "确认生成", costCredits: 12, quantity: 3, writes: ["素材库"] },
+      { type: "error_recovery", id: "recovery", message: "任务失败", actions: [{ action: "retry", label: "重试恢复" }] },
+    ]);
+
+    expect(blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "question", id: "subject" }),
+      expect.objectContaining({ type: "choice_grid", id: "ratio", options: [{ id: "vertical", label: "9:16" }] }),
+      expect.objectContaining({ type: "confirmation_card", id: "approval", plan: expect.objectContaining({ costCredits: 12 }) }),
+      expect.objectContaining({ type: "choice_grid", id: "recovery", options: [{ id: "retry", label: "重试恢复" }] }),
+    ]));
+    expect(blocks.filter((block) => block.type === "bullet_list").flatMap((block) => block.items)).toEqual(expect.arrayContaining(["图片：首帧 × 1", "数量：3", "预计费用：12 积分", "写入范围：素材库、会话结果"]));
+  });
+
   it("drops provider and HTML fields from blocks", () => {
     expect(
       normalizeBlocks([{ type: "heading", level: 2, text: "方案", provider: "x", html: "<script/>" }]),
@@ -18,6 +35,9 @@ describe("normalizeBlocks", () => {
         label: "结果一",
         assetId: "asset-1",
         nodeId: "node-1",
+        kind: "text",
+        contentText: "可直接复制的视频提示词",
+        sourceRefs: ["frame-1", "frame-2"],
         status: "ready",
         route: "internal-route",
         credential: "encrypted-secret",
@@ -28,7 +48,7 @@ describe("normalizeBlocks", () => {
     expect(block).toEqual({
       type: "result_group",
       title: "结果",
-      results: [{ id: "r1", label: "结果一", assetId: "asset-1", nodeId: "node-1", status: "ready" }],
+      results: [{ id: "r1", label: "结果一", kind: "text", contentText: "可直接复制的视频提示词", assetId: "asset-1", nodeId: "node-1", sourceRefs: ["frame-1", "frame-2"], status: "ready" }],
     });
   });
 
@@ -53,6 +73,27 @@ describe("normalizeBlocks", () => {
     expect(block).toEqual({
       type: "result_group",
       results: [{ id: "r3", label: "safe", assetId: "asset-3", nodeId: "node-3", refId: "ref-3", uploadedAssetIds: ["asset-4"] }],
+    });
+  });
+
+  it("keeps canonical image and text results when they have no input references", () => {
+    const serverBlock = [{
+      type: "result_group",
+      id: "group",
+      results: [
+        { id: "first", label: "首帧", kind: "image", assetId: "asset-1", sourceRefs: [] },
+        { id: "last", label: "尾帧", kind: "image", assetId: "asset-2", sourceRefs: [] },
+        { id: "prompt", label: "视频提示词", kind: "text", contentText: "camera moves forward", sourceRefs: [] },
+      ],
+    }];
+
+    expect(normalizeBlocks(serverBlock)[0]).toMatchObject({
+      type: "result_group",
+      results: expect.arrayContaining([
+        expect.objectContaining({ id: "first" }),
+        expect.objectContaining({ id: "last" }),
+        expect.objectContaining({ id: "prompt" }),
+      ]),
     });
   });
 

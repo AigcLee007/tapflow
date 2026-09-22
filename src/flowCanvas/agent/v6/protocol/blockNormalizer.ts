@@ -43,17 +43,27 @@ function result(value: unknown): ResultRef | undefined {
   const resultLabel = label(raw.label);
   const statuses = ["ready", "selected", "failed"] as const;
   const status = statuses.includes(raw.status as typeof statuses[number]) ? raw.status as ResultRef["status"] : undefined;
+  const kind = raw.kind === "image" || raw.kind === "video" || raw.kind === "text" ? raw.kind : undefined;
+  const contentText = typeof raw.contentText === "string" ? text(raw.contentText) : undefined;
   const assetId = raw.assetId === undefined ? undefined : id(raw.assetId);
   const nodeId = raw.nodeId === undefined ? undefined : id(raw.nodeId);
   const refId = raw.refId === undefined ? undefined : id(raw.refId);
-  const uploadedAssetIds = raw.uploadedAssetIds === undefined ? undefined : array(raw.uploadedAssetIds).map(id);
-  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.uploadedAssetIds !== undefined && (!uploadedAssetIds?.length || uploadedAssetIds.some((value) => !value)))) return undefined;
+  const runId = raw.runId === undefined ? undefined : id(raw.runId);
+  const placedNodeId = raw.placedNodeId === undefined ? undefined : id(raw.placedNodeId);
+  const sourceRefs = raw.sourceRefs === undefined ? undefined : Array.isArray(raw.sourceRefs) ? array(raw.sourceRefs).map(id) : undefined;
+  const uploadedAssetIds = raw.uploadedAssetIds === undefined ? undefined : Array.isArray(raw.uploadedAssetIds) ? array(raw.uploadedAssetIds).map(id) : undefined;
+  if (!resultId || !resultLabel || (raw.assetId !== undefined && !assetId) || (raw.nodeId !== undefined && !nodeId) || (raw.refId !== undefined && !refId) || (raw.runId !== undefined && !runId) || (raw.placedNodeId !== undefined && !placedNodeId) || (raw.sourceRefs !== undefined && (!Array.isArray(raw.sourceRefs) || sourceRefs?.some((value) => !value))) || (raw.uploadedAssetIds !== undefined && (!Array.isArray(raw.uploadedAssetIds) || uploadedAssetIds?.some((value) => !value)))) return undefined;
   return {
     id: resultId,
     label: resultLabel,
+    ...(kind ? { kind } : {}),
+    ...(contentText ? { contentText } : {}),
     ...(assetId ? { assetId } : {}),
     ...(nodeId ? { nodeId } : {}),
     ...(refId ? { refId } : {}),
+    ...(runId ? { runId } : {}),
+    ...(placedNodeId ? { placedNodeId } : {}),
+    ...(sourceRefs?.length ? { sourceRefs } : {}),
     ...(uploadedAssetIds ? { uploadedAssetIds } : {}),
     ...(status ? { status } : {}),
   };
@@ -114,7 +124,71 @@ function normalizeOne(value: unknown): ConversationBlock | undefined {
   return undefined;
 }
 
+function normalizeCanonical(value: unknown): ConversationBlock[] | null {
+  const raw = asRecord(value);
+  if (raw.type === "question_set") {
+    return array(raw.questions).flatMap((entry) => {
+      const question = asRecord(entry);
+      const questionId = id(question.id);
+      const prompt = text(question.prompt);
+      if (!questionId || !prompt) return [];
+      const options = array(question.options).map(option).filter((item): item is AgentOption => Boolean(item));
+      if (question.kind === "text") return [{ type: "question", id: questionId, title: prompt, prompt, options: [] }];
+      return options.length ? [{ type: "choice_grid", id: questionId, title: prompt, options, selectionMode: question.kind === "multiple" ? "multiple" : "single" }] : [];
+    });
+  }
+  if (raw.type === "brief") {
+    const fields = array(raw.fields).flatMap((entry) => {
+      const field = asRecord(entry);
+      const fieldLabel = label(field.label);
+      const valueText = text(field.value);
+      return fieldLabel && valueText ? [{ label: fieldLabel, value: valueText }] : [];
+    });
+    return [{ type: "brief_card", ...optionalId(raw), fields, editable: raw.editable === true }];
+  }
+  if (raw.type === "plan") {
+    const deliverables = array(raw.deliverables).flatMap((entry) => {
+      const item = asRecord(entry);
+      const itemLabel = label(item.label);
+      const kind = item.kind === "image" ? "图片" : item.kind === "video" ? "视频" : "文本";
+      const quantity = typeof item.quantity === "number" && Number.isFinite(item.quantity) ? ` × ${item.quantity}` : "";
+      return itemLabel ? [`${kind}：${itemLabel}${quantity}`] : [];
+    });
+    const details = [
+      typeof raw.quantity === "number" ? `数量：${raw.quantity}` : "",
+      typeof raw.estimatedCredits === "number" ? `预计费用：${raw.estimatedCredits} 积分` : "",
+      array(raw.references).length ? `引用：${array(raw.references).map(id).filter(Boolean).join("、")}` : "",
+      array(raw.writes).length ? `写入范围：${array(raw.writes).map(label).filter(Boolean).join("、")}` : "",
+    ].filter(Boolean);
+    return [
+      { type: "heading", level: 3, text: label(raw.title) || "执行计划" },
+      ...(text(raw.summary) ? [{ type: "paragraph" as const, text: text(raw.summary) }] : []),
+      ...(deliverables.length ? [{ type: "bullet_list" as const, items: deliverables }] : []),
+      ...(details.length ? [{ type: "bullet_list" as const, items: details }] : []),
+    ];
+  }
+  if (raw.type === "confirmation") {
+    const writes = array(raw.writes).map(label).filter(Boolean);
+    const summary = [typeof raw.quantity === "number" ? `共 ${raw.quantity} 项交付` : "", writes.length ? `写入：${writes.join("、")}` : ""].filter(Boolean).join("；");
+    return [{ type: "confirmation_card", ...optionalId(raw), text: text(raw.text), plan: { ...(typeof raw.costCredits === "number" && Number.isFinite(raw.costCredits) ? { costCredits: Math.max(0, raw.costCredits) } : {}), ...(summary ? { summary } : {}) } }];
+  }
+  if (raw.type === "progress") return [{ type: "progress_card", ...optionalId(raw), steps: array(raw.steps).map(progress).filter((item): item is ProgressStep => Boolean(item)) }];
+  if (raw.type === "error_recovery") {
+    const options = array(raw.actions).flatMap((entry) => {
+      const action = asRecord(entry);
+      const actionId = id(action.action);
+      const actionLabel = label(action.label);
+      return actionId && actionLabel ? [{ id: actionId, label: actionLabel }] : [];
+    });
+    return [
+      { type: "paragraph", text: text(raw.message) },
+      ...(options.length ? [{ type: "choice_grid" as const, id: id(raw.id) || "recovery", title: "恢复任务", options, selectionMode: "single" as const }] : []),
+    ];
+  }
+  return null;
+}
+
 export function normalizeBlocks(input: unknown): ConversationBlock[] {
   const values = Array.isArray(input) ? bounded(input) : [input];
-  return values.map(normalizeOne).filter((block): block is ConversationBlock => Boolean(block));
+  return values.flatMap((value) => normalizeCanonical(value) ?? [normalizeOne(value)].filter((block): block is ConversationBlock => Boolean(block)));
 }

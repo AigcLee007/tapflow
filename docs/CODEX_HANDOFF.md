@@ -780,3 +780,20 @@ Latest contract follow-up (2026-08-20): `SkillStepRunner` now covers normalized 
 - Full `npm test` completed with 380 passing, 22 skipped, 32 failing across 15 files and 4 unhandled legacy runtime errors. These remain historical migration, billing/UI fixture, Canvas Agent test-id, production-studio, video-reference, and multipart transport failures. Real authenticated staging acceptance with PostgreSQL, Redis/BullMQ, S3, provider routes, billing, and browser replay is still pending; all Agent/Skill flags remain disabled.
 - Pre-merge review fixed the legacy `agent_turns` status-constraint replacement and system-admin RLS context for official Skill seeding. Focused migration and seed regression tests pass.
 - Do not enable V2/Skill flags yet: the selected-Skill V2 launch path still needs approval-gate enforcement, normalized Skill-step dispatch, and runtime delivery-check integration before staging acceptance.
+# 2026-09-21 - Canonical Agent default-path correction
+
+- The mounted canvas Agent now uses `useAgentRuntime` and canonical `/api/v2/agent/sessions/*` calls for session creation, history restore, mode changes, turns, decisions, and execution polling. V5/V6 versioned turn and mode routes are no longer in the default import path.
+- Canonical blocks for questions, plans, confirmation, progress, recovery, and results render in the typed workspace. The client sends the current remote draft revision and original question IDs; results retain a `result_action` decision after completion and placement advances that revision for another placement.
+- Validation: frontend canonical panel/protocol tests (32 assertions), API canonical runtime tests (39 passed, 1 local database skip), API build, and frontend build. Real authenticated staging acceptance and all feature-flag/deployment actions remain pending; do not enable or deploy this runtime before the documented live checks.
+
+# 2026-09-21 - Canonical Agent runtime rebuild checkpoint
+
+The approved Agent rebuild is implemented in isolated branch `codex/agent-runtime-rebuild`. The server runtime now uses a real structured planner, authoritative context/model/pricing resolution, durable CAS/decision/execution leases, immutable WorkflowRuns execution graphs, asset/result lineage, and explicit result placement. The mounted V5-shaped client adapter translates its turn/decision calls to canonical `/api/v2/agent/sessions/:sessionId/turns` endpoints and polls durable execution state. Worker Agent runs skip automatic draft write-back.
+
+Validation completed: API build; DB and AI Gateway builds; Worker build; frontend build; API planner/context/decision/wire tests (16); API persistence/execution tests (26, one local database skip); and Worker write-back regression. Live authenticated browser acceptance with real PostgreSQL/Redis/BullMQ/S3/provider routes is still required before enabling production flags or deployment.
+
+## 2026-09-21 - Result delivery and canonical UI adapter follow-up
+
+- The Agent result renderer now displays generated text, asset-backed image/video previews, selected state, and actions for edit, variant, reference, and explicit canvas placement.
+- `place_result` is a canonical typed decision. The API adds the node and lineage under flow-draft CAS; the panel reloads the server draft and the returned result group records `placedNodeId` so its button becomes disabled.
+- The V6 adapter's primary turn, confirmation, cancellation, and mode paths now call canonical endpoints. Focused frontend result/API tests, API build, and frontend build pass. Real authenticated acceptance and a staging migration remain outstanding; do not enable any production flag before those checks.

@@ -45,6 +45,7 @@ import { formatAgentToolEvent } from "./agent-tool-events.js";
 import { projectAgentRuntimeCapabilities } from "./agent-runtime-identity.js";
 import { AgentV6Orchestrator, type AgentV6ServicePort } from "./v6/agent-v6-orchestrator.js";
 import { agentV6DecisionSchema, agentV6TurnSchema, type AgentV6DecisionInput, type AgentV6TurnInput } from "./v6/agent-v6-schemas.js";
+import { agentRuntimeCreateSessionSchema, agentRuntimeSessionFilterSchema, agentRuntimeTurnSchema, agentRuntimeDecisionSchema, agentRuntimeModeSchema } from "./runtime/agent-runtime.schemas.js";
 
 function sendError(
   request: FastifyRequest,
@@ -88,6 +89,7 @@ function getAgentContext(request: FastifyRequest) {
   return {
     tenantId: request.ctx.tenantId,
     userId: request.ctx.userId,
+    permissions: request.ctx.permissions,
   };
 }
 
@@ -109,6 +111,19 @@ function handleRouteError(
 
   if (error instanceof AgentApiError) {
     return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
+  }
+
+  if (error instanceof Error && ["AGENT_GRAPH_REVISION_CONFLICT", "AGENT_STATE_VERSION_CONFLICT", "AGENT_PENDING_DECISION_CONFLICT", "AGENT_DECISION_ALREADY_SUBMITTED", "AGENT_RESULT_SCOPE_CONFLICT", "AGENT_RESULT_GROUP_CONFLICT", "AGENT_RESULT_GROUP_SCOPE_CONFLICT", "AGENT_RESULT_ACTION_SINGLE"].includes(error.message)) {
+    return sendError(request, reply, 409, error.message, "The Agent state is stale; refresh and retry.");
+  }
+  if (error instanceof Error && ["AGENT_PERMISSION_DENIED", "AGENT_USER_REQUIRED"].includes(error.message)) {
+    return sendError(request, reply, 403, error.message, "You do not have permission to perform this Agent action.");
+  }
+  if (error instanceof Error && ["AGENT_SESSION_NOT_FOUND", "AGENT_TURN_NOT_FOUND", "AGENT_RESULT_NOT_FOUND", "AGENT_RESULT_GROUP_NOT_FOUND", "AGENT_RUN_NOT_FOUND", "AGENT_FLOW_NOT_FOUND", "AGENT_PROJECT_NOT_FOUND"].includes(error.message)) {
+    return sendError(request, reply, 404, error.message, "The requested Agent resource was not found.");
+  }
+  if (error instanceof Error && ["AGENT_RESULT_NOT_READY", "AGENT_RESULT_INVALID", "AGENT_CONTEXT_SCOPE_CONFLICT", "AGENT_RESULT_GROUP_REQUIRED", "AGENT_ANSWER_INVALID", "AGENT_ANSWER_REQUIRED", "AGENT_PLAN_INVALID", "AGENT_MODEL_LOCK_CONFLICT", "AGENT_MODEL_UNAVAILABLE", "AGENT_REFERENCE_UNAVAILABLE", "AGENT_FIRST_LAST_FRAME_REQUIRED", "AGENT_FIRST_LAST_FRAME_METADATA_REQUIRED"].includes(error.message)) {
+    return sendError(request, reply, 422, error.message, "The Agent request is not valid for the current state.");
   }
 
   request.log.error(
@@ -161,11 +176,17 @@ function writeAgentSseFailure(error: unknown, request: FastifyRequest, reply: Fa
 
 export function registerAgentRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant];
+  const canonicalRuntimeGuard = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (app.agentService.env.agentRuntimeEnabled === false) return sendError(request, reply, 503, "AGENT_RUNTIME_DISABLED", "Canonical Agent runtime is disabled.");
+  };
+  const compatibilityRuntimeGuard = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (app.agentService.env.agentRuntimeCompatEnabled === false) return sendError(request, reply, 503, "AGENT_RUNTIME_COMPAT_DISABLED", "Legacy Agent compatibility routes are disabled.");
+  };
   const agentV6Orchestrator = new AgentV6Orchestrator(app.agentService as unknown as AgentV6ServicePort);
 
   app.get(
     "/api/v2/agent/capabilities",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (_request, reply) => {
       const env = app.agentService.env;
       const runtimeCapabilities = projectAgentRuntimeCapabilities(env);
@@ -181,12 +202,12 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
-        const body = parseBody<CreateAgentSessionInput>(request, createAgentSessionSchema);
-        return reply.code(201).send(await app.agentService.createSession(getAgentContext(request), body));
+        const body = agentRuntimeCreateSessionSchema.parse(request.body);
+        return reply.code(201).send(await app.canonicalAgentRuntime.createSession(getAgentContext(request), body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -225,12 +246,12 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
-        const query = parseQuery<ListAgentSessionsQuery>(request, listAgentSessionsQuerySchema);
-        return reply.send(await app.agentService.listSessions(getAgentContext(request), query));
+        const query = agentRuntimeSessionFilterSchema.parse(request.query);
+        return reply.send(await app.canonicalAgentRuntime.listSessions(getAgentContext(request), query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -240,13 +261,40 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const scope = parseQuery<AgentSessionScopeInput>(request, agentSessionScopeSchema);
-        return reply.send(await app.agentService.getSession(getAgentContext(request), params.sessionId, scope));
+        return reply.send(await app.canonicalAgentRuntime.getSession(getAgentContext(request), params.sessionId));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/agent/sessions/:sessionId",
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = z.object({ title: z.string().trim().min(1).max(200) }).strict().parse(request.body);
+        return reply.send(await app.canonicalAgentRuntime.updateSession(getAgentContext(request), params.sessionId, body));
+      } catch (error) {
+        return handleRouteError(error, request, reply);
+      }
+    },
+  );
+
+  app.patch(
+    "/api/v2/agent/sessions/:sessionId/mode",
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
+        const body = agentRuntimeModeSchema.parse(request.body);
+        return reply.send(await app.canonicalAgentRuntime.updateSession(getAgentContext(request), params.sessionId, body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -254,15 +302,26 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   );
 
   app.get(
+    "/api/v2/agent/sessions/:sessionId/turns/:turnId",
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
+        return reply.send(await app.canonicalAgentRuntime.refreshExecution(getAgentContext(request), params.sessionId, params.turnId));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.get(
     "/api/v2/agent/sessions/:sessionId/history",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const scope = parseQuery<AgentSessionScopeInput>(request, agentSessionScopeSchema);
-        return reply.send(await app.agentService.getSessionHistory(getAgentContext(request), params.sessionId, scope));
+        const query = z.object({ limit: z.coerce.number().int().min(1).max(100).optional(), cursor: z.string().optional() }).parse(request.query);
+        return reply.send(await app.canonicalAgentRuntime.getHistory(getAgentContext(request), params.sessionId, query));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -272,19 +331,14 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId/events",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
         return reply.send(
-          await app.agentService.getSessionEvents(
-            getAgentContext(request),
-            params.sessionId,
-            query.afterSeq ?? 0,
-            query,
-          ),
+          await app.canonicalAgentRuntime.getEvents(getAgentContext(request), params.sessionId, query.afterSeq ?? 0),
         );
       } catch (error) {
         return handleRouteError(error, request, reply);
@@ -295,18 +349,14 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.get(
     "/api/v2/agent/sessions/:sessionId/events/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
-        const streamBody = await app.agentService.buildSessionEventsStream(
-          getAgentContext(request),
-          params.sessionId,
-          query.afterSeq ?? 0,
-          query,
-        );
+        const envelope = await app.canonicalAgentRuntime.getEvents(getAgentContext(request), params.sessionId, query.afterSeq ?? 0);
+        const streamBody = envelope.events.map((event) => formatStreamEvent("agent_event", event)).join("");
 
         reply.raw.setHeader("cache-control", "no-cache");
         reply.raw.setHeader("connection", "keep-alive");
@@ -324,7 +374,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/messages",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
@@ -340,13 +390,13 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
-        const body = parseBody<CreateAgentTurnInput>(request, createAgentTurnSchema);
-        return reply.code(201).send(await app.agentService.createTurn(getAgentContext(request), params.sessionId, body));
+        const body = agentRuntimeTurnSchema.parse(request.body);
+        return reply.code(201).send(await app.canonicalAgentRuntime.submitTurn(getAgentContext(request), params.sessionId, body));
       } catch (error) {
         return handleRouteError(error, request, reply);
       }
@@ -355,7 +405,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v5-turns",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -366,8 +416,20 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   );
 
   app.post(
+    "/api/v2/agent/sessions/:sessionId/turns/:turnId/decisions",
+    { preHandler: [...authHandlers, canonicalRuntimeGuard, requirePermission("flow:read")] },
+    async (request, reply) => {
+      try {
+        const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
+        const body = agentRuntimeDecisionSchema.parse(request.body);
+        return reply.send(await app.canonicalAgentRuntime.submitDecision(getAgentContext(request), params.sessionId, params.turnId, body));
+      } catch (error) { return handleRouteError(error, request, reply); }
+    },
+  );
+
+  app.post(
     "/api/v2/agent/sessions/:sessionId/v6-turns",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -379,7 +441,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v6-turns/:turnId/decisions",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
@@ -391,7 +453,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.patch(
     "/api/v2/agent/sessions/:sessionId/v5-mode",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -403,7 +465,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/v5-turns/:turnId/decisions",
-    { preHandler: [...authHandlers, requirePermission("flow:read")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), turnId: z.string().uuid() }).parse(request.params);
@@ -416,7 +478,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/canvas-ops",
     {
-      preHandler: [...authHandlers, requirePermission("flow:update")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:update")],
     },
     async (request, reply) => {
       try {
@@ -438,7 +500,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/execute/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:run")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")],
     },
     async (request, reply) => {
       try {
@@ -469,7 +531,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/v2-turns/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:update")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:update")],
     },
     async (request, reply) => {
       try {
@@ -492,7 +554,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/v2/stream",
-    { preHandler: [...authHandlers, requirePermission("flow:update")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:update")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -508,7 +570,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/cancel",
-    { preHandler: [...authHandlers, requirePermission("flow:run")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")] },
     async (request, reply) => {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
@@ -520,7 +582,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
 
   app.post(
     "/api/v2/agent/sessions/:sessionId/approvals/:approvalId/stream",
-    { preHandler: [...authHandlers, requirePermission("flow:run")] },
+    { preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")] },
     async (request, reply) => {
       try {
         const params = z.object({ sessionId: z.string().uuid(), approvalId: z.string().uuid() }).parse(request.params);
@@ -539,7 +601,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/tool-calls/approve/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:run")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:run")],
     },
     async (request, reply) => {
       try {
@@ -570,7 +632,7 @@ export function registerAgentRoutes(app: FastifyInstance): void {
   app.post(
     "/api/v2/agent/sessions/:sessionId/turns/stream",
     {
-      preHandler: [...authHandlers, requirePermission("flow:read")],
+      preHandler: [...authHandlers, compatibilityRuntimeGuard, requirePermission("flow:read")],
     },
     async (request, reply) => {
       try {

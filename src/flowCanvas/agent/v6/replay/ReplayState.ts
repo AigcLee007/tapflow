@@ -6,7 +6,7 @@ import { normalizeStableId } from "../protocol/stableId";
 
 export type ReplayState = ConversationState;
 const phaseEvents: Record<AgentV6Phase, ConversationEvent["type"][]> = {
-  idle: [], understanding: ["turn_submitted"], waiting_for_choice: ["turn_submitted", "choice_requested"], drafting_brief: ["turn_submitted", "brief_started"], waiting_for_confirmation: ["turn_submitted", "brief_started", "brief_ready"], executing: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted"], verifying: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted", "verification_started"], presenting_results: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted", "verification_started", "results_presented"], refining: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted", "verification_started", "results_presented", "refinement_requested"], failed: ["turn_submitted", "turn_failed"],
+  idle: [], understanding: ["turn_submitted"], waiting_for_input: ["turn_submitted", "choice_requested"], waiting_for_choice: ["turn_submitted", "choice_requested"], drafting_brief: ["turn_submitted", "brief_started"], waiting_for_confirmation: ["turn_submitted", "brief_started", "brief_ready"], executing: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted"], verifying: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted", "verification_started"], presenting_results: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted", "verification_started", "results_presented"], refining: ["turn_submitted", "brief_started", "brief_ready", "confirmation_granted", "verification_started", "results_presented", "refinement_requested"], failed: ["turn_submitted", "turn_failed"], recoverable_error: ["turn_submitted", "turn_failed"],
 };
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const boundedText = (value: unknown, max = 4000) => typeof value === "string" ? value.slice(0, max) : "";
@@ -111,9 +111,12 @@ export function createReplayState(scope: AgentV6Scope, seed?: string, mode?: Con
   return { ...state, sessionId: undefined, turnId: undefined } as unknown as ReplayState;
 }
 
-export function applyResponse(state: ReplayState, response: AgentV6Response, scope: AgentV6Scope): ReplayState {
+export function applyResponse(state: ReplayState, response: AgentV6Response, scope: AgentV6Scope, options: { historical?: boolean } = {}): ReplayState {
   if (hasResponseScopeMismatch(state, response, scope)) return { ...state, replayError: "resync-required" };
-  if (response.graphRevision < state.graphRevision || response.graphRevision < scope.graphRevision) return state;
+  // A historical turn may legitimately reference an older graph revision than
+  // the current canvas. Revision conflicts are enforced by the server for new
+  // writes; replay must still render the durable conversation.
+  if (!options.historical && (response.graphRevision < state.graphRevision || response.graphRevision < scope.graphRevision)) return state;
   const normalizedBlocks = normalizeBlocks(response.blocks);
   let next = initialConversationState({ mode: response.mode ?? state.mode, sessionId: response.sessionId, turnId: response.turnId, prompt: response.prompt ?? state.prompt, contextSnapshot: response.contextSnapshot ?? state.contextSnapshot, graphRevision: response.graphRevision }, { replaySeed: response.sessionId });
   for (const type of phaseEvents[response.phase] ?? []) next = reduceConversation(next, eventFor(type, response), { replaySeed: response.sessionId });
@@ -122,7 +125,9 @@ export function applyResponse(state: ReplayState, response: AgentV6Response, sco
   const contextSnapshot = next.contextSnapshot;
   const safePlanValue = response.plan === undefined ? next.plan : safePlan(response.plan);
   const safePendingDecision = response.pendingDecision === undefined ? next.pendingDecision : safeDecision(response.pendingDecision);
-  return { ...next, sessionId: response.sessionId || next.sessionId, turnId: response.turnId || next.turnId, graphRevision: response.graphRevision, contextSnapshot, blocks: normalizedBlocks.length ? normalizedBlocks : next.blocks, progress: response.progress === undefined ? progress : safeProgress(response.progress), results: response.results === undefined ? resultRefs : safeResults(response.results), plan: safePlanValue, pendingDecision: safePendingDecision, prompt: response.prompt === undefined ? next.prompt : boundedText(response.prompt), error: response.error === undefined ? next.error : boundedText(response.error), executionState: response.executionState ?? next.executionState, replaySeq: state.replaySeq, replayCursor: state.replayCursor, replayError: null };
+  const sameTurn = Boolean(state.turnId && response.turnId && state.turnId === response.turnId);
+  const mergedBlocks = normalizedBlocks.length ? (sameTurn ? normalizedBlocks : [...state.blocks, ...normalizedBlocks]) : state.blocks;
+  return { ...next, sessionId: response.sessionId || next.sessionId, turnId: response.turnId || next.turnId, graphRevision: response.graphRevision, contextSnapshot, blocks: mergedBlocks, progress: response.progress === undefined ? progress : safeProgress(response.progress), results: response.results === undefined ? resultRefs : safeResults(response.results), plan: safePlanValue, pendingDecision: safePendingDecision, prompt: response.prompt === undefined ? next.prompt : boundedText(response.prompt), error: response.error === undefined ? next.error : boundedText(response.error), executionState: response.executionState ?? next.executionState, replaySeq: state.replaySeq, replayCursor: state.replayCursor, replayError: null };
 }
 
 export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent, scope: AgentV6Scope): ReplayState {
@@ -161,6 +166,6 @@ export function applyDurableEvent(state: ReplayState, event: AgentV6DurableEvent
 
 export function restoreHistory(history: AgentV6History, scope: AgentV6Scope): ReplayState {
   let state = createReplayState(scope, history.session.id, history.session.mode);
-  for (const response of history.responses) state = applyResponse(state, response, scope);
+  for (const response of history.responses) state = applyResponse(state, response, scope, { historical: true });
   return { ...reduceConversation(state, { type: "mode_changed", mode: history.session.mode }), replaySeq: history.lastSeq, replayCursor: history.replayCursor, replayError: null };
 }

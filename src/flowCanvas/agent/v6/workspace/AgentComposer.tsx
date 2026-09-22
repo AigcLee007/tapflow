@@ -3,6 +3,7 @@ import { MenuSelect } from "../../../../components/menu/MenuSelect";
 import type { AgentExecutionMode } from "../protocol/conversationTypes";
 import { AgentCapabilityMenu, type AgentCapability } from "./AgentCapabilityMenu";
 import { AgentReferenceChips, type AgentReferenceChip } from "./AgentReferenceChips";
+import type { AgentReferenceRole } from "../runtime/agentProtocol";
 
 export type AgentComposerProps = {
   prompt: string;
@@ -19,13 +20,14 @@ export type AgentComposerProps = {
   onCancel: () => void;
   onCapability: (capability: AgentCapability) => void;
   onRemoveReference: (id: string) => void;
+  onRoleChange?: (id: string, role: AgentReferenceRole | undefined) => void;
 };
 
-export function AgentComposer({ prompt, references, mode, model, modelOptions, busy = false, onPromptChange, onModeChange, onModelChange, onLayerChange, onSend, onCancel, onCapability, onRemoveReference }: AgentComposerProps) {
+export function AgentComposer({ prompt, references, mode, model, modelOptions, busy = false, onPromptChange, onModeChange, onModelChange, onLayerChange, onSend, onCancel, onCapability, onRemoveReference, onRoleChange }: AgentComposerProps) {
   const canSend = prompt.trim().length > 0 && !busy;
   return (
     <footer className="agent-v6-composer agent-v6-composer-fixed" data-testid="agent-v6-composer">
-      <AgentReferenceChips references={references} onRemove={onRemoveReference} />
+      <AgentReferenceChips references={references} onRemove={onRemoveReference} onRoleChange={onRoleChange} />
       <div className="agent-v6-composer-toolbar">
         <AgentCapabilityMenu onOpenChange={(open) => onLayerChange?.("capability", open)} onSelect={onCapability} />
         <div className="agent-v6-mode" data-composer-slot="mode"><MenuSelect label="执行模式" value={mode} options={[{ label: "Agent 自动执行", value: "auto" }, { label: "用户确认", value: "manual_confirmation" }]} onChange={(value) => onModeChange?.(value as AgentExecutionMode)} onOpenChange={(open) => onLayerChange?.("mode", open)} size="compact" /></div>

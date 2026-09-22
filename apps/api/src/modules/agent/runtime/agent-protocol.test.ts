@@ -44,6 +44,11 @@ describe("server canonical agent protocol", () => {
     expect((blocks[1] as { results: unknown[] }).results).toHaveLength(24);
   });
 
+  it("caps long block text before validating the wire shape", () => {
+    const [block] = normalizeConversationBlocks([{ type: "understanding", text: "x".repeat(4_500) }]);
+    expect(block).toMatchObject({ type: "understanding", text: "x".repeat(4_000) });
+  });
+
   it("rejects unknown block fields and sensitive payloads", () => {
     expect(() => normalizeConversationBlocks([{ type: "plan", provider: "openai" }])).toThrowError("AGENT_BLOCK_INVALID");
     expect(() => normalizeConversationBlocks([{ type: "plan", summary: "blob:https://example.test/x" }])).toThrowError("AGENT_BLOCK_INVALID");

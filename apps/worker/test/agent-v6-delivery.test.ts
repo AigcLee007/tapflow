@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { verifyAgentV6Delivery } from "../src/workflow-runtime/agent-v6-delivery.js";
-import { verifyAgentV6DeliveryBeforeSuccess, WorkflowNodeExecutionService } from "../src/workflow-runtime/service.js";
+import { verifyAgentV6DeliveryBeforeSuccess, verifyCanonicalAgentDeliveryBeforeSuccess, WorkflowNodeExecutionService } from "../src/workflow-runtime/service.js";
 
 describe("Agent V6 delivery verification", () => {
   it("accepts non-empty text output", () => {
@@ -102,6 +102,12 @@ describe("Agent V6 delivery verification", () => {
       status: "not_applicable",
     });
     expect(verifier).not.toHaveBeenCalled();
+  });
+
+  it("gates canonical Agent outputs before billing settle", () => {
+    expect(verifyCanonicalAgentDeliveryBeforeSuccess({ input_json: { agentExecution: { graphChecksum: "x" } } }, "image.generate", {})).toEqual({ status: "failed", code: "AGENT_DELIVERY_INVALID_RESULT" });
+    expect(verifyCanonicalAgentDeliveryBeforeSuccess({ input_json: { agentExecution: { graphChecksum: "x" } } }, "image.generate", { assetId: "asset-1" })).toEqual({ status: "verified" });
+    expect(verifyCanonicalAgentDeliveryBeforeSuccess({ input_json: {} }, "image.generate", {})).toEqual({ status: "not_applicable" });
   });
 
   it("stops the real success path before settle or succeeded writes", async () => {

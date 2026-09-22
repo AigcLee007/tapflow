@@ -295,6 +295,10 @@ Relay D:
 
 ## 9.1 Agent Planner
 
+- `AGENT_RUNTIME_ENABLED = false`
+- `AGENT_RUNTIME_COMPAT_ENABLED = false`
+- `Agent runtime rollout note = keep both flags false until canonical runtime migrations, worker/billing smoke tests, and authenticated browser E2E pass. Enable canonical routes with AGENT_RUNTIME_ENABLED=true; keep legacy V5/V6 routes behind the separate compatibility flag.`
+
 - `AGENT_V2_ENABLED = false`
 - `AGENT_V2_RUNTIME_ENABLED = false`
 - `AGENT_V3_ENABLED = false`

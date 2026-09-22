@@ -97,6 +97,17 @@ describe("getApiEnv", () => {
     expect(disabled.agentSkillsEnabled).toBe(false);
   });
 
+  test("keeps canonical and compatibility Agent runtime routes disabled by default", () => {
+    withRequiredProductionEnv();
+    const disabled = getApiEnv();
+    expect(disabled.agentRuntimeEnabled).toBe(false);
+    expect(disabled.agentRuntimeCompatEnabled).toBe(false);
+    withRequiredProductionEnv({ AGENT_RUNTIME_ENABLED: "true", AGENT_RUNTIME_COMPAT_ENABLED: "true" });
+    const enabled = getApiEnv();
+    expect(enabled.agentRuntimeEnabled).toBe(true);
+    expect(enabled.agentRuntimeCompatEnabled).toBe(true);
+  });
+
   test.each(["AGENT_SKILL_MAX_SOURCE_CHARS", "AGENT_SKILL_MAX_STEPS", "AGENT_SKILL_REPAIR_ATTEMPTS"])(
     "rejects non-positive %s",
     (variable) => {

@@ -16,6 +16,8 @@ export type ApiEnv = {
   agentPlannerEnabled: boolean;
   agentPlannerRepairAttempts: number;
   agentPlannerTimeoutMs: number;
+  agentRuntimeEnabled?: boolean;
+  agentRuntimeCompatEnabled?: boolean;
   agentV2Enabled: boolean;
   agentV2RuntimeEnabled: boolean;
   agentV3Enabled?: boolean;
@@ -205,6 +207,8 @@ export function getApiEnv(): ApiEnv {
   const agentV3MaxContextNodes = parsePositiveIntegerEnv("AGENT_V3_MAX_CONTEXT_NODES", process.env.AGENT_V3_MAX_CONTEXT_NODES, 60);
   const agentV3MaxVisualCaptures = parsePositiveIntegerEnv("AGENT_V3_MAX_VISUAL_CAPTURES", process.env.AGENT_V3_MAX_VISUAL_CAPTURES, 4);
   const agentV3RepairAttempts = parsePositiveIntegerEnv("AGENT_V3_REPAIR_ATTEMPTS", process.env.AGENT_V3_REPAIR_ATTEMPTS, 1);
+  const agentRuntimeEnabled = parseBooleanEnv("AGENT_RUNTIME_ENABLED", process.env.AGENT_RUNTIME_ENABLED, false);
+  const agentRuntimeCompatEnabled = parseBooleanEnv("AGENT_RUNTIME_COMPAT_ENABLED", process.env.AGENT_RUNTIME_COMPAT_ENABLED, false);
   const agentSkillsEnabled = parseBooleanEnv("AGENT_SKILLS_ENABLED", process.env.AGENT_SKILLS_ENABLED, false);
   const agentSkillAuthoringEnabled = parseBooleanEnv("AGENT_SKILL_AUTHORING_ENABLED", process.env.AGENT_SKILL_AUTHORING_ENABLED, false);
   const agentSkillRuntimeEnabled = parseBooleanEnv("AGENT_SKILL_RUNTIME_ENABLED", process.env.AGENT_SKILL_RUNTIME_ENABLED, false);
@@ -401,6 +405,8 @@ export function getApiEnv(): ApiEnv {
     agentPlannerEnabled,
     agentPlannerRepairAttempts,
     agentPlannerTimeoutMs,
+    agentRuntimeEnabled,
+    agentRuntimeCompatEnabled,
     agentV2Enabled,
     agentV2RuntimeEnabled,
     agentV3Enabled,

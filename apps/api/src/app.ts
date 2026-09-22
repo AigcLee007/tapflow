@@ -42,6 +42,11 @@ import { AgentCostEstimator, DatabaseAgentCostEstimatorRepository } from "./modu
 import { AgentExecutorService, DatabaseAgentExecutorRepository } from "./modules/agent/agent-executor.service.js";
 import { AgentReferenceAssetRepository } from "./modules/agent/agent-reference-context.js";
 import { AgentCanvasService } from "./modules/agent/agent-canvas.service.js";
+import { AgentRuntimeService } from "./modules/agent/runtime/agent-runtime.service.js";
+import { AgentRuntimeRepository } from "./modules/agent/runtime/agent-runtime.repository.js";
+import { AgentRuntimeContextService } from "./modules/agent/runtime/agent-runtime-context.js";
+import { AgentRequirementPlanner } from "./modules/agent/runtime/agent-requirement-planner.js";
+import { AgentExecutionAdapter } from "./modules/agent/runtime/agent-execution-adapter.js";
 import { AgentSessionRepository } from "./modules/agent/agent-session.repository.js";
 import { AgentToolRunner, DatabaseAgentToolRunnerRepository } from "./modules/agent/agent-tool-runner.js";
 import { AgentWorkflowLauncher } from "./modules/agent/agent-workflow-launcher.js";
@@ -330,6 +335,16 @@ export function buildApp(options?: {
     credentialVault,
     pool,
   });
+  const canonicalAgentRepository = new AgentRuntimeRepository({ pool });
+  const canonicalAgentContext = new AgentRuntimeContextService({ pool });
+  const canonicalAgentPlanner = new AgentRequirementPlanner({ textRuntime: agentTextRuntime, routeKey: env.agentTextRouteKey });
+  const canonicalAgentExecution = new AgentExecutionAdapter({ workflowRuns: workflowRunsService });
+  const canonicalAgentRuntime = new AgentRuntimeService({
+    repository: canonicalAgentRepository,
+    planner: canonicalAgentPlanner,
+    context: canonicalAgentContext,
+    execution: canonicalAgentExecution,
+  });
   const agentExecutorService =
     options?.agentExecutorService ??
     buildAgentExecutorService({
@@ -396,6 +411,7 @@ export function buildApp(options?: {
   app.decorate("adminService", adminService);
   app.decorate("platformAccessService", platformAccessService);
   app.decorate("agentService", agentService);
+  app.decorate("canonicalAgentRuntime", canonicalAgentRuntime);
   app.decorate("agentV3Runtime", agentV3Runtime);
   app.decorate("skillService", skillService);
   app.decorate("skillRunService", skillRunService);

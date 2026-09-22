@@ -1,6 +1,12 @@
 ﻿# Project Record
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
+
+## 2026-09-22 - Agent P0/P1 release repairs integrated
+
+- Merged `codex/agent-runtime-rebuild` into an isolated integration branch based on `origin/main`, preserving the concurrent Administration Console records. The merge carries the canonical Agent runtime rebuild and the approved P0/P1 delivery, scope, recovery, durability, model-contract, event, reference-context, and frontend-boundary repairs.
+- Fresh integration validation passed: API build, Worker build, frontend production build, Agent API runtime tests (51 passed, 1 environment-dependent skip), Worker delivery tests (17 passed), frontend Agent reducer/API tests (9 passed), and `git diff --check`.
+- Real PostgreSQL migration/concurrency/RLS, Redis/BullMQ, S3, billing, AI Gateway/provider, authenticated browser, and staging deployment validation remain `UNRESOLVED`; feature flags remain disabled until those release gates are completed.
 
 ## 2026-09-21 - Administration console v3 pushed for staging validation
 
@@ -36,6 +42,12 @@ Last updated: 2026-09-21
 - Added `docs/superpowers/plans/2026-09-21-admin-console-upgrade.md` with current-state evidence, a fixed New API source reference, three-role navigation and capability boundaries, usage/task/call/ledger semantics, API/data changes, phased delivery, acceptance, migration, and Docker Compose v2 rollout/rollback guidance.
 - The user confirmed that administrators are platform operators managing ordinary users, usage, and routes across the platform; super administrators retain sensitive configuration. The plan separates this identity from tenant membership roles and documents existing UI/API permission and query-scope inconsistencies.
 - Planning only: no runtime, migration, secret, server configuration, or deployment changes were made. `npm run build` passed with existing build warnings. Production data, authenticated browser flows, and database-backed authorization behavior were not exercised in this research task.
+## 2026-09-21 - Canonical Agent runtime repair continuation
+
+- Completed the canonical result-action loop: result ownership is checked against the current session and turn, selection/reference state is durable, and edit/variant actions create a new quoted planning turn that remains behind confirmation and billing.
+- Added running/failed/cancelled workflow reconciliation, retry execution-key rotation, explicit 409 stale-state responses, and canonical event-stream projection.
+- Added first/last-frame intent constraints so a request for two images plus a video prompt cannot silently create a video workflow; added separate default-off `AGENT_RUNTIME_ENABLED` and `AGENT_RUNTIME_COMPAT_ENABLED` flags and staging documentation.
+- Session mode and rename persistence are wired through the canonical UI. Focused API tests and frontend production build pass; authenticated Postgres/Redis/S3/provider E2E remains a release gate.
 
 ## 2026-09-09 - Agent V6 Task 8 delivery verification contract
 
@@ -6919,7 +6931,6 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added V6 panel integration coverage and updated the existing panel contract tests from the removed V5 window expectation to the V6 workspace expectation. The Vitest command must exclude repository worktrees/review copies; otherwise those copies are discovered and make the run appear hung.
 - Local validation passed: V6 frontend suite 13 files / 143 tests, V6 workspace/protocol suite 12 files / 133 tests, API V6 suite 3 files / 15 passed with 1 skipped, Worker workflow-runtime 1 file / 16 tests, DB suite 22 files / 55 passed with 38 skipped, and `npm run build`.
 - Existing non-blocking build warnings remain for Browserslist freshness, CSS utility parsing, mixed static/dynamic imports, and large chunks. Authenticated staging browser acceptance has not been run in this environment; V6 rollout outside staging remains unapproved.
-
 ## 2026-09-21 - Admin Console V3 Defect Fixes
 
 - Added migration `000090_wallet_reserve_excludes_refund_hold.sql` so a payment grant held during an in-flight refund cannot be selected by subsequent wallet reserves. The refund claim/release and provider notification paths now keep the grant hold aligned with the payment state.
@@ -6944,3 +6955,38 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - 额外发现并修复一个权限边界：旧 `ai_routes`/`ai_model_catalog` 运营者 UPDATE policy 只检查角色、未检查 `platform_scope`，普通租户事务可能直接改动允许运营字段；新增 `000093_platform_scope_write_policies.sql` 收紧为 `platform:routes:write`，并补数据库权限回归断言。
 - 终审补齐三处 P2 语义问题：Workbench 线路/模型关联加入 `asOf` 时间条件；个人/管理员钱包摘要从可用积分、到期提示和活跃 grant 统计中排除 `refund_hold`；平台用户详情增加明确的跨租户成员只读 policy；物理请求的空 actor/source 不再回退或误归类到 workflow。
 - 本轮仍未提交、推送或部署；不能把未执行的真实数据库、并发、生产或登录浏览器验收描述为已通过。
+## 2026-09-21 - Canonical Agent Runtime rebuild
+
+- Replaced the canonical runtime scaffold with a general structured requirement planner backed by the server text route. Planner output is bounded and validated, carries user answers and stable canvas/asset references, resolves product models server-side, and fails closed when the planner, model, route, reference, graph revision, or pricing is unavailable.
+- Added migration `000084_agent_runtime_rebuild.sql` and durable repository coverage for immutable turn idempotency, state-version and draft-revision CAS, atomic snapshots/events, durable decision claims/replay, execution leases, result lineage, tenant ownership/RLS, and atomic result placement.
+- Added server-only `AgentExecutionAdapter` around WorkflowRunsService. It creates an immutable execution graph, binds the approved quote fingerprint, reuses reserve/settle/refund/Worker paths, supports independent image/text steps and structured first/last-frame video references, and never accepts provider or route assertions from the browser.
+- Canonical `/api/v2/agent` session/turn/decision routes now use the runtime. The existing V5/V6 client adapter translates to the canonical endpoints for the mounted panel, and the client polls durable execution state until result groups are available.
+- Worker Agent runs are result-first: generated outputs are saved as assets/results and are not auto-written into the live draft. Canvas placement remains an explicit result action with graph CAS and lineage.
+- Focused validation in the isolated worktree: API runtime/planner/context/decision/wire tests 16 passed; persistence/execution tests 26 passed with 1 local database skip; API build, Worker build, frontend build, and Worker write-back regression passed. Full authenticated browser/provider/S3/BullMQ acceptance remains pending because this environment has no configured live staging services.
+
+## 2026-09-21 - Canonical Agent result delivery closure
+
+- Result groups now retain typed image, video, and text deliveries. Text outputs are shown in the conversation, while image/video previews request a temporary asset URL only when the user asks to preview; no URL is persisted in the graph or Agent protocol.
+- Result actions now use the canonical decision endpoint. Explicit placement atomically appends a lineage-bearing canvas node under draft revision CAS, reloads the authoritative draft in the canvas, and returns the placed state so the action cannot be repeated.
+- The default client adapter now uses canonical turn, decision, and mode endpoints. Focused result/UI and canonical API tests pass; API and frontend production builds pass. Authenticated browser acceptance with the real API, Worker, S3, billing, and configured provider is still the release gate.
+
+## 2026-09-21 - Canonical Agent default-path correction
+
+- Replaced the default panel's V5-shaped session hook with `useAgentRuntime`, which creates, restores, polls, submits turns, decisions, and mode changes through canonical `/api/v2/agent/sessions/*` endpoints. The default import path no longer uses V5 session listing, V5 mode, V5 turns, or V6 turns endpoints.
+- The runtime derives `graphRevision` from the authoritative remote-draft version in the canvas store, sends stable asset/node/reference identifiers only, and preserves each canonical question ID when answering. This removes the fixed-revision and `answers.answer` failures that blocked normal nonempty canvases.
+- Canonical `question_set`, `brief`, `plan`, `confirmation`, `progress`, and `error_recovery` blocks now render through the typed workspace. Text questions are answerable, choice answers retain their option IDs, plans show deliverables/quantity/cost/write scope, and recovery exposes retry/revise actions.
+- Completed runs retain a typed `result_action` pending decision. Placement advances the turn graph revision and creates the next result-action decision so individual outputs can be placed sequentially under canvas CAS.
+- Local evidence: focused canonical panel/protocol tests (32 assertions), API runtime tests (39 passed, 1 local database skip), API build, and frontend build pass. The frontend build retains existing Browserslist, mixed import, and chunk-size warnings. Authenticated acceptance with PostgreSQL, Redis/BullMQ, S3, billing, and a real configured provider remains the release gate; no flag was enabled and no deployment was performed.
+
+
+## 2026-09-21 - Agent P0/P1 release repair plan recorded
+
+- Added the executable release repair plan at `docs/superpowers/plans/2026-09-21-tapnow-agent-p0-p1-release-repair.md`.
+- The plan fixes the execution order for P0-A through P0-D and P1-E through P1-H, with test-first steps, stage gates, real infrastructure verification, and rollback procedures.
+- This update changed documentation only. No business code, database migration, deployment configuration, or runtime flag was changed; real PostgreSQL, Redis/BullMQ, S3, Billing, AI Gateway, and authenticated browser evidence remain `UNRESOLVED` until executed.
+
+## 2026-09-22 - Agent P0/P1 execution progress
+
+- Implemented and committed result-group block binding and tenant/session/turn/run scope validation (`70a7000d`), failed-run lease recovery and strict current-run delivery matching (`7f4c3ad3`), canonical delivery verification before worker settlement (`8276d3d7`), event/session recovery and persisted reference context (`8e69e804`, `f7ab7760`), model and first/last-frame contract checks (`93562b3c`), canonical frontend runtime boundary and event reducer (`a0ff9631`), and durable result lineage migration (`694efc36`).
+- Focused API, worker, frontend reducer, API/worker builds, and production frontend build pass in this worktree. One pre-existing frontend adapter expectation was updated to match the current canonical session mode payload.
+- Real PostgreSQL concurrency, Redis/BullMQ, S3, Billing, AI Gateway/provider, authenticated browser, and staging deployment evidence remain `UNRESOLVED`; runtime flags remain disabled.

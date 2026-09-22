@@ -12,6 +12,9 @@ export const AGENT_PROTOCOL_MAX_RESULTS = 24;
 export const AGENT_PROTOCOL_MAX_REFS = 64;
 export const AGENT_PROTOCOL_TEXT_MAX = 4_000;
 export const AGENT_PROTOCOL_ID_MAX = 200;
+/** Backwards-compatible names used by runtime controllers. */
+export const AGENT_PROTOCOL_MAX_TEXT = AGENT_PROTOCOL_TEXT_MAX;
+export const AGENT_PROTOCOL_MAX_IDS = AGENT_PROTOCOL_MAX_REFS;
 
 export type AgentPhase =
   | "idle"
@@ -24,12 +27,16 @@ export type AgentPhase =
   | "presenting_results"
   | "refining"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "recoverable_error";
 
 export type AgentExecutionState = "idle" | "queued" | "running" | "verifying" | "completed" | "failed" | "cancelled";
 
 export type AgentContextRefRole = "subject" | "style" | "composition" | "layout" | "context";
+/** Alias used by composer/reference UI code. */
+export type AgentReferenceRole = AgentContextRefRole;
 export type AgentContextRefSource = "canvas" | "asset" | "upload";
+export type AgentReferenceSource = AgentContextRefSource;
 
 export type AgentContextRef = {
   refId: string;
@@ -125,6 +132,8 @@ export type AgentProgressBlock = {
 
 export type AgentResultStatus = "pending" | "ready" | "selected" | "failed";
 export type AgentResultRef = {
+  contentText?: string;
+  placedNodeId?: string;
   id: string;
   label: string;
   kind?: AgentDeliverableKind;
@@ -193,7 +202,8 @@ function isUnsafeString(value: string): boolean {
   return false;
 }
 
-function assertSafeValue(value: unknown, code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID", seen = new Set<object>()): void {
+function assertSafeValue(value: unknown, code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID", seen = new Set<object>(), depth = 0): void {
+  if (depth > 16) throw new AgentProtocolError(code);
   if (typeof value === "string") {
     if (isUnsafeString(value)) throw new AgentProtocolError(code);
     return;
@@ -206,15 +216,16 @@ function assertSafeValue(value: unknown, code: "AGENT_CONTEXT_UNSAFE" | "AGENT_B
   if (typeof Blob !== "undefined" && value instanceof Blob) throw new AgentProtocolError(code);
   if (typeof File !== "undefined" && value instanceof File) throw new AgentProtocolError(code);
   if (Array.isArray(value)) {
-    for (const item of value) assertSafeValue(item, code, seen);
-    return;
-  }
-  for (const [key, item] of Object.entries(value)) {
-    if (/^(provider|credential|authorization|base64|secret|api[_-]?key|signed[_-]?url|preview[_-]?url|data[_-]?url)$/i.test(key)) {
-      throw new AgentProtocolError(code);
+    for (const item of value) assertSafeValue(item, code, seen, depth + 1);
+  } else {
+    for (const [key, item] of Object.entries(value)) {
+      if (/^(provider|credential|authorization|base64|secret|api[_-]?key|signed[_-]?url|preview[_-]?url|data[_-]?url)$/i.test(key)) {
+        throw new AgentProtocolError(code);
+      }
+      assertSafeValue(item, code, seen, depth + 1);
     }
-    assertSafeValue(item, code, seen);
   }
+  seen.delete(value);
 }
 
 function assertKeys(value: Record<string, unknown>, allowed: readonly string[], code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID"): void {
@@ -232,6 +243,7 @@ function optionalText(value: unknown, code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOC
 }
 
 function id(value: unknown, code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID"): string {
+  if (typeof value !== "string" || value.trim().length > AGENT_PROTOCOL_ID_MAX) throw new AgentProtocolError(code);
   return text(value, code, AGENT_PROTOCOL_ID_MAX);
 }
 
@@ -305,13 +317,14 @@ function normalizeQuestion(raw: unknown): AgentQuestion {
 
 function normalizeResult(raw: unknown): AgentResultRef {
   if (!isRecord(raw)) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
-  assertKeys(raw, ["id", "label", "kind", "assetId", "refId", "runId", "status", "sourceRefs"], "AGENT_BLOCK_INVALID");
+  assertKeys(raw, ["id", "label", "kind", "assetId", "refId", "runId", "status", "sourceRefs", "contentText", "placedNodeId"], "AGENT_BLOCK_INVALID");
   const result: AgentResultRef = { id: id(raw.id, "AGENT_BLOCK_INVALID"), label: text(raw.label, "AGENT_BLOCK_INVALID") };
   if (raw.kind !== undefined) {
     if (!["image", "video", "text"].includes(String(raw.kind))) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
     result.kind = raw.kind as AgentDeliverableKind;
   }
-  for (const key of ["assetId", "refId", "runId"] as const) if (raw[key] !== undefined) result[key] = id(raw[key], "AGENT_BLOCK_INVALID");
+  for (const key of ["assetId", "refId", "runId", "placedNodeId"] as const) if (raw[key] !== undefined) result[key] = id(raw[key], "AGENT_BLOCK_INVALID");
+  if (raw.contentText !== undefined) result.contentText = text(raw.contentText, "AGENT_BLOCK_INVALID");
   if (raw.status !== undefined) {
     if (!["pending", "ready", "selected", "failed"].includes(String(raw.status))) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
     result.status = raw.status as AgentResultStatus;
@@ -339,7 +352,8 @@ function normalizeBlock(raw: unknown): ConversationBlock {
       assertKeys(raw, [...common, "summary", "deliverables", "capabilities", "references", "modelKey", "quantity", "estimatedCredits", "writes", "requiresConfirmation"], "AGENT_BLOCK_INVALID");
       if (raw.summary === undefined && raw.deliverables === undefined) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
       if (raw.deliverables !== undefined && (!Array.isArray(raw.deliverables) || raw.deliverables.length > 24)) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
-      const deliverables = (raw.deliverables ?? []).map((item): AgentDeliverable => {
+      const rawDeliverables = Array.isArray(raw.deliverables) ? raw.deliverables : [];
+      const deliverables = rawDeliverables.map((item): AgentDeliverable => {
         if (!isRecord(item)) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
         assertKeys(item, ["id", "label", "kind", "quantity"], "AGENT_BLOCK_INVALID");
         if (!["image", "video", "text"].includes(String(item.kind))) throw new AgentProtocolError("AGENT_BLOCK_INVALID");
