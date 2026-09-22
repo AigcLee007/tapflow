@@ -266,7 +266,7 @@ export class AgentRuntimeService {
             }],
           }));
         }
-        if (input.payload.action === "select" || input.payload.action === "reference") {
+      if (input.payload.action === "select" || input.payload.action === "reference") {
           const now = new Date().toISOString();
           for (const result of scopedResults) {
             const lineage = {
@@ -282,10 +282,20 @@ export class AgentRuntimeService {
             });
           }
           const results = await this.dependencies.repository.listResultRefs(ctx, sessionId, turnId);
+          const nextContext = input.payload.action === "reference"
+            ? {
+                ...turn.contextSnapshot,
+                refs: [
+                  ...turn.contextSnapshot.refs.filter((ref) => !scopedResults.some((item) => item.id === ref.refId)),
+                  ...scopedResults.filter((item) => item.assetId).map((item) => ({ refId: item.id, source: "asset" as const, label: item.label, assetId: item.assetId! })),
+                ],
+              }
+            : undefined;
           return publicAgentTurn(await complete({
             phase: "presenting_results",
             executionState: "completed",
             pendingDecision: resultPending(turn, resultGroupIdForTurn(turn, stored)),
+            ...(nextContext ? { contextSnapshot: nextContext } : {}),
             blocks: [{ type: "result_group", id: resultGroupIdForTurn(turn, stored), results: results.map(item => this.resultBlock(item)) }],
           }));
         }
