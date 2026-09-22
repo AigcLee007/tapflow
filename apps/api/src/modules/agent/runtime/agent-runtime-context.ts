@@ -65,7 +65,9 @@ export class AgentRuntimeContextService {
   async resolveSteps(ctx: AgentRuntimeContext, plan: AgentRequirementPlan, snapshot: AgentContextSnapshot): Promise<AgentExecutionStep[]> {
     const routes = await this.routes(ctx);
     return plan.steps.map((step) => {
-      const route = routes.find((route) => route.kind === step.kind && (!step.modelKey || route.key === step.modelKey));
+      if (snapshot.modelKey && step.modelKey && step.modelKey !== snapshot.modelKey) throw new Error("AGENT_MODEL_LOCK_CONFLICT");
+      const lockedModel = snapshot.modelKey ?? step.modelKey;
+      const route = routes.find((route) => route.kind === step.kind && (!lockedModel || route.key === lockedModel || route.routeKey === lockedModel));
       if (!route) throw new Error("AGENT_MODEL_UNAVAILABLE");
       const assets = step.referenceIds.map((id) => snapshot.refs.find((ref) => ref.refId === id)?.assetId);
       if (assets.some((asset) => !asset)) throw new Error("AGENT_REFERENCE_UNAVAILABLE");
@@ -75,6 +77,12 @@ export class AgentRuntimeContextService {
         if (!assetId) throw new Error("AGENT_REFERENCE_UNAVAILABLE");
         return [{ source: { kind: "asset" as const, id: assetId }, mediaKind: "image" as const, role }];
       };
+      if (step.kind === "video" && step.video) {
+        const first = step.video.firstFrameRefId;
+        const last = step.video.lastFrameRefId;
+        if ((first && !last) || (!first && last)) throw new Error("AGENT_FIRST_LAST_FRAME_REQUIRED");
+        if (first && last && (!step.aspectRatio || !step.video.durationSeconds || step.video.durationSeconds <= 0)) throw new Error("AGENT_FIRST_LAST_FRAME_METADATA_REQUIRED");
+      }
       return {
         stepId: step.id, kind: step.kind, prompt: step.prompt, routeKey: route.routeKey,
         dependsOn: step.dependsOnStepIds, referenceAssetIds: step.kind === "video" ? [] : assets as string[],

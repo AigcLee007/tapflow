@@ -113,8 +113,17 @@ function handleRouteError(
     return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
   }
 
-  if (error instanceof Error && ["AGENT_GRAPH_REVISION_CONFLICT", "AGENT_STATE_VERSION_CONFLICT", "AGENT_PENDING_DECISION_CONFLICT", "AGENT_DECISION_ALREADY_SUBMITTED", "AGENT_RESULT_SCOPE_CONFLICT"].includes(error.message)) {
+  if (error instanceof Error && ["AGENT_GRAPH_REVISION_CONFLICT", "AGENT_STATE_VERSION_CONFLICT", "AGENT_PENDING_DECISION_CONFLICT", "AGENT_DECISION_ALREADY_SUBMITTED", "AGENT_RESULT_SCOPE_CONFLICT", "AGENT_RESULT_GROUP_CONFLICT", "AGENT_RESULT_GROUP_SCOPE_CONFLICT", "AGENT_RESULT_ACTION_SINGLE"].includes(error.message)) {
     return sendError(request, reply, 409, error.message, "The Agent state is stale; refresh and retry.");
+  }
+  if (error instanceof Error && ["AGENT_PERMISSION_DENIED", "AGENT_USER_REQUIRED"].includes(error.message)) {
+    return sendError(request, reply, 403, error.message, "You do not have permission to perform this Agent action.");
+  }
+  if (error instanceof Error && ["AGENT_SESSION_NOT_FOUND", "AGENT_TURN_NOT_FOUND", "AGENT_RESULT_NOT_FOUND", "AGENT_RESULT_GROUP_NOT_FOUND", "AGENT_RUN_NOT_FOUND", "AGENT_FLOW_NOT_FOUND", "AGENT_PROJECT_NOT_FOUND"].includes(error.message)) {
+    return sendError(request, reply, 404, error.message, "The requested Agent resource was not found.");
+  }
+  if (error instanceof Error && ["AGENT_RESULT_NOT_READY", "AGENT_RESULT_INVALID", "AGENT_CONTEXT_SCOPE_CONFLICT", "AGENT_RESULT_GROUP_REQUIRED", "AGENT_ANSWER_INVALID", "AGENT_ANSWER_REQUIRED", "AGENT_PLAN_INVALID", "AGENT_MODEL_LOCK_CONFLICT", "AGENT_MODEL_UNAVAILABLE", "AGENT_REFERENCE_UNAVAILABLE", "AGENT_FIRST_LAST_FRAME_REQUIRED", "AGENT_FIRST_LAST_FRAME_METADATA_REQUIRED"].includes(error.message)) {
+    return sendError(request, reply, 422, error.message, "The Agent request is not valid for the current state.");
   }
 
   request.log.error(
