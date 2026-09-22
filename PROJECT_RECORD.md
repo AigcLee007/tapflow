@@ -6913,3 +6913,16 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Canonical `question_set`, `brief`, `plan`, `confirmation`, `progress`, and `error_recovery` blocks now render through the typed workspace. Text questions are answerable, choice answers retain their option IDs, plans show deliverables/quantity/cost/write scope, and recovery exposes retry/revise actions.
 - Completed runs retain a typed `result_action` pending decision. Placement advances the turn graph revision and creates the next result-action decision so individual outputs can be placed sequentially under canvas CAS.
 - Local evidence: focused canonical panel/protocol tests (32 assertions), API runtime tests (39 passed, 1 local database skip), API build, and frontend build pass. The frontend build retains existing Browserslist, mixed import, and chunk-size warnings. Authenticated acceptance with PostgreSQL, Redis/BullMQ, S3, billing, and a real configured provider remains the release gate; no flag was enabled and no deployment was performed.
+
+
+## 2026-09-21 - Agent P0/P1 release repair plan recorded
+
+- Added the executable release repair plan at `docs/superpowers/plans/2026-09-21-tapnow-agent-p0-p1-release-repair.md`.
+- The plan fixes the execution order for P0-A through P0-D and P1-E through P1-H, with test-first steps, stage gates, real infrastructure verification, and rollback procedures.
+- This update changed documentation only. No business code, database migration, deployment configuration, or runtime flag was changed; real PostgreSQL, Redis/BullMQ, S3, Billing, AI Gateway, and authenticated browser evidence remain `UNRESOLVED` until executed.
+
+## 2026-09-22 - Agent P0/P1 execution progress
+
+- Implemented and committed result-group block binding and tenant/session/turn/run scope validation (`70a7000d`), failed-run lease recovery and strict current-run delivery matching (`7f4c3ad3`), canonical delivery verification before worker settlement (`8276d3d7`), event/session recovery and persisted reference context (`8e69e804`, `f7ab7760`), model and first/last-frame contract checks (`93562b3c`), canonical frontend runtime boundary and event reducer (`a0ff9631`), and durable result lineage migration (`694efc36`).
+- Focused API, worker, frontend reducer, API/worker builds, and production frontend build pass in this worktree. One pre-existing frontend adapter expectation was updated to match the current canonical session mode payload.
+- Real PostgreSQL concurrency, Redis/BullMQ, S3, Billing, AI Gateway/provider, authenticated browser, and staging deployment evidence remain `UNRESOLVED`; runtime flags remain disabled.
