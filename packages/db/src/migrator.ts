@@ -84,6 +84,24 @@ export async function loadMigrationFiles(migrationsDir = getDefaultMigrationsDir
     }),
   );
 
+  const filenamesByVersion = new Map<string, string[]>();
+  for (const migration of migrations) {
+    const version = migration.version.toString();
+    const filenames = filenamesByVersion.get(version) ?? [];
+    filenames.push(migration.filename);
+    filenamesByVersion.set(version, filenames);
+  }
+  const duplicateVersions = [...filenamesByVersion.entries()]
+    .filter(([, filenames]) => filenames.length > 1)
+    .sort(([left], [right]) => BigInt(left) < BigInt(right) ? -1 : 1);
+  if (duplicateVersions.length > 0) {
+    throw new Error(
+      duplicateVersions
+        .map(([version, filenames]) => `Duplicate migration version ${version}: ${filenames.join(", ")}`)
+        .join("; "),
+    );
+  }
+
   return migrations;
 }
 

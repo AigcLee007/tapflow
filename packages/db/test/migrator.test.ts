@@ -6,7 +6,7 @@ import type { Pool } from "pg";
 import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 
 import { createPgPool } from "../src/db.js";
-import { runMigrations } from "../src/migrator.js";
+import { loadMigrationFiles, runMigrations } from "../src/migrator.js";
 import { hasDatabaseEnv, withDatabase } from "./helpers.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
@@ -28,6 +28,22 @@ afterEach(() => {
 });
 
 describe("runMigrations client lifecycle", () => {
+  test("rejects duplicate migration version prefixes before execution", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "aigc-flow-migration-duplicate-version-"));
+    tempDirs.push(tempDir);
+    await writeFile(path.join(tempDir, "000001_first.sql"), "SELECT 1;\n", "utf8");
+    await writeFile(path.join(tempDir, "000001_second.sql"), "SELECT 2;\n", "utf8");
+
+    await expect(loadMigrationFiles(tempDir)).rejects.toThrow(
+      "Duplicate migration version 1: 000001_first.sql, 000001_second.sql",
+    );
+  });
+
+  test("repository migrations have unique version prefixes", async () => {
+    const migrations = await loadMigrationFiles();
+    expect(new Set(migrations.map((migration) => migration.version.toString())).size).toBe(migrations.length);
+  });
+
   test("handles a checked-out client error after a committed migration", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "aigc-flow-migration-client-"));
     tempDirs.push(tempDir);

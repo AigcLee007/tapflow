@@ -2,6 +2,12 @@
 
 Last updated: 2026-09-22
 
+## 2026-09-23 - Resolve duplicate migration versions before staging retry
+
+- The staging migrator exposed a real version collision: `000084_agent_runtime_rebuild.sql`/`000085_agent_result_lineage.sql` and the administration console migrations had reused versions 84/85. The console migration chain is now forward-only and starts at `000086_platform_access.sql`, ending at `000097_console_task_inspection.sql`; existing Agent migration records remain unchanged.
+- Added a migrator guard that rejects duplicate numeric migration prefixes before executing SQL, with regression coverage for both duplicate fixtures and the repository migration set. DB migration tests (27 passed, 2 PostgreSQL-dependent skips), DB build, API build, and whitespace checks pass.
+- The failed staging run rolled back the transactional `000084_platform_access.sql`; after deploying this fix, stop API/Worker, rebuild, run the migrator once, verify versions 84–97, then start the services and inspect logs. Do not delete or edit existing `schema_migrations` rows.
+
 ## 2026-09-22 - Agent P0/P1 release repairs integrated
 
 - Merged `codex/agent-runtime-rebuild` into an isolated integration branch based on `origin/main`, preserving the concurrent Administration Console records. The merge carries the canonical Agent runtime rebuild and the approved P0/P1 delivery, scope, recovery, durability, model-contract, event, reference-context, and frontend-boundary repairs.
@@ -10,7 +16,7 @@ Last updated: 2026-09-22
 
 ## 2026-09-21 - Administration console v3 pushed for staging validation
 
-- Committed the isolated `codex/admin-console-v3` implementation as `b600d799` and pushed it to `origin/codex/admin-console-v3` for staging-only validation. The branch contains the platform access model, scoped console queries, provider request telemetry, payment/refund hardening, migrations `000084`-`000095`, frontend console pages, and focused regression coverage.
+- Committed the isolated `codex/admin-console-v3` implementation as `b600d799` and pushed it to `origin/codex/admin-console-v3` for staging-only validation. The branch contains the platform access model, scoped console queries, provider request telemetry, payment/refund hardening, migrations `000086`-`000097`, frontend console pages, and focused regression coverage.
 - Fresh validation before push: frontend build, API/Worker/DB/AI Gateway builds; API focused tests 160 passed with 3 database-environment skips; frontend console/admin tests 88 passed; AI Gateway Core focused tests 78 passed; DB wallet/migration tests 30 passed; `git diff --cached --check` passed.
 - The branch is pushed but remains short of full acceptance: asynchronous exports, performance/P95 measurements, real PostgreSQL/RLS/concurrent-refund checks, and three-role multi-tenant authenticated browser acceptance remain pending. Staging deployment is blocked until the target SSH host/user and usable authentication are available; no server migration or restart has been run.
 
@@ -24,7 +30,7 @@ Last updated: 2026-09-22
 ## 2026-09-21 - Administration console implementation in isolated worktree (in progress)
 
 - User confirmed implementation of the reviewed upgrade. Work is isolated on `codex/admin-console-v3` in `.worktrees/admin-console-v3`; unrelated main-worktree changes are preserved. No commit, push, server deployment, or production data operation has occurred.
-- Implemented independent `platform_operator` / `platform_super_admin` assignments, per-request capability resolution, explicit owner-only bootstrap, versioned grant/revoke APIs, atomic role audit and session revocation. Retired automatic `ADMIN_EMAILS` elevation and tenant-derived platform capabilities. Migrations 84/85 are local changes only and require a reviewed bootstrap before authorization cutover.
+- Implemented independent `platform_operator` / `platform_super_admin` assignments, per-request capability resolution, explicit owner-only bootstrap, versioned grant/revoke APIs, atomic role audit and session revocation. Retired automatic `ADMIN_EMAILS` elevation and tenant-derived platform capabilities. Migrations 86/87 are local changes only and require a reviewed bootstrap before authorization cutover.
 - Added scoped platform database transactions and replaced the permissive Gateway writes from migration 20. Ordinary operators are not given the broad system-admin database flag. Gateway routes and services now separate reads, operational route fields, and sensitive connection/pricing/publication writes.
 - Unified frontend role checks, added the same-app administration sidebar and canonical page addresses, legacy URL redirects, and independent platform-role management. Limited overview results are labeled accurately pending the planned full aggregation API.
 - User/usage/task queries now cover the explicitly authorized platform scope. Membership usage is restricted to the billed user rather than all members of a tenant. Platform task views omit private output and raw error payloads. User status mutations require a reason, recheck target role under the assignment lock, revoke sessions, and atomically audit.
@@ -6933,14 +6939,14 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Existing non-blocking build warnings remain for Browserslist freshness, CSS utility parsing, mixed static/dynamic imports, and large chunks. Authenticated staging browser acceptance has not been run in this environment; V6 rollout outside staging remains unapproved.
 ## 2026-09-21 - Admin Console V3 Defect Fixes
 
-- Added migration `000090_wallet_reserve_excludes_refund_hold.sql` so a payment grant held during an in-flight refund cannot be selected by subsequent wallet reserves. The refund claim/release and provider notification paths now keep the grant hold aligned with the payment state.
+- Added migration `000092_wallet_reserve_excludes_refund_hold.sql` so a payment grant held during an in-flight refund cannot be selected by subsequent wallet reserves. The refund claim/release and provider notification paths now keep the grant hold aligned with the payment state.
 - Separated platform overview physical requests from `admin_test` route checks and exposed both request totals/success rates in the overview projection and UI. Added a database regression fixture for the separation.
 - Extended platform audit filters with `from`/`to` datetime controls, URL-persisted filters/cursors, and visible coverage/snapshot ranges.
 - Payment refund tests now exercise the platform transaction/audit path and explicit provider rejection release. Focused API, DB, and UI tests/builds pass where local infrastructure is available. Docker/Postgres-backed concurrency/RLS validation and authenticated browser acceptance remain pending; no production deployment was run.
 
 ## 2026-09-21 - Admin Console Follow-up Review
 
-- Follow-up finance review found and fixed a refund expiry race: `000092_wallet_expire_excludes_refund_hold.sql` prevents expiry from consuming a grant held by an unresolved refund.
+- Follow-up finance review found and fixed a refund expiry race: `000094_wallet_expire_excludes_refund_hold.sql` prevents expiry from consuming a grant held by an unresolved refund.
 - Payment reconciliation now resets its running guard when database connection acquisition fails and logs asynchronous scheduler failures instead of creating unhandled rejections.
 - Added runtime-role ACL grants to refund-related function replacement migrations so role-separated deployments retain API execution privileges.
 - Provider query audit now covers pending and provider-cancelled responses in the same platform transaction as any cancellation update. Audit filters also resync on browser history navigation.
@@ -6952,7 +6958,7 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - API 平台权限、控制台查询、支付/退款、对账器、旧线路统计定向测试 146 项通过，15 项数据库环境依赖测试因本机 Docker PostgreSQL 不可用而跳过；数据库钱包定向测试 5/5 通过。
 - `npm run build` 和 `git diff --check` 通过。构建仍有既有 Browserslist、混合动态导入和大 chunk 警告，没有发现新的编译或 whitespace 错误。
 - 复核确认之前列出的 P1/P2 资金、账本、筛选、遥测来源、快照和线路统计问题均已在代码中修复，并有对应定向测试或 SQL 回归覆盖。尚未完成的内容仍是计划范围的后续交付：任务时间线/同次执行尝试集合、完整诊断投影、P95/性能基准、异步导出，以及真实 PostgreSQL RLS/并发和三类身份浏览器验收。
-- 额外发现并修复一个权限边界：旧 `ai_routes`/`ai_model_catalog` 运营者 UPDATE policy 只检查角色、未检查 `platform_scope`，普通租户事务可能直接改动允许运营字段；新增 `000093_platform_scope_write_policies.sql` 收紧为 `platform:routes:write`，并补数据库权限回归断言。
+- 额外发现并修复一个权限边界：旧 `ai_routes`/`ai_model_catalog` 运营者 UPDATE policy 只检查角色、未检查 `platform_scope`，普通租户事务可能直接改动允许运营字段；新增 `000095_platform_scope_write_policies.sql` 收紧为 `platform:routes:write`，并补数据库权限回归断言。
 - 终审补齐三处 P2 语义问题：Workbench 线路/模型关联加入 `asOf` 时间条件；个人/管理员钱包摘要从可用积分、到期提示和活跃 grant 统计中排除 `refund_hold`；平台用户详情增加明确的跨租户成员只读 policy；物理请求的空 actor/source 不再回退或误归类到 workflow。
 - 本轮仍未提交、推送或部署；不能把未执行的真实数据库、并发、生产或登录浏览器验收描述为已通过。
 ## 2026-09-21 - Canonical Agent Runtime rebuild

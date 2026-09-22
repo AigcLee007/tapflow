@@ -220,7 +220,7 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
 
   test("does not release a refund hold from an ordinary payment-success callback", async () => {
     const sql = await readFile(
-      path.resolve(import.meta.dirname, "../migrations/000089_wallet_refund_claim_recovery.sql"),
+      path.resolve(import.meta.dirname, "../migrations/000091_wallet_refund_claim_recovery.sql"),
       "utf8",
     );
     const start = sql.indexOf("IF p_provider_state = 'OD'");
@@ -629,9 +629,9 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
 
   test("keeps refund-held grants out of reserve, debit, and expiry paths", async () => {
     const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
-    const reserve = await readFile(path.join(migrationsDir, "000090_wallet_reserve_excludes_refund_hold.sql"), "utf8");
-    const debit = await readFile(path.join(migrationsDir, "000091_wallet_admin_debit_excludes_refund_hold.sql"), "utf8");
-    const expire = await readFile(path.join(migrationsDir, "000092_wallet_expire_excludes_refund_hold.sql"), "utf8");
+    const reserve = await readFile(path.join(migrationsDir, "000092_wallet_reserve_excludes_refund_hold.sql"), "utf8");
+    const debit = await readFile(path.join(migrationsDir, "000093_wallet_admin_debit_excludes_refund_hold.sql"), "utf8");
+    const expire = await readFile(path.join(migrationsDir, "000094_wallet_expire_excludes_refund_hold.sql"), "utf8");
 
     expect(reserve).toContain("AND NOT credit_grant.refund_hold");
     expect(debit).toContain("AND NOT credit_grant.refund_hold");

@@ -8,7 +8,7 @@ import { hasDatabaseEnv, withDatabase } from "../../../packages/db/test/helpers.
 import { PlatformAccessService } from "../src/modules/platform-access/platform-access.service.js";
 
 test("platform identity migration defines independent identity and an owner-only bootstrap", () => {
-  const sql = readFileSync(path.resolve(import.meta.dirname, "../../../packages/db/migrations/000084_platform_access.sql"), "utf8");
+  const sql = readFileSync(path.resolve(import.meta.dirname, "../../../packages/db/migrations/000086_platform_access.sql"), "utf8");
   expect(sql).toContain("platform_role_assignments");
   expect(sql).toContain("FORCE ROW LEVEL SECURITY");
   expect(sql).toContain("bootstrap_platform_super_admin");
@@ -19,7 +19,7 @@ test("platform identity migration defines independent identity and an owner-only
 });
 
 test("operator gateway writes require the matching platform scope", () => {
-  const sql = readFileSync(path.resolve(import.meta.dirname, "../../../packages/db/migrations/000093_platform_scope_write_policies.sql"), "utf8");
+  const sql = readFileSync(path.resolve(import.meta.dirname, "../../../packages/db/migrations/000095_platform_scope_write_policies.sql"), "utf8");
   expect(sql).toContain("DROP POLICY IF EXISTS ai_routes_operator_update ON ai_routes;");
   expect(sql).toContain("USING (app.platform_scope_allows(ARRAY['platform:routes:write']))");
   expect(sql).toContain("WITH CHECK (app.platform_scope_allows(ARRAY['platform:routes:write']))");
