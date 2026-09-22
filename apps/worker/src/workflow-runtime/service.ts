@@ -120,6 +120,21 @@ export function verifyAgentV6DeliveryBeforeSuccess(
   return verifier(output);
 }
 
+/** Canonical Agent executions use the same durable output gate as V6/Skill runs. */
+export function verifyCanonicalAgentDeliveryBeforeSuccess(
+  workflowRun: AgentV6WorkflowInput,
+  nodeType: string,
+  output: Record<string, unknown>,
+): { status: "verified" } | { status: "failed"; code: "AGENT_DELIVERY_INVALID_RESULT" } | { status: "not_applicable" } {
+  if (!isPlainObject(workflowRun.input_json?.agentExecution)) return { status: "not_applicable" };
+  const text = typeof output.text === "string" && output.text.trim().length > 0;
+  const assets = Array.isArray(output.assets) ? output.assets : [];
+  const hasAsset = (typeof output.assetId === "string" && output.assetId.trim().length > 0)
+    || assets.some((asset) => isPlainObject(asset) && typeof asset.assetId === "string" && asset.assetId.trim().length > 0);
+  const valid = nodeType === "text.generate" ? text : (nodeType === "image.generate" || nodeType === "video.generate") ? hasAsset : true;
+  return valid ? { status: "verified" } : { status: "failed", code: "AGENT_DELIVERY_INVALID_RESULT" };
+}
+
 type NodeRunRecord = {
   attempt: number;
   cost_json: Record<string, unknown>;
@@ -4107,6 +4122,10 @@ export class WorkflowNodeExecutionService {
     }
     if (delivery.status === "canceled") {
       throw { code: delivery.code, message: "Agent V6 delivery was canceled.", details: delivery };
+    }
+    const canonicalDelivery = verifyCanonicalAgentDeliveryBeforeSuccess(workflowRun, currentNode.type, outputJson);
+    if (canonicalDelivery.status === "failed") {
+      throw { code: canonicalDelivery.code, message: "Canonical Agent delivery could not be verified.", details: canonicalDelivery };
     }
 
     let auditLogs: AuditLogInput[] = [];
