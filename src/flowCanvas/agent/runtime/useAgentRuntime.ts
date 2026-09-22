@@ -132,9 +132,17 @@ export function useAgentRuntime(initialSessionId?: string | null) {
 
   const openSession = useCallback(async (sessionId: string) => {
     const scope = scopeFromCanvas();
-    const history = await agentV6Api.getHistory(sessionId, scope);
-    setSessionTitle(history.session.title);
-    setState(restoreHistory(history, scope));
+    try {
+      const history = await agentV6Api.getHistory(sessionId, scope);
+      setSessionTitle(history.session.title);
+      setState(restoreHistory(history, scope));
+      const url = new URL(window.location.href);
+      url.searchParams.set("agentSession", sessionId);
+      window.history.replaceState(window.history.state, "", url);
+    } catch (error) {
+      setState((current) => ({ ...current, error: error instanceof Error ? error.message : "无法恢复 Agent 会话。", phase: "recoverable_error" }));
+      throw error;
+    }
   }, []);
 
   const newConversation = useCallback(() => {

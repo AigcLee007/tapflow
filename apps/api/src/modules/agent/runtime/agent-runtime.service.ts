@@ -110,7 +110,12 @@ export class AgentRuntimeService {
   async listSessions(ctx: AgentServiceContext, filter: { projectId?: string | null; flowId?: string | null; limit?: number } = {}) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.listSessions(ctx, filter); }
   async getSession(ctx: AgentServiceContext, sessionId: string) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.getSession(ctx, sessionId); }
   async getHistory(ctx: AgentServiceContext, sessionId: string, options: { limit?: number; cursor?: string | null } = {}) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.getHistory(ctx, sessionId, options); }
-  async getEvents(ctx: AgentServiceContext, sessionId: string, afterSeq = 0) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.listEvents(ctx, sessionId, afterSeq); }
+  async getEvents(ctx: AgentServiceContext, sessionId: string, afterSeq = 0) {
+    requirePermission(ctx, "flow:read");
+    const events = await this.dependencies.repository.listEvents(ctx, sessionId, afterSeq);
+    const last = events.at(-1);
+    return { events, lastSeq: last?.seq ?? afterSeq, replayCursor: last?.id ?? null, resyncRequired: false };
+  }
   async updateSession(ctx: AgentServiceContext, sessionId: string, input: { mode?: "auto" | "manual_confirmation"; title?: string }) { requirePermission(ctx, "flow:read"); return this.dependencies.repository.updateSession(ctx, sessionId, input); }
   async refreshExecution(ctx: AgentServiceContext, sessionId: string, turnId: string): Promise<AgentTurnResponse> {
     requirePermission(ctx, "flow:read");

@@ -346,8 +346,8 @@ export function registerAgentRoutes(app: FastifyInstance): void {
       try {
         const params = parseParams<AgentSessionIdParams>(request, agentSessionIdParamsSchema);
         const query = parseQuery<GetAgentEventsQuery>(request, getAgentEventsQuerySchema);
-        const events = await app.canonicalAgentRuntime.getEvents(getAgentContext(request), params.sessionId, query.afterSeq ?? 0);
-        const streamBody = events.map((event) => formatStreamEvent("agent_event", event)).join("");
+        const envelope = await app.canonicalAgentRuntime.getEvents(getAgentContext(request), params.sessionId, query.afterSeq ?? 0);
+        const streamBody = envelope.events.map((event) => formatStreamEvent("agent_event", event)).join("");
 
         reply.raw.setHeader("cache-control", "no-cache");
         reply.raw.setHeader("connection", "keep-alive");

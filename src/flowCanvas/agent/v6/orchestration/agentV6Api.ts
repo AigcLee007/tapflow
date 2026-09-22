@@ -146,7 +146,7 @@ function normalizeSession(value: unknown): AgentV6Session {
   };
 }
 function toHistoryResponse(turn: Record<string, unknown>, session: AgentV6Session): AgentV6Response {
-  return normalizeResponse({ sessionId: session.id, projectId: session.projectId, flowId: session.flowId, turnId: turn.id, phase: turn.phase ?? turn.conversationPhase, executionState: turn.executionState, mode: session.mode, graphRevision: turn.graphRevision, blocks: turn.blocks ?? turn.blocksJson, plan: turn.plan ?? turn.planJson, error: asRecord(turn.errorJson).message }, { ...session, sessionId: session.id, turnId: typeof turn.id === "string" ? turn.id : undefined, graphRevision: typeof turn.graphRevision === "number" ? turn.graphRevision : 0 });
+  return normalizeResponse({ sessionId: session.id, projectId: session.projectId, flowId: session.flowId, turnId: turn.id, phase: turn.phase ?? turn.conversationPhase, executionState: turn.executionState, mode: session.mode, graphRevision: turn.graphRevision, blocks: turn.blocks ?? turn.blocksJson, plan: turn.plan ?? turn.planJson, contextSnapshot: turn.contextSnapshot, error: asRecord(turn.errorJson).message }, { ...session, sessionId: session.id, turnId: typeof turn.id === "string" ? turn.id : undefined, graphRevision: typeof turn.graphRevision === "number" ? turn.graphRevision : 0 });
 }
 
 function canonicalDecisionRequest(input: AgentV6DecisionInput) {
