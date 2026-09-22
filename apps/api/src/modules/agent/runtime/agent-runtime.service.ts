@@ -27,6 +27,13 @@ export function publicAgentTurn(turn: AgentRuntimeTurn): AgentTurnResponse {
 }
 const storedPlan = (turn: AgentRuntimeTurn) => turn.planJson as RuntimePlan;
 const pending = (turn: AgentRuntimeTurn, blockId: string, allowedTypes: string[]) => ({ id: randomUUID(), blockId, graphRevision: turn.graphRevision, allowedTypes });
+/** Result decisions must be bound to the persisted result_group block. */
+const resultPending = (turn: AgentRuntimeTurn, resultGroupId: string | undefined) => {
+  if (!resultGroupId) throw new Error("AGENT_RESULT_GROUP_REQUIRED");
+  return pending(turn, resultGroupId, ["result_action"]);
+};
+const resultGroupIdForTurn = (turn: AgentRuntimeTurn, stored: RuntimePlan): string | undefined =>
+  stored.resultGroupId ?? turn.blocks.find((block) => block.type === "result_group")?.id;
 function state(turn: AgentRuntimeTurn, patch: Partial<AgentRuntimeStateInput>): AgentRuntimeStateInput {
   return { sessionId: turn.sessionId, turnId: turn.id, expectedStateVersion: turn.stateVersion, expectedGraphRevision: turn.graphRevision, graphRevision: turn.graphRevision, phase: turn.phase, executionState: turn.executionState, blocks: turn.blocks, pendingDecision: turn.pendingDecision, ...patch };
 }
@@ -138,7 +145,7 @@ export class AgentRuntimeService {
         if (error instanceof AgentDeliveryVerificationError) return publicAgentTurn(await this.fail(ctx, turn, error));
         throw error;
       }
-      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => this.resultBlock(item)) }] })));
+      return publicAgentTurn(await this.dependencies.repository.saveTurnStateCAS(ctx, state(turn, { phase: "presenting_results", executionState: "completed", pendingDecision: resultPending(turn, groupId), planJson: { ...stored, resultGroupId: groupId }, blocks: [{ type: "result_group", id: groupId, results: results.map(item => this.resultBlock(item)) }] })));
     }
     if (run.workflowRun.status === "pending" || run.workflowRun.status === "queued" || run.workflowRun.status === "running") {
       const progress = (stored.requirement?.steps ?? []).map((step) => {
@@ -225,10 +232,10 @@ export class AgentRuntimeService {
             phase: "presenting_results",
             executionState: "completed",
             graphRevision: placed.graphRevision,
-            pendingDecision: pending({ ...turn, graphRevision: placed.graphRevision }, "results", ["result_action"]),
+            pendingDecision: resultPending({ ...turn, graphRevision: placed.graphRevision }, resultGroupIdForTurn(turn, stored)),
             blocks: [{
               type: "result_group",
-              id: stored.resultGroupId,
+              id: resultGroupIdForTurn(turn, stored),
               results: results.map(item => ({
                 id: item.id,
                 label: item.label,
@@ -262,8 +269,8 @@ export class AgentRuntimeService {
           return publicAgentTurn(await complete({
             phase: "presenting_results",
             executionState: "completed",
-            pendingDecision: pending(turn, "results", ["result_action"]),
-            blocks: [{ type: "result_group", id: stored.resultGroupId, results: results.map(item => this.resultBlock(item)) }],
+            pendingDecision: resultPending(turn, resultGroupIdForTurn(turn, stored)),
+            blocks: [{ type: "result_group", id: resultGroupIdForTurn(turn, stored), results: results.map(item => this.resultBlock(item)) }],
           }));
         }
         if (input.payload.action === "variant" || input.payload.action === "edit") {
@@ -274,7 +281,7 @@ export class AgentRuntimeService {
           await complete({
             phase: "presenting_results",
             executionState: "completed",
-            pendingDecision: pending(turn, "results", ["result_action"]),
+            pendingDecision: resultPending(turn, resultGroupIdForTurn(turn, stored)),
           });
           const context = {
             ...turn.contextSnapshot,
@@ -301,7 +308,7 @@ export class AgentRuntimeService {
             instruction,
           }));
         }
-        return publicAgentTurn(await complete({ phase: "presenting_results", executionState: "completed", pendingDecision: pending(turn, "results", ["result_action"]) }));
+        return publicAgentTurn(await complete({ phase: "presenting_results", executionState: "completed", pendingDecision: resultPending(turn, resultGroupIdForTurn(turn, stored)) }));
       }
       throw new Error("AGENT_RESULT_ACTION_REQUIRES_RESULT_CONTROLLER");
     } catch (error) { return publicAgentTurn(await this.fail(ctx, turn, error, decisionCompleted ? undefined : claim.decision.id)); }

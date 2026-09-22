@@ -89,6 +89,20 @@ describe("Agent runtime orchestration", () => {
     expect(h.repository.updateResultRef).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant" }), expect.objectContaining({ resultId: "result-1", sessionId: "session", turnId: "turn", status: "selected" }));
   });
 
+  it("binds result actions to the persisted result group block id", async () => {
+    const h = harness();
+    const result = { id: "result-1", resultGroupId: "group-1", assetId: "asset-1", runId: "run", kind: "image", label: "首帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };
+    h.repository.getResultRefsForTurn.mockResolvedValue([result]);
+    h.repository.updateResultRef.mockResolvedValue({ ...result, status: "selected", lineage: { selected: true } });
+    h.repository.listResultRefs.mockResolvedValue([{ ...result, status: "selected", lineage: { selected: true } }]);
+    h.getTurn().planJson = { resultGroupId: "group-1" };
+    h.getTurn().pendingDecision = { id: "decision", blockId: "group-1", graphRevision: 4, allowedTypes: ["result_action"] };
+    h.getTurn().blocks = [{ type: "result_group", id: "group-1", results: [{ id: "result-1", label: "首帧", kind: "image", status: "ready", assetId: "asset-1" }] }];
+    const response = await h.service.submitDecision(ctx, "session", "turn", { decisionId: "decision", blockId: "group-1", graphRevision: 4, idempotencyKey: "group-bound-result-action", type: "result_action", payload: { action: "select", resultIds: ["result-1"] } });
+    expect(response.pendingDecision).toMatchObject({ blockId: "group-1" });
+    expect(response.blocks.find(block => block.type === "result_group")).toMatchObject({ id: "group-1" });
+  });
+
   it("persists reference actions without granting them a different result scope", async () => {
     const h = harness();
     const result = { id: "result-1", resultGroupId: "group", assetId: "asset-1", runId: "run", kind: "image", label: "尾帧", sourceRefs: [], lineage: {}, placedNodeId: null, status: "ready", contentText: null };
