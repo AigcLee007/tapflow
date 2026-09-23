@@ -244,8 +244,6 @@ BEGIN
   ALTER FUNCTION app.list_platform_role_assignments() OWNER TO tapflow_platform_access;
   ALTER FUNCTION app.change_platform_role(uuid, text, integer, text, text) OWNER TO tapflow_platform_access;
   ALTER FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) OWNER TO tapflow_platform_access;
-  -- Ownership changes replace the function ACL; grant bootstrap only afterward.
-  EXECUTE format('GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I', current_user);
   EXECUTE format('REVOKE tapflow_platform_access FROM %I', current_user);
 END $$;
 REVOKE CREATE ON SCHEMA app FROM tapflow_platform_access;
