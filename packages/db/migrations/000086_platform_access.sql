@@ -237,6 +237,8 @@ BEGIN
   EXECUTE format('GRANT EXECUTE ON FUNCTION app.platform_user_role(uuid) TO %I', runtime_role);
   EXECUTE format('GRANT EXECUTE ON FUNCTION app.list_platform_role_assignments() TO %I', runtime_role);
   EXECUTE format('GRANT EXECUTE ON FUNCTION app.change_platform_role(uuid, text, integer, text, text) TO %I', runtime_role);
+  -- Only the migration/table owner gets the bootstrap ACL, not API_DATABASE_ROLE.
+  EXECUTE format('GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I', current_user);
   ALTER FUNCTION app.platform_role_assignment_json(platform_role_assignments) OWNER TO tapflow_platform_access;
   ALTER FUNCTION app.current_platform_role() OWNER TO tapflow_platform_access;
   ALTER FUNCTION app.platform_user_role(uuid) OWNER TO tapflow_platform_access;
