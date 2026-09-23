@@ -12,7 +12,7 @@ BEGIN
   FROM pg_proc
   WHERE oid = 'app.bootstrap_platform_super_admin(uuid, text, text)'::regprocedure;
 
-  IF current_user <> table_owner THEN
+  IF session_user <> table_owner THEN
     RAISE EXCEPTION 'PLATFORM_BOOTSTRAP_MIGRATION_REQUIRES_TABLE_OWNER';
   END IF;
 
@@ -20,6 +20,7 @@ BEGIN
     RAISE EXCEPTION 'PLATFORM_BOOTSTRAP_FUNCTION_OWNER_MISMATCH';
   END IF;
 
+  EXECUTE format('SET LOCAL ROLE %I', function_owner);
   EXECUTE format(
     'GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I',
     table_owner
