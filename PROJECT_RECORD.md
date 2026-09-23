@@ -6996,3 +6996,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Implemented and committed result-group block binding and tenant/session/turn/run scope validation (`70a7000d`), failed-run lease recovery and strict current-run delivery matching (`7f4c3ad3`), canonical delivery verification before worker settlement (`8276d3d7`), event/session recovery and persisted reference context (`8e69e804`, `f7ab7760`), model and first/last-frame contract checks (`93562b3c`), canonical frontend runtime boundary and event reducer (`a0ff9631`), and durable result lineage migration (`694efc36`).
 - Focused API, worker, frontend reducer, API/worker builds, and production frontend build pass in this worktree. One pre-existing frontend adapter expectation was updated to match the current canonical session mode payload.
 - Real PostgreSQL concurrency, Redis/BullMQ, S3, Billing, AI Gateway/provider, authenticated browser, and staging deployment evidence remain `UNRESOLVED`; runtime flags remain disabled.
+
+## 2026-09-23 - Platform bootstrap target-check repair
+
+- Added migrations `000101_platform_bootstrap_target_helper.sql`, `000102_platform_bootstrap_target_check.sql`, and `000103_platform_bootstrap_target_helper_acl.sql` to keep the deployment-only bootstrap target validation in a table-owner security-definer helper. Existing deployed migrations `000086` and `000098`-`000100` remain unchanged so their recorded checksums stay valid.
+- Added focused migration assertions covering the owner-safe helper, replacement function, temporary role membership, and cleanup. Database package tests pass (64 passed, 38 skipped without PostgreSQL), and the database package build passes.
+- Commit `9f32c6cc` was pushed to `main`. Real staging migration/bootstrap verification remains pending; Docker/PostgreSQL was unavailable in the local environment.
