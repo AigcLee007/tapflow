@@ -1,6 +1,5 @@
--- Prepare the deployment role membership for the next migration. Role
--- membership changes are only visible to SET ROLE after this transaction
--- commits.
+-- Complete the deployment-only bootstrap ACL repair in a new transaction,
+-- after migration 98 committed the temporary role membership.
 DO $$
 DECLARE
   table_owner name;
@@ -16,12 +15,16 @@ BEGIN
   IF session_user <> table_owner THEN
     RAISE EXCEPTION 'PLATFORM_BOOTSTRAP_MIGRATION_REQUIRES_TABLE_OWNER';
   END IF;
-
   IF function_owner <> 'tapflow_platform_access' THEN
     RAISE EXCEPTION 'PLATFORM_BOOTSTRAP_FUNCTION_OWNER_MISMATCH';
   END IF;
 
-  -- Migration 86 revoked the owner role membership after making it the
-  -- function owner. Restore it for one committed migration boundary.
-  EXECUTE format('GRANT %I TO %I', function_owner, table_owner);
+  EXECUTE format('SET LOCAL ROLE %I', function_owner);
+  REVOKE ALL ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) FROM PUBLIC;
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I',
+    table_owner
+  );
+  RESET ROLE;
+  EXECUTE format('REVOKE %I FROM %I', function_owner, table_owner);
 END $$;
