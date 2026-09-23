@@ -1,6 +1,5 @@
--- Prepare the deployment role membership for the next migration. Role
--- membership changes are only visible to SET ROLE after this transaction
--- commits.
+-- Complete the deployment-only bootstrap ACL repair after migration 99 has
+-- committed the temporary role membership.
 DO $$
 DECLARE
   table_owner name;
@@ -20,5 +19,12 @@ BEGIN
     RAISE EXCEPTION 'PLATFORM_BOOTSTRAP_FUNCTION_OWNER_MISMATCH';
   END IF;
 
-  EXECUTE format('GRANT %I TO %I', function_owner, table_owner);
+  EXECUTE format('SET LOCAL ROLE %I', function_owner);
+  REVOKE ALL ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) FROM PUBLIC;
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I',
+    table_owner
+  );
+  RESET ROLE;
+  EXECUTE format('REVOKE %I FROM %I', function_owner, table_owner);
 END $$;
