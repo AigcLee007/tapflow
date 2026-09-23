@@ -1,6 +1,5 @@
--- Prepare the deployment role membership for the next migration. Role
--- membership changes are only visible to SET ROLE after this transaction
--- commits.
+-- Restore the deployment-only bootstrap ACL for databases where migration 86
+-- was applied before its post-owner-change grant was corrected.
 DO $$
 DECLARE
   table_owner name;
@@ -22,6 +21,15 @@ BEGIN
   END IF;
 
   -- Migration 86 revoked the owner role membership after making it the
-  -- function owner. Restore it for one committed migration boundary.
+  -- function owner. Temporarily restore that membership so the owner can
+  -- grant EXECUTE to the deployment role, then remove the membership again.
   EXECUTE format('GRANT %I TO %I', function_owner, table_owner);
+  EXECUTE format('SET LOCAL ROLE %I', function_owner);
+  REVOKE ALL ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) FROM PUBLIC;
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I',
+    table_owner
+  );
+  RESET ROLE;
+  EXECUTE format('REVOKE %I FROM %I', function_owner, table_owner);
 END $$;
