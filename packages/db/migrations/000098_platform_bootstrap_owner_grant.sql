@@ -20,9 +20,20 @@ BEGIN
     RAISE EXCEPTION 'PLATFORM_BOOTSTRAP_FUNCTION_OWNER_MISMATCH';
   END IF;
 
-  EXECUTE format('SET LOCAL ROLE %I', function_owner);
+  -- The database owner may not be a member of the NOLOGIN function-owner
+  -- role. As the migration owner, replace the function ACL with the intended
+  -- owner-only bootstrap grant without granting it to PUBLIC or the API role.
+  EXECUTE format(
+    'ALTER FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) OWNER TO %I',
+    table_owner
+  );
+  REVOKE ALL ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) FROM PUBLIC;
   EXECUTE format(
     'GRANT EXECUTE ON FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) TO %I',
     table_owner
+  );
+  EXECUTE format(
+    'ALTER FUNCTION app.bootstrap_platform_super_admin(uuid, text, text) OWNER TO %I',
+    function_owner
   );
 END $$;
