@@ -7,7 +7,7 @@ import { AittcoTextRelayAdapter } from "./aittco-text-relay-adapter.js";
 import { type CredentialResponseView, CredentialVault } from "./credential-vault.js";
 import { AiGatewayError } from "./errors.js";
 import { OpenAiCompatibleTextAdapter } from "./openai-compatible-text-adapter.js";
-import { redactValue } from "./redaction.js";
+import { createProviderTelemetry, type ProviderTelemetryFields, type RuntimeTelemetryMetadata } from "./provider-request-telemetry.js";
 import { RouteResolver } from "./route-resolver.js";
 import type {
   AiGatewayTextResult,
@@ -63,7 +63,7 @@ function buildRuntimeRequestConfig(row: RuntimeRouteRecord): Record<string, unkn
   };
 }
 
-type AiCallLogInsertInput = {
+type AiCallLogInsertInput = ProviderTelemetryFields & {
   adapterKindSnapshot?: string | null;
   apiModeSnapshot?: string | null;
   connectionId?: string | null;
@@ -118,16 +118,16 @@ export class DatabaseTextGenerationRuntime {
   async generateText(
     context: RuntimeContext,
     request: TextGenerationRequest,
-    metadata?: {
-      nodeRunId?: string | null;
-      workflowRunId?: string | null;
-    },
+    metadata?: RuntimeTelemetryMetadata & { routeId?: string | null; includeInactiveRoute?: boolean },
   ): Promise<AiGatewayTextResult> {
-    const routes = await this.listRuntimeRoutes(context, request.routeKey ?? null);
-    const selectedRoute = this.routeResolver.resolveTextRoute({
-      routeKey: request.routeKey ?? null,
-      routes,
+    const routes = await this.listRuntimeRoutes(context, metadata?.routeId ? null : request.routeKey ?? null, {
+      routeId: metadata?.routeId,
+      includeInactiveRoute: metadata?.includeInactiveRoute,
     });
+    const selectedRoute = metadata?.routeId
+      ? routes.find((route) => route.routeId === metadata.routeId && (route.status === "active" || metadata.includeInactiveRoute))
+      : this.routeResolver.resolveTextRoute({ routeKey: request.routeKey ?? null, routes });
+    if (!selectedRoute) throw new AiGatewayError({ code: "ROUTE_NOT_FOUND", message: "The selected text route is unavailable", statusCode: 404 });
 
     if (
       !selectedRoute.credential.id ||
@@ -148,16 +148,18 @@ export class DatabaseTextGenerationRuntime {
       nonce: selectedRoute.credential.nonce,
     });
 
+    const telemetry = createProviderTelemetry(context, selectedRoute, metadata, (input) => this.insertAiCallLog(input), "generate");
     const startedAt = Date.now();
 
     try {
       const result = await this.aiGateway.generateText({
         apiKey,
         request,
-        route: selectedRoute,
+        route: telemetry.route,
       });
 
       await this.insertAiCallLog({
+        ...telemetry.fields,
         adapterKindSnapshot:
           selectedRoute.connection?.adapterKind ?? selectedRoute.provider.kind ?? null,
         apiModeSnapshot: selectedRoute.requestConfig.apiMode as string | null | undefined,
@@ -180,7 +182,7 @@ export class DatabaseTextGenerationRuntime {
           temperature: request.temperature ?? null,
         },
         responseSummary: {
-          outputPreview: result.outputText.slice(0, 200),
+          outputLength: result.outputText.length,
           usage: result.usage,
         },
         routeId: selectedRoute.routeId,
@@ -196,6 +198,7 @@ export class DatabaseTextGenerationRuntime {
     } catch (error) {
       const normalizedError = this.toAiGatewayError(error);
       await this.insertAiCallLog({
+        ...telemetry.fields,
         adapterKindSnapshot:
           selectedRoute.connection?.adapterKind ?? selectedRoute.provider.kind ?? null,
         apiModeSnapshot: selectedRoute.requestConfig.apiMode as string | null | undefined,
@@ -203,9 +206,8 @@ export class DatabaseTextGenerationRuntime {
         connectionNameSnapshot: selectedRoute.connection?.name ?? null,
         error: {
           code: normalizedError.code,
-          message: normalizedError.message,
-          providerRequest: redactValue(normalizedError.providerRequest, [apiKey]),
-          providerResponse: redactValue(normalizedError.providerResponse, [apiKey]),
+          message: "The provider operation failed",
+
         },
         latencyMs: Date.now() - startedAt,
         modelId: selectedRoute.model.id,
@@ -243,6 +245,7 @@ export class DatabaseTextGenerationRuntime {
   async *streamText(
     context: RuntimeContext,
     request: TextGenerationRequest,
+    metadata?: RuntimeTelemetryMetadata,
   ): AsyncGenerator<TextStreamEvent> {
     const routes = await this.listRuntimeRoutes(context, request.routeKey ?? null);
     const selectedRoute = this.routeResolver.resolveTextRoute({
@@ -266,11 +269,31 @@ export class DatabaseTextGenerationRuntime {
       encryptedSecret: selectedRoute.credential.encryptedSecret,
       nonce: selectedRoute.credential.nonce,
     });
-    yield* this.aiGateway.streamText({
-      apiKey,
-      request,
-      route: selectedRoute,
-    });
+    const telemetry = createProviderTelemetry(context, selectedRoute, { source: "agent", trafficClass: "agent_control", ...metadata }, (input) => this.insertAiCallLog(input), "stream");
+    const startedAt = Date.now();
+    let status = "cancelled";
+    let errorCode: string | null = null;
+    let inputTokens: number | null = null;
+    let outputTokens: number | null = null;
+    try {
+      for await (const event of this.aiGateway.streamText({ apiKey, request, route: telemetry.route })) {
+        if (event.type === "done") status = "succeeded";
+        if (event.type === "cancelled") status = "cancelled";
+        if (event.type === "error") { status = "failed"; errorCode = event.error.code; }
+        if (event.type === "usage") { inputTokens = event.usage.inputTokens; outputTokens = event.usage.outputTokens; }
+        yield event;
+      }
+    } catch (error) {
+      status = "failed";
+      errorCode = this.toAiGatewayError(error).code;
+      throw error;
+    } finally {
+      await this.insertAiCallLog({ ...telemetry.fields, ...telemetry.snapshots, status,
+        latencyMs: Date.now() - startedAt, inputTokens, outputTokens,
+        error: errorCode ? { code: errorCode, message: "The provider stream failed" } : null,
+        requestSummary: { messageCount: request.messages.length }, responseSummary: { status },
+      });
+    }
   }
 
   /**
@@ -293,6 +316,7 @@ export class DatabaseTextGenerationRuntime {
   private async listRuntimeRoutes(
     context: RuntimeContext,
     routeKey: string | null,
+    options?: { routeId?: string | null; includeInactiveRoute?: boolean },
   ): Promise<ResolvedRoute[]> {
     return withTenantTransaction(context, async (client) => {
       const result = await client.query<RuntimeRouteRecord>(
@@ -336,10 +360,11 @@ export class DatabaseTextGenerationRuntime {
             ON c.id = COALESCE(r.credential_id, pc.credential_id)
            AND c.status <> 'deleted'
           WHERE r.modality = 'text'
-            AND r.status = 'active'
+            AND ($3::boolean OR r.status = 'active')
             AND p.status = 'active'
             AND (r.model_id IS NULL OR m.status = 'active')
             AND ($1::text IS NULL OR r.route_key = $1)
+            AND ($2::uuid IS NULL OR r.id = $2::uuid)
           ORDER BY
             CASE WHEN r.tenant_id IS NULL THEN 1 ELSE 0 END ASC,
             r.priority ASC,
@@ -347,7 +372,7 @@ export class DatabaseTextGenerationRuntime {
             r.created_at ASC,
             r.id ASC
         `,
-        [routeKey?.trim() || null],
+        [routeKey?.trim() || null, options?.routeId ?? null, Boolean(options?.routeId && options?.includeInactiveRoute)],
       );
 
       return result.rows.map((row) => {
@@ -434,7 +459,9 @@ export class DatabaseTextGenerationRuntime {
               error,
               latency_ms,
               input_tokens,
-              output_tokens
+              output_tokens,
+              record_level, operation, execution_id, source, traffic_class, actor_user_id, billed_user_id,
+              trace_id, attempt, provider_request_id, provider_task_id, request_started_at, request_completed_at, request_dispatched, http_status
             )
             VALUES (
               $1::uuid,
@@ -461,7 +488,9 @@ export class DatabaseTextGenerationRuntime {
               $22::jsonb,
               $23::int,
               $24::int,
-              $25::int
+              $25::int,
+              $26, $27, $28, $29, $30, $31::uuid, $32::uuid,
+              $33, $34::int, $35, $36, $37::timestamptz, $38::timestamptz, $39::boolean, $40::int
             )
           `,
           [
@@ -490,6 +519,10 @@ export class DatabaseTextGenerationRuntime {
             input.latencyMs ?? null,
             input.inputTokens ?? null,
             input.outputTokens ?? null,
+            input.recordLevel ?? "summary", input.operation ?? "generate", input.executionId ?? null, input.source ?? "unknown",
+            input.trafficClass ?? "unknown", input.actorUserId ?? null, input.billedUserId ?? null, input.traceId ?? null,
+            input.attempt ?? null, input.providerRequestId ?? null, input.providerTaskId ?? null,
+            input.requestStartedAt ?? null, input.requestCompletedAt ?? null, input.requestDispatched ?? null, input.httpStatus ?? null,
           ],
         );
       },

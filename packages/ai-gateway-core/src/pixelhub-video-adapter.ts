@@ -1,3 +1,4 @@
+import { observeProviderFetch } from "./provider-request-telemetry.js";
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import { readVideoCapabilities, readVideoReferenceMetadata, validateVideoGenerationRequest } from "./video-generation-contract.js";
@@ -79,7 +80,7 @@ export class PixelHubVideoAdapter implements ProviderAdapter {
   ) {
     const url = `${context.baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
     let response: Response;
-    try { response = await this.fetchImplementation(url, { body: body ? JSON.stringify(body) : undefined, headers: { Authorization: `Bearer ${context.apiKey}`, ...(body ? { "Content-Type": "application/json" } : {}) }, method, signal: AbortSignal.timeout(context.timeoutMs) }); }
+    try { response = await observeProviderFetch(context, method === "GET" ? "poll" : "submit", this.fetchImplementation, url, { body: body ? JSON.stringify(body) : undefined, headers: { Authorization: `Bearer ${context.apiKey}`, ...(body ? { "Content-Type": "application/json" } : {}) }, method, signal: AbortSignal.timeout(context.timeoutMs) }); }
     catch (error) { throw new AiGatewayError({ code: error instanceof Error && /abort|timeout/i.test(error.name) ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE", message: "PixelHub request failed", providerRequest, statusCode: 502 }); }
     const text = await response.text(); let parsed: unknown = null; try { parsed = text ? JSON.parse(text) : null; } catch { throw new AiGatewayError({ code: "PIXELHUB_RESPONSE_INVALID", message: "PixelHub returned invalid JSON", statusCode: 502 }); }
     if (!response.ok) { const code = response.status === 400 ? "PIXELHUB_REQUEST_REJECTED" : response.status === 401 || response.status === 403 ? "PROVIDER_AUTH_FAILED" : response.status === 429 ? "PROVIDER_RATE_LIMITED" : "PROVIDER_UNAVAILABLE"; throw new AiGatewayError({ code, message: "PixelHub rejected the request", providerRequest, providerResponse: { httpStatus: response.status }, statusCode: response.status }); }

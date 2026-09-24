@@ -27,6 +27,7 @@ import {
   promptStatusSchema,
 } from "./prompts.schemas.js";
 import { PROMPT_MEDIA_MAX_BYTES, PromptApiError, type PromptContext } from "./prompts.service.js";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 
 function sendError(
   request: FastifyRequest,
@@ -67,8 +68,9 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
   if (error instanceof ZodError) {
     return sendError(request, reply, 400, "VALIDATION_ERROR", "请求参数无效", error.issues);
   }
-  if (error instanceof PromptApiError) {
-    return sendError(request, reply, error.statusCode, error.code, error.message, error.details);
+  if (error instanceof PromptApiError || error instanceof PlatformTransactionError) {
+    return sendError(request, reply, error.statusCode, error.code, error.message,
+      error instanceof PromptApiError ? error.details : undefined);
   }
   request.log.error({ err: error }, "prompt plaza route failed");
   return sendError(request, reply, 500, "INTERNAL_ERROR", "服务暂时不可用，请稍后重试。");
@@ -77,7 +79,7 @@ function handleRouteError(error: unknown, request: FastifyRequest, reply: Fastif
 export function registerPromptRoutes(app: FastifyInstance): void {
   const readHandlers = [requireAuth, requireTenant, requirePermission("prompt:read")];
   const favoriteHandlers = [requireAuth, requireTenant, requirePermission("prompt:favorite")];
-  const adminHandlers = [requireAuth, requireTenant, requirePermission("admin:system")];
+  const adminHandlers = [requireAuth, requireTenant, requirePermission("platform:content:manage")];
   app.addContentTypeParser("application/x-prompt-media", { bodyLimit: PROMPT_MEDIA_MAX_BYTES, parseAs: "buffer" }, (_request, body, done) => done(null, body));
 
   app.get(

@@ -18,6 +18,7 @@ import {
   modelCatalogRoutesQuerySchema,
 } from "./ai-model-catalog.schemas.js";
 import { AiModelCatalogApiError } from "./ai-model-catalog.service.js";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 
 function sendError(
   request: FastifyRequest,
@@ -64,7 +65,7 @@ function handleRouteError(
     );
   }
 
-  if (error instanceof AiModelCatalogApiError) {
+  if (error instanceof AiModelCatalogApiError || error instanceof PlatformTransactionError) {
     return sendError(request, reply, error.statusCode, error.code, error.message);
   }
 
@@ -83,6 +84,22 @@ function handleRouteError(
 
 export function registerAiModelCatalogRoutes(app: FastifyInstance): void {
   const authHandlers = [requireAuth, requireTenant, requirePermission("flow:run")];
+  const platformHandlers = [requireAuth, requirePermission("platform:models:read")];
+  const platformRouteHandlers = [requireAuth, requirePermission("platform:routes:read")];
+
+  app.get("/api/v2/admin/ai/model-catalog", { preHandler: platformHandlers }, async (request, reply) => {
+    try {
+      const query = modelCatalogQuerySchema.parse(request.query) as ModelCatalogQuery;
+      return reply.send(await app.aiModelCatalogService.listPlatformModels(request.ctx, query));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
+  app.get("/api/v2/admin/ai/model-catalog/:modelKey/routes", { preHandler: platformRouteHandlers }, async (request, reply) => {
+    try {
+      const params = modelCatalogParamsSchema.parse(request.params) as ModelCatalogParams;
+      const query = modelCatalogRoutesQuerySchema.parse(request.query) as ModelCatalogRoutesQuery;
+      return reply.send(await app.aiModelCatalogService.listPlatformRoutes(request.ctx, params.modelKey, query));
+    } catch (error) { return handleRouteError(error, request, reply); }
+  });
 
   app.get(
     "/api/v2/ai/model-catalog/bundle",

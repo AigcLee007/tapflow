@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthState } from "../auth/useAuth";
 import { TemplateLibraryPage } from "./TemplateLibraryPage";
+import { platformAuth } from "../test/platformAuth";
 
 const listAiPluginsMock = vi.fn();
 const installAiPluginMock = vi.fn();
@@ -32,10 +33,9 @@ function createAuthState(): AuthState {
     loading: false,
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
-    permissions: ["admin:system"],
+    ...platformAuth(),
     refreshMe: vi.fn(async () => undefined),
     register: vi.fn(async () => undefined),
-    roles: ["tenant_owner"],
     sessionId: "session-1",
     tenant: { id: "tenant-1", name: "Test Tenant", plan: "pro", slug: "test", status: "active" },
     user: { displayName: "Tester", email: "tester@example.com", id: "user-1", status: "active" },

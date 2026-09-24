@@ -1,8 +1,9 @@
+import { resolvePlatformCapabilities } from "../src/modules/platform-access/platform-access.policy.js";
 import { describe, expect, test, vi } from "vitest";
 
 import { AiRouteTestService } from "../src/modules/ai-route-tests/ai-route-tests.service.js";
 
-const context = { tenantId: "11111111-1111-1111-1111-111111111111", userId: null };
+const context = { tenantId: "11111111-1111-1111-1111-111111111111", userId: null, permissions: resolvePlatformCapabilities("platform_super_admin") };
 const routeId = "22222222-2222-2222-2222-222222222222";
 
 function harness(options: {
@@ -16,8 +17,10 @@ function harness(options: {
   const client = {
     query: vi.fn(async (query: string, args?: unknown[]) => {
       sql.push(query);
-      if (query.includes("FROM ai_routes route JOIN ai_providers") && query.includes("route.tenant_id IS NULL")) {
-        return { rows: [{ id: routeId, route_key: "image.draft", route_label: "Draft", modality: "image",
+      if (query.includes("app.current_platform_role()")) return { rows: [{ role_key: "platform_super_admin" }] };
+      if (query.includes("INSERT INTO audit_logs")) return { rows: [{ id: routeId, created_at: "now" }] };
+      if (query.includes("FROM ai_routes route JOIN ai_providers")) {
+        return { rows: [{ id: routeId, tenant_id: null, route_key: "image.draft", route_label: "Draft", modality: "image",
           api_mode: "mock", upstream_model: "mock-image", configuration_revision: state.configurationRevision,
           provider_key: "mock", model_key: "mock-image", connection_name: "Mock", package_key: null }] };
       }
@@ -69,7 +72,7 @@ describe("AiRouteTestService admin draft certification", () => {
       expect.objectContaining({ routeKey: "image.draft" }),
       expect.objectContaining({ includeInactiveRoute: true, routeId }),
     );
-    expect(testHarness.sql.some((query) => query.includes("route.tenant_id IS NULL") && query.includes("route.deleted_at IS NULL"))).toBe(true);
+    expect(testHarness.sql.some((query) => query.includes("route.id=$1::uuid") && query.includes("route.deleted_at IS NULL"))).toBe(true);
     expect(testHarness.sql.some((query) => query.includes("route.status='active'"))).toBe(false);
   });
 

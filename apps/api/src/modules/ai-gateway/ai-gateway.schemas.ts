@@ -1,6 +1,34 @@
 import { z } from "zod";
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
+export const isSensitiveRequestConfigKey = (key: string): boolean => {
+  const normalized = key.replace(/[-_]/g, "").toLowerCase();
+  return normalized.includes("authorization")
+    || normalized.includes("apikey")
+    || normalized.includes("secret")
+    || normalized.endsWith("token")
+    || normalized.includes("password")
+    || normalized.includes("privatekey");
+};
+
+function validateRequestConfigValue(value: unknown, path: (string | number)[], context: z.RefinementCtx): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => validateRequestConfigValue(entry, [...path, index], context));
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (isSensitiveRequestConfigKey(key)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [...path, key], message: "requestConfig cannot contain provider secrets; use credentialId" });
+      continue;
+    }
+    validateRequestConfigValue(nested, [...path, key], context);
+  }
+}
+
+export const requestConfigSchema = jsonRecordSchema.superRefine((value, context) => {
+  validateRequestConfigValue(value, [], context);
+});
 const aiModalitySchema = z.enum(["text", "image", "video"]);
 const routeStatusSchema = z.enum(["active", "inactive"]);
 const resourceStatusSchema = z.enum(["active", "inactive"]);
@@ -15,12 +43,15 @@ const routeKeySchema = z
     "routeKey must contain only letters, numbers, dot, underscore, or hyphen",
   );
 
-function normalizeHttpUrl(value: string): string {
-  const url = new URL(value.trim());
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("baseUrlOverride must use http or https");
+function normalizeHttpUrl(value: string, context: z.RefinementCtx): string | typeof z.NEVER {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+  } catch {
+    // Report malformed URLs through the normal validation error response.
   }
-  return url.toString();
+  context.addIssue({ code: z.ZodIssueCode.custom, message: "URL must use http or https" });
+  return z.NEVER;
 }
 
 export const routeIdParamsSchema = z.object({
@@ -80,7 +111,7 @@ export const createRouteSchema = z.object({
   providerId: z.string().uuid(),
   requestPath: z.string().trim().min(1).max(255).nullable().optional(),
   rateLimit: jsonRecordSchema.optional(),
-  requestConfig: jsonRecordSchema.optional(),
+  requestConfig: requestConfigSchema.optional(),
   routeKey: routeKeySchema,
   routeLabel: z.string().trim().min(1).max(255).nullable().optional(),
   status: routeStatusSchema.optional(),
@@ -111,12 +142,13 @@ export const updateRouteSchema = z
     priority: z.number().int().min(0).optional(),
     requestPath: z.string().trim().min(1).max(255).nullable().optional(),
     rateLimit: jsonRecordSchema.optional(),
-    requestConfig: jsonRecordSchema.optional(),
+    requestConfig: requestConfigSchema.optional(),
     routeLabel: z.string().trim().min(1).max(255).nullable().optional(),
     status: routeStatusSchema.optional(),
     upstreamModel: z.string().trim().min(1).max(255).nullable().optional(),
     weight: z.number().int().min(0).optional(),
   })
+  .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one route field must be provided",
   });

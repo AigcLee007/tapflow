@@ -13,7 +13,7 @@ function buildPromptRouteApp(service: Record<string, unknown>) {
   app.addHook("onRequest", async (request) => {
     request.ctx = {
       isAuthenticated: true,
-      permissions: ["admin:system", "prompt:read", "prompt:favorite"],
+      permissions: ["platform:content:manage", "prompt:read", "prompt:favorite"],
       requestId: "request-1",
       tenantId: "9c07e9dd-9853-4d6d-bb37-22b4b0d55884",
       traceId: "trace-1",

@@ -26,7 +26,7 @@ import {
   WORKSPACE_ROUTE,
 } from "./routes";
 import { BrandMark } from "./brand/BrandMark";
-import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
+import { hasPlatformCapability, resolveProductRole } from "../auth/productRoles";
 import { useAuth } from "../auth/useAuth";
 import { getAvailableCredits } from "../billing/billingDisplay";
 import { useBillingSummarySnapshot } from "../billing/useBillingSummarySnapshot";
@@ -102,7 +102,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const displayName = user?.displayName || user?.email || "用户";
   const userEmail = user?.email || "";
   const productRole = resolveProductRole({ permissions, roles });
-  const canAdmin = canAccessOperationsConsole(productRole);
+  const canAdmin = hasPlatformCapability({ permissions, roles }, "platform:console:access");
   const { summary: billingSummary } = useBillingSummarySnapshot(Boolean(authenticated && tenant && user));
   const recharge = useRecharge();
   const availableCredits = getAvailableCredits(billingSummary);
@@ -381,6 +381,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 <div className={MENU_DIVIDER_CLASS} />
 
                 <div className="space-y-1">
+                  <MenuItem icon={UserRound} label="个人中心" onClick={() => goTo("/account/overview")} />
                   <MenuItem icon={UserRound} label="账户管理" onClick={() => goTo(ACCOUNT_ROUTE)} />
                   {canAdmin ? (
                     <MenuItem

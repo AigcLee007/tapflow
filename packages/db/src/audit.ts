@@ -197,7 +197,7 @@ export function sanitizeAuditMetadata(
 
 export async function recordAuditLogWithClient(
   client: PoolClient,
-  input: AuditLogInput,
+  input: Omit<AuditLogInput, "tenantId"> & { tenantId: string | null },
 ): Promise<AuditLogView> {
   const result = await client.query<AuditLogRecord>(
     `

@@ -218,6 +218,20 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
     expect(sql).toMatch(/ALTER FUNCTION app\.apply_xunhu_payment_notification\(text, bigint, text, text, text, timestamptz\)\s+OWNER TO tapflow_wallet_callback/);
   });
 
+  test("does not release a refund hold from an ordinary payment-success callback", async () => {
+    const sql = await readFile(
+      path.resolve(import.meta.dirname, "../migrations/000091_wallet_refund_claim_recovery.sql"),
+      "utf8",
+    );
+    const start = sql.indexOf("IF p_provider_state = 'OD'");
+    const end = sql.indexOf("ELSIF p_provider_state = 'RD'");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const odBranch = sql.slice(start, end);
+    expect(odBranch).toContain("IF v_payment.status = 'refund_pending' THEN RETURN false; END IF;");
+    expect(odBranch).not.toContain("REFUND_NOT_ACCEPTED");
+  });
+
   test("lets callback mutators see wallet rows and reconciles cached wallet totals", async () => {
     const sql = await readFile(
       path.resolve(import.meta.dirname, "../migrations/000050_wallet_balance_reconciliation.sql"),
@@ -610,6 +624,22 @@ describe("000042_xunhupay_personal_wallet.sql", () => {
       expect(sql).not.toContain("WITH ADMIN TRUE");
       expect(sql).not.toMatch(/GRANT tapflow_wallet_callback[^;]*SET FALSE/);
       expect(sql).not.toMatch(/ALTER FUNCTION[\s\S]*OWNER TO tapflow_wallet_callback/);
+    }
+  });
+
+  test("keeps refund-held grants out of reserve, debit, and expiry paths", async () => {
+    const migrationsDir = path.resolve(import.meta.dirname, "../migrations");
+    const reserve = await readFile(path.join(migrationsDir, "000092_wallet_reserve_excludes_refund_hold.sql"), "utf8");
+    const debit = await readFile(path.join(migrationsDir, "000093_wallet_admin_debit_excludes_refund_hold.sql"), "utf8");
+    const expire = await readFile(path.join(migrationsDir, "000094_wallet_expire_excludes_refund_hold.sql"), "utf8");
+
+    expect(reserve).toContain("AND NOT credit_grant.refund_hold");
+    expect(debit).toContain("AND NOT credit_grant.refund_hold");
+    expect(expire).toContain("AND NOT refund_hold");
+    for (const sql of [reserve, debit, expire]) {
+      expect(sql).toContain("current_setting('app.api_database_role', true)");
+      expect(sql).toContain("GRANT EXECUTE ON FUNCTION");
+      expect(sql).toContain("REVOKE ALL ON FUNCTION");
     }
   });
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -24,7 +24,8 @@ import {
   ACCOUNT_AI_SETTINGS_ROUTE,
   ACCOUNT_PROVIDER_SETTINGS_ROUTE,
 } from "../app/routes";
-import { canAccessOperationsConsole, resolveProductRole } from "../auth/productRoles";
+import { hasPlatformCapability, resolveProductRole, type PlatformCapability } from "../auth/productRoles";
+import type { AdminSection } from "./adminNavigation";
 import { useAuth } from "../auth/useAuth";
 import { invalidateBillingSummary } from "../billing/useBillingSummarySnapshot";
 import {
@@ -44,13 +45,13 @@ import {
   searchAdminUsers,
   updateAdminAnnouncement,
   updateAdminMembershipTier,
-  updateAdminUserRole,
   updateAdminUserStatus,
   type AdminAiRouteStats,
   type AdminAnnouncement,
   type AdminRedeemCode,
   type AdminRedeemCodeRedemption,
   type AdminUser,
+  type AdminUserFilters,
   type AdminWorkflowRun,
   type AdminWorkflowRunDetail,
   type AnnouncementAudience,
@@ -59,6 +60,8 @@ import {
 } from "./adminApi";
 import { PromptLibraryPanel } from "./PromptLibraryPanel";
 import { PaymentManagementPanel } from "./PaymentManagementPanel";
+import { PlatformAccessPanel } from "./PlatformAccessPanel";
+import { MenuSelect } from "../components/menu/MenuSelect";
 
 type OpsTab =
   | "overview"
@@ -77,12 +80,12 @@ export function sumAvailableWalletCredits(users: Array<Pick<AdminUser, "wallet">
   return users.reduce((sum, user) => sum + user.wallet.availableCredits, 0);
 }
 
-export function getAdminUserDetailState(user: AdminUser | null): {
+export function getAdminUserDetailState(user: AdminUser | null, tenantId?: string | null): {
   membership: AdminUser["memberships"][number] | null;
   wallet: AdminUser["wallet"] | null;
   workspaceControlsDisabled: boolean;
 } {
-  const membership = user?.memberships[0] ?? null;
+  const membership = user?.memberships.find(item => item.tenantId === tenantId) ?? null;
   return {
     membership,
     wallet: user?.wallet ?? null,
@@ -102,12 +105,6 @@ const VALIDITY_OPTIONS = [
   { label: "3个月", mode: "months" as const, months: 3 },
   { label: "1年", mode: "months" as const, months: 12 },
   { label: "长期", mode: "lifetime" as const },
-];
-
-const ROLE_OPTIONS = [
-  { label: "创作者", roleKey: "flow_developer" as const },
-  { label: "管理员", roleKey: "tenant_admin" as const },
-  { label: "超级管理员", roleKey: "system_admin" as const },
 ];
 
 const TABS: Array<{
@@ -135,6 +132,14 @@ const textareaClass =
   "min-h-[96px] w-full rounded border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50";
 const buttonClass =
   "inline-flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/10 px-4 text-sm text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50";
+const USER_RESULTS_LIMIT = 50;
+const REDEEM_CODE_RESULTS_LIMIT = 50;
+const TAB_CAPABILITIES: Record<OpsTab, PlatformCapability> = {
+  overview: "platform:console:access", users: "platform:users:read", admins: "platform:roles:manage",
+  credits: "platform:redeem:operate", announcements: "platform:content:manage", usage: "platform:usage:read",
+  models: "platform:models:read", providers: "platform:connections:read", monitor: "platform:routes:read",
+  payments: "platform:payments:read", "prompt-library": "platform:content:manage",
+};
 
 function getTabFromHash(): OpsTab {
   if (typeof window === "undefined") return "overview";
@@ -163,8 +168,8 @@ function membershipLabel(value?: MembershipTier | null): string {
 }
 
 function roleLabel(roleKey?: string | null): string {
-  if (roleKey === "system_admin") return "超级管理员";
-  if (roleKey === "tenant_admin") return "管理员";
+  if (roleKey === "system_admin") return "旧工作区系统角色";
+  if (roleKey === "tenant_admin") return "团队管理员";
   return "创作者";
 }
 
@@ -255,14 +260,27 @@ function Field({
   );
 }
 
-export function AdminPage() {
+export function AdminPage({ section }: { section?: AdminSection } = {}) {
   const { permissions, roles, tenant } = useAuth();
   const productRole = resolveProductRole({ permissions, roles });
-  const isAdmin = canAccessOperationsConsole(productRole);
+  const access = { permissions, roles };
+  const isAdmin = hasPlatformCapability(access, "platform:console:access");
   const isSuperAdmin = productRole === "super_admin";
+  const canAdjustBilling = hasPlatformCapability(access, "platform:billing:adjust");
+  const canManageRoles = hasPlatformCapability(access, "platform:roles:manage");
+  const canOperateUsers = hasPlatformCapability(access, "platform:users:operate");
 
-  const [activeTab, setActiveTab] = useState<OpsTab>(() => getTabFromHash());
-  const [query, setQuery] = useState("");
+  const [selectedTab, setActiveTab] = useState<OpsTab>(() => getTabFromHash());
+  const activeTab = section ?? selectedTab;
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("query") ?? "");
+  const [userFilters, setUserFilters] = useState<AdminUserFilters>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return Object.fromEntries(["cursor","status","platformRole","tenantId"].flatMap(key => params.get(key) ? [[key,params.get(key)]] : []));
+  });
+  const [userPage, setUserPage] = useState<{nextCursor?:string|null;hasMore?:boolean;asOf?:string}>({});
+  const usersRequest = useRef(0);
+  const [selectedMembershipKey, setSelectedMembershipKey] = useState<{userId:string;tenantId:string}|null>(null);
+  const [loadedUserQuery, setLoadedUserQuery] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -270,12 +288,16 @@ export function AdminPage() {
   const [error, setError] = useState("");
 
   const [membershipTier, setMembershipTier] = useState<MembershipTier>("standard");
-  const [roleKey, setRoleKey] = useState<"system_admin" | "tenant_admin" | "flow_developer">("flow_developer");
   const [grantCreditsValue, setGrantCreditsValue] = useState("1000");
   const [grantReason, setGrantReason] = useState("运营发放积分");
   const [grantValidity, setGrantValidity] = useState(VALIDITY_OPTIONS[1]);
   const [adjustCreditsValue, setAdjustCreditsValue] = useState("100");
   const [adjustReason, setAdjustReason] = useState("运营手动调整");
+  const [creditMutationPending, setCreditMutationPending] = useState(false);
+  const creditMutationBusy = useRef(false);
+  const creditIntents = useRef<{grant?: {signature:string;key:string};adjust?: {signature:string;key:string}}>({});
+  const [statusReason, setStatusReason] = useState("");
+  const [changingStatus, setChangingStatus] = useState(false);
 
   const [redeemCodes, setRedeemCodes] = useState<AdminRedeemCode[]>([]);
   const [selectedRedeemCodeId, setSelectedRedeemCodeId] = useState<string | null>(null);
@@ -306,8 +328,15 @@ export function AdminPage() {
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [selectedUserId, users],
   );
-  const selectedUserDetail = getAdminUserDetailState(selectedUser);
+  const selectedUserDetail = getAdminUserDetailState(selectedUser, selectedMembershipKey?.userId === selectedUser?.id ? selectedMembershipKey?.tenantId : null);
   const selectedMembership = selectedUserDetail.membership;
+  useEffect(() => { delete creditIntents.current.grant; },[selectedUserId,selectedMembership?.tenantId,grantCreditsValue,grantReason,grantValidity]);
+  useEffect(() => { delete creditIntents.current.adjust; },[selectedUserId,selectedMembership?.tenantId,adjustCreditsValue,adjustReason]);
+  function creditIntentKey(kind:"grant"|"adjust",payload:object) {
+    const signature=JSON.stringify(payload);
+    if (creditIntents.current[kind]?.signature!==signature) creditIntents.current[kind]={signature,key:crypto.randomUUID()};
+    return creditIntents.current[kind]!.key;
+  }
   const selectedRedeemCode = useMemo(
     () => redeemCodes.find((code) => code.id === selectedRedeemCodeId) ?? null,
     [redeemCodes, selectedRedeemCodeId],
@@ -326,18 +355,41 @@ export function AdminPage() {
 
   const loadUsers = useCallback(async () => {
     if (!isAdmin) return;
+    const request = ++usersRequest.current;
     setUsersLoading(true);
     setError("");
     try {
-      const response = await searchAdminUsers(query, 50);
+      const response = await (Object.values(userFilters).some(Boolean) ? searchAdminUsers(query, USER_RESULTS_LIMIT, userFilters) : searchAdminUsers(query, USER_RESULTS_LIMIT));
+      if (request !== usersRequest.current) return;
       setUsers(response.items);
-      setSelectedUserId((current) => current ?? response.items[0]?.id ?? null);
+      setUserPage(response);
+      setLoadedUserQuery(response.query);
+      setSelectedUserId((current) => response.items.some(item => item.id === current) ? current : response.items[0]?.id ?? null);
     } catch (cause) {
+      if (request !== usersRequest.current) return;
+      setUsers([]); setUserPage({});
       setError(cause instanceof Error ? cause.message : "用户列表加载失败");
     } finally {
-      setUsersLoading(false);
+      if (request === usersRequest.current) setUsersLoading(false);
     }
-  }, [isAdmin, query]);
+  }, [isAdmin, query, userFilters]);
+
+  function updateUserQuery(nextQuery: string, filters: AdminUserFilters) {
+    setQuery(nextQuery); setUserFilters(filters);
+    const params = new URLSearchParams();
+    if (nextQuery.trim()) params.set("query",nextQuery.trim());
+    for (const [key,value] of Object.entries(filters)) if (value) params.set(key,value);
+    window.history.pushState(null,"",`${window.location.pathname}${params.size?`?${params}`:""}${window.location.hash}`);
+  }
+  useEffect(() => {
+    const sync = () => {
+      const params = new URLSearchParams(window.location.search);
+      setQuery(params.get("query") ?? "");
+      setUserFilters(Object.fromEntries(["cursor","status","platformRole","tenantId"].flatMap(key=>params.get(key)?[[key,params.get(key)]]:[])));
+    };
+    window.addEventListener("popstate",sync);
+    return () => { window.removeEventListener("popstate",sync); ++usersRequest.current; };
+  },[]);
 
   const loadOperationalData = useCallback(async () => {
     if (!isAdmin) return;
@@ -345,7 +397,7 @@ export function AdminPage() {
     setError("");
     try {
       const [codes, notices, stats, runs] = await Promise.all([
-        listAdminRedeemCodes({ limit: 50 }),
+        listAdminRedeemCodes({ limit: REDEEM_CODE_RESULTS_LIMIT }),
         listAdminAnnouncements({ limit: 50 }),
         getAdminAiRouteStats({ windowMinutes: 30 }),
         listAdminWorkflowRuns({ limit: 30 }),
@@ -373,14 +425,9 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!selectedUser) return;
-    const membership = selectedUser.memberships[0] ?? null;
-    setMembershipTier(membership?.membershipTier ?? "standard");
-    setRoleKey(
-      membership?.roleKey === "system_admin" || membership?.roleKey === "tenant_admin"
-        ? membership.roleKey
-        : "flow_developer",
-    );
+    setStatusReason("");
   }, [selectedUser]);
+  useEffect(() => { setMembershipTier(selectedMembership?.membershipTier ?? "standard"); },[selectedMembership]);
 
   useEffect(() => {
     if (!selectedRedeemCodeId) {
@@ -419,16 +466,15 @@ export function AdminPage() {
   }, [selectedRunId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || section) return;
     window.history.replaceState(null, "", `${window.location.pathname}#${activeTab}`);
-  }, [activeTab]);
+  }, [activeTab, section]);
 
   useEffect(() => {
-    const currentTab = TABS.find((tab) => tab.id === activeTab);
-    if (currentTab?.superOnly && !isSuperAdmin) {
+    if (!hasPlatformCapability({ permissions, roles }, TAB_CAPABILITIES[activeTab])) {
       setActiveTab("overview");
     }
-  }, [activeTab, isSuperAdmin]);
+  }, [activeTab, permissions, roles]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -448,6 +494,9 @@ export function AdminPage() {
       </section>
     );
   }
+  if (!hasPlatformCapability(access, TAB_CAPABILITIES[activeTab])) {
+    return <section className="rounded border border-amber-400/20 p-5 text-sm text-amber-100">当前账号没有此管理页面所需的平台权限。</section>;
+  }
 
   async function refreshAll() {
     setMessage("");
@@ -455,7 +504,7 @@ export function AdminPage() {
   }
 
   async function handleMembershipSave() {
-    if (!selectedUser || !selectedMembership) return;
+    if (!canAdjustBilling || !selectedUser || !selectedMembership) return;
     setMessage("");
     setError("");
     try {
@@ -471,72 +520,63 @@ export function AdminPage() {
     }
   }
 
-  async function handleRoleSave() {
-    if (!selectedUser || !selectedMembership) return;
-    setMessage("");
-    setError("");
-    try {
-      await updateAdminUserRole({
-        roleKey,
-        targetUserId: selectedUser.id,
-        tenantId: selectedMembership.tenantId,
-      });
-      setMessage("用户身份已更新");
-      await loadUsers();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "用户身份更新失败");
-    }
-  }
-
   async function handleGrantCredits() {
-    if (!selectedUser || !selectedMembership) return;
+    if (!canAdjustBilling || !selectedUser || !selectedMembership || creditMutationBusy.current || grantReason.trim().length < 5) return;
+    creditMutationBusy.current=true; setCreditMutationPending(true);
     setMessage("");
     setError("");
     try {
-      const result = await grantAdminCredits({
+      const payload = {
         credits: Number.parseInt(grantCreditsValue, 10) || 0,
-        reason: grantReason,
+        reason: grantReason.trim(),
         targetUserId: selectedUser.id,
         tenantId: selectedMembership.tenantId,
         validityMode: grantValidity.mode,
         validityMonths: "months" in grantValidity ? grantValidity.months : undefined,
-      });
+      };
+      const result = await grantAdminCredits({...payload,idempotencyKey:creditIntentKey("grant",payload)});
+      delete creditIntents.current.grant;
       setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, wallet: { ...user.wallet, ...result.wallet } } : user));
       invalidateBillingSummary();
       setMessage("积分已发放");
       await Promise.all([loadUsers(), loadOperationalData()]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "积分发放失败");
-    }
+    } finally { creditMutationBusy.current=false;setCreditMutationPending(false); }
   }
 
   async function handleAdjustCredits(direction: "add" | "subtract") {
-    if (!selectedUser || !selectedMembership) return;
+    if (!canAdjustBilling || !selectedUser || !selectedMembership || creditMutationBusy.current || adjustReason.trim().length < 5) return;
+    creditMutationBusy.current=true; setCreditMutationPending(true);
     setMessage("");
     setError("");
     try {
-      const result = await adjustAdminCredits({
+      const payload = {
         credits: Number.parseInt(adjustCreditsValue, 10) || 0,
         direction,
-        reason: adjustReason,
+        reason: adjustReason.trim(),
         targetUserId: selectedUser.id,
         tenantId: selectedMembership.tenantId,
-      });
+      };
+      const result = await adjustAdminCredits({...payload,idempotencyKey:creditIntentKey("adjust",payload)});
+      delete creditIntents.current.adjust;
       setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, wallet: { ...user.wallet, ...result.wallet } } : user));
       invalidateBillingSummary();
       setMessage(direction === "add" ? "积分已增加" : "积分已减少");
       await Promise.all([loadUsers(), loadOperationalData()]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "积分调整失败");
-    }
+    } finally { creditMutationBusy.current=false;setCreditMutationPending(false); }
   }
 
   async function handleUserStatus(status: "active" | "disabled") {
-    if (!selectedUser) return;
+    if (!canOperateUsers || !selectedUser || changingStatus || statusReason.trim().length < 5) return;
+    setChangingStatus(true);
     setMessage("");
     setError("");
     try {
       await updateAdminUserStatus({
+        reason: statusReason.trim(),
         status,
         targetUserId: selectedUser.id,
       });
@@ -544,10 +584,13 @@ export function AdminPage() {
       await loadUsers();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "用户状态更新失败");
+    } finally {
+      setChangingStatus(false);
     }
   }
 
   async function handleCreateRedeemCode() {
+    if (!canAdjustBilling) return;
     const tenantIdForCode = isSuperAdmin ? undefined : selectedMembership?.tenantId ?? tenant?.id;
     if (!isSuperAdmin && !tenantIdForCode) return;
     setMessage("");
@@ -569,7 +612,7 @@ export function AdminPage() {
   }
 
   async function handleDeleteRedeemCode(code: AdminRedeemCode) {
-    if (code.status === "redeemed") return;
+    if (!canAdjustBilling || code.status === "redeemed") return;
     setMessage("");
     setError("");
     try {
@@ -672,7 +715,7 @@ export function AdminPage() {
   }
 
   async function handleResetPassword() {
-    if (!selectedUser) return;
+    if (!canManageRoles || !selectedUser) return;
     setMessage("");
     setError("");
     try {
@@ -683,7 +726,7 @@ export function AdminPage() {
     }
   }
 
-  const visibleTabs = TABS.filter((tab) => !tab.superOnly || isSuperAdmin);
+  const visibleTabs = TABS.filter((tab) => hasPlatformCapability(access, TAB_CAPABILITIES[tab.id]));
 
   return (
     <div className="space-y-5">
@@ -709,24 +752,30 @@ export function AdminPage() {
           <div className="mt-3 text-2xl font-semibold text-white">{productRoleLabel(productRole)}</div>
           <div className="mt-2 text-sm leading-6 text-slate-400">
             {productRole === "super_admin"
-              ? roles.includes("system_admin")
-                ? "来源：system_admin 角色。拥有所有运营和系统配置权限。"
-                : "来源：ADMIN_EMAILS 启动超级管理员。建议上线后再分配正式管理员账号。"
-              : "来源：admin:system 权限。可查看用户、积分、公告和审计。"}
+              ? "独立平台授权：超级管理员。可管理敏感配置、资金和平台权限。"
+              : "独立平台授权：运营管理员。可管理普通用户、运营内容和允许的线路操作。"}
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="用户数" value={totals.users} />
-          <MetricCard label="管理员数" value={totals.admins} />
-          <MetricCard label="可用积分" value={formatNumber(totals.availableCredits)} />
+          <MetricCard label="当前结果用户数" value={totals.users} />
+          <MetricCard label="当前结果管理员成员数" value={totals.admins} hint="按工作区成员关系计数" />
+          <MetricCard label="当前结果可用积分" value={formatNumber(totals.availableCredits)} />
           <MetricCard label="线路成功率" value={`${routeStats?.summary.successRate ?? 0}%`} hint="最近30分钟" />
         </div>
       </section>
 
+      <div className="rounded border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-slate-400">
+        <p>当前用户筛选：{loadedUserQuery || "未筛选"}</p>
+        <p>
+          用户与积分统计仅覆盖当前筛选返回的最多 {USER_RESULTS_LIMIT} 位用户；管理员成员数和已使用积分按这些用户的工作区成员记录汇总。
+          兑换码仅覆盖已加载的最多 {REDEEM_CODE_RESULTS_LIMIT} 条记录。以上列表统计不代表平台总量。
+        </p>
+      </div>
+
       {error ? <div className="rounded border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div> : null}
       {message ? <div className="rounded border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div> : null}
 
-      <nav className="flex gap-2 overflow-x-auto rounded border border-white/10 bg-white/[0.03] p-2">
+      {!section ? <nav className="flex gap-2 overflow-x-auto rounded border border-white/10 bg-white/[0.03] p-2">
         {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -744,7 +793,7 @@ export function AdminPage() {
             </button>
           );
         })}
-      </nav>
+      </nav> : null}
 
       {activeTab === "overview" ? renderOverview() : null}
       {activeTab === "users" ? renderUsers() : null}
@@ -756,7 +805,7 @@ export function AdminPage() {
       {activeTab === "providers" ? renderProviders() : null}
       {activeTab === "prompt-library" ? <PromptLibraryPanel /> : null}
       {activeTab === "monitor" ? renderMonitor() : null}
-      {activeTab === "payments" ? <PaymentManagementPanel /> : null}
+      {activeTab === "payments" ? <PaymentManagementPanel canManage={hasPlatformCapability(access, "platform:billing:manage")} /> : null}
     </div>
   );
 
@@ -765,9 +814,9 @@ export function AdminPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
         <SectionCard title="运营概览">
           <div className="grid gap-3 md:grid-cols-3">
-            <MetricCard label="已使用积分" value={formatNumber(totals.usedCredits)} />
-            <MetricCard label="有积分到期的用户" value={totals.expiringUsers} />
-            <MetricCard label="兑换码" value={redeemCodes.length} />
+            <MetricCard label="当前结果已使用积分" value={formatNumber(totals.usedCredits)} />
+            <MetricCard label="当前结果到期用户数" value={totals.expiringUsers} />
+            <MetricCard label="已加载兑换码" value={redeemCodes.length} />
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {routeStats?.routes.slice(0, 4).map((route) => (
@@ -807,7 +856,7 @@ export function AdminPage() {
 
   function renderUsers() {
     return (
-      <div className="grid gap-4 xl:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.05fr)]">
+      <fieldset disabled={creditMutationPending} className="grid min-w-0 gap-4 xl:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.05fr)]">
         <SectionCard
           title="用户管理"
           action={
@@ -816,7 +865,7 @@ export function AdminPage() {
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
                 <input
                   className={`${inputClass} pl-9`}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => updateUserQuery(event.target.value,{...userFilters,cursor:undefined})}
                   placeholder="搜索邮箱或名称"
                   value={query}
                 />
@@ -828,9 +877,13 @@ export function AdminPage() {
             </div>
           }
         >
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <MenuSelect label="用户状态" fullWidth value={userFilters.status??""} options={[{label:"全部状态",value:""},{label:"正常",value:"active"},{label:"已停用",value:"disabled"}]} onChange={value=>updateUserQuery(query,{...userFilters,status:value as AdminUserFilters["status"]||undefined,cursor:undefined})}/>
+            <MenuSelect label="平台角色" fullWidth value={userFilters.platformRole??""} options={[{label:"全部平台角色",value:""},{label:"普通用户",value:"none"},{label:"平台运营管理员",value:"platform_operator"},{label:"平台超级管理员",value:"platform_super_admin"}]} onChange={value=>updateUserQuery(query,{...userFilters,platformRole:value as AdminUserFilters["platformRole"]||undefined,cursor:undefined})}/>
+            <label className="text-xs text-slate-400">工作区 ID<input className={`${inputClass} mt-2`} value={userFilters.tenantId??""} onChange={event=>updateUserQuery(query,{...userFilters,tenantId:event.target.value.trim()||undefined,cursor:undefined})}/></label>
+          </div>
           <div className="space-y-2">
             {users.map((user) => {
-              const membership = user.memberships[0];
               const active = user.id === selectedUserId;
               return (
                 <button
@@ -851,7 +904,8 @@ export function AdminPage() {
                       </div>
                     </div>
                     <div className="text-right text-xs text-slate-300">
-                      <div>{roleLabel(membership?.roleKey)}</div>
+                      <div>{user.platformRole==="platform_super_admin"?"平台超级管理员":user.platformRole==="platform_operator"?"平台运营管理员":"普通用户"}</div>
+                      <div className="mt-1 text-slate-500">{user.memberships.length} 个工作区</div>
                       <div className="mt-1">{formatNumber(user.wallet.availableCredits)} 点</div>
                     </div>
                   </div>
@@ -860,9 +914,10 @@ export function AdminPage() {
             })}
             {!usersLoading && users.length === 0 ? <div className="text-sm text-slate-400">没有匹配用户。</div> : null}
           </div>
+          <div className="mt-4 flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>本页 {users.length} 位用户{userPage.asOf ? ` · 截至 ${formatDate(userPage.asOf)}` : ""}</span><div className="flex gap-2">{userFilters.cursor?<button className={buttonClass} disabled={usersLoading} type="button" onClick={()=>updateUserQuery(query,{...userFilters,cursor:undefined})}>用户第一页</button>:null}<button className={buttonClass} disabled={usersLoading||!userPage.hasMore||!userPage.nextCursor} type="button" onClick={()=>updateUserQuery(query,{...userFilters,cursor:userPage.nextCursor??undefined})}>下一页用户</button></div></div>
         </SectionCard>
         {renderSelectedUserPanel()}
-      </div>
+      </fieldset>
     );
   }
 
@@ -876,6 +931,8 @@ export function AdminPage() {
     }
     return (
       <SectionCard title="用户详情">
+        <div className="mb-4 flex flex-wrap gap-4 text-xs"><a className="text-cyan-200 hover:underline" href={`/admin/users/${encodeURIComponent(selectedUser.id)}`}>打开用户与钱包详情</a><a className="text-cyan-200 hover:underline" href={`/admin/usage?userId=${encodeURIComponent(selectedUser.id)}`}>查看用户用量</a><a className="text-cyan-200 hover:underline" href={`/admin/tasks?userId=${encodeURIComponent(selectedUser.id)}`}>查看用户任务</a></div>
+        <div className="mb-4"><MenuSelect fullWidth label="目标工作区关系" value={selectedMembership?.tenantId??""} options={[{label:"请选择工作区关系",value:""},...selectedUser.memberships.map(item=>({label:item.tenantName,value:item.tenantId}))]} onChange={tenantId=>setSelectedMembershipKey(tenantId?{userId:selectedUser.id,tenantId}:null)}/></div>
         <div className="grid gap-3 md:grid-cols-3">
           <MetricCard label="个人钱包余额" value={formatNumber(selectedUser.wallet.balanceCredits)} />
           <MetricCard label="已使用" value={formatNumber(selectedMembership?.usedCredits ?? 0)} />
@@ -887,13 +944,13 @@ export function AdminPage() {
             <div className="mt-2 text-sm text-slate-400">{selectedUser.email}</div>
             <div className="mt-3 grid gap-2 text-sm text-slate-300">
               <div>账号状态：{userStatusLabel(selectedUser.status)}</div>
-              <div>身份：{roleLabel(selectedMembership?.roleKey)}</div>
-              <div>会员：{membershipLabel(selectedMembership?.membershipTier)}</div>
+              <div>工作区身份：{selectedMembership?roleLabel(selectedMembership.roleKey):"尚未选择工作区关系"}</div>
+              <div>会员：{selectedMembership?membershipLabel(selectedMembership.membershipTier):"尚未选择工作区关系"}</div>
               <div>最近登录：{formatDate(selectedUser.lastLoginAt)}</div>
               <div>用量：{selectedMembership?.usageAudit?.settledEvents ?? 0} 次 / {formatNumber(selectedMembership?.usageAudit?.settledCredits)} 点</div>
             </div>
           </div>
-          <div className="rounded border border-white/10 bg-black/20 p-4">
+          {canAdjustBilling ? <div className="rounded border border-white/10 bg-black/20 p-4">
             <div className="text-sm font-medium text-white">会员等级</div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {MEMBERSHIP_OPTIONS.map((option) => (
@@ -915,10 +972,10 @@ export function AdminPage() {
             <button className={`${buttonClass} mt-3`} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleMembershipSave()} type="button">
               保存会员等级
             </button>
-          </div>
+          </div> : null}
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div className="rounded border border-white/10 bg-black/20 p-4">
+          {canAdjustBilling ? <div className="rounded border border-white/10 bg-black/20 p-4">
             <div className="text-sm font-medium text-white">发放积分</div>
             <div className="mt-3 grid gap-3">
               <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setGrantCreditsValue(event.target.value)} value={grantCreditsValue} />
@@ -940,20 +997,20 @@ export function AdminPage() {
                   </button>
                 ))}
               </div>
-              <button className={buttonClass} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleGrantCredits()} type="button">
+              <button className={buttonClass} disabled={selectedUserDetail.workspaceControlsDisabled || creditMutationPending || grantReason.trim().length < 5} onClick={() => void handleGrantCredits()} type="button">
                 发放积分
               </button>
-              {isSuperAdmin ? (
+              {canAdjustBilling ? (
                 <div className="mt-2 rounded border border-white/10 bg-white/[0.03] p-3">
                   <div className="text-xs font-medium text-slate-300">手动调整积分</div>
                   <div className="mt-3 grid gap-2">
                     <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setAdjustCreditsValue(event.target.value)} value={adjustCreditsValue} />
                     <input className={inputClass} disabled={selectedUserDetail.workspaceControlsDisabled} onChange={(event) => setAdjustReason(event.target.value)} value={adjustReason} />
                     <div className="grid grid-cols-2 gap-2">
-                      <button className={buttonClass} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleAdjustCredits("add")} type="button">
+                      <button className={buttonClass} disabled={selectedUserDetail.workspaceControlsDisabled || creditMutationPending || adjustReason.trim().length < 5} onClick={() => void handleAdjustCredits("add")} type="button">
                         增加积分
                       </button>
-                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} disabled={selectedUserDetail.workspaceControlsDisabled} onClick={() => void handleAdjustCredits("subtract")} type="button">
+                      <button className={`${buttonClass} border-amber-300/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20`} disabled={selectedUserDetail.workspaceControlsDisabled || creditMutationPending || adjustReason.trim().length < 5} onClick={() => void handleAdjustCredits("subtract")} type="button">
                         减少积分
                       </button>
                     </div>
@@ -961,21 +1018,26 @@ export function AdminPage() {
                 </div>
               ) : null}
             </div>
-          </div>
+          </div> : null}
           <div className="rounded border border-white/10 bg-black/20 p-4">
             <div className="text-sm font-medium text-white">账户操作</div>
-            <button className={`${buttonClass} mt-3`} onClick={() => void handleResetPassword()} type="button">
+            {canManageRoles ? <button className={`${buttonClass} mt-3`} onClick={() => void handleResetPassword()} type="button">
               <KeyRound size={15} />
               重置临时密码
-            </button>
-            {isSuperAdmin ? (
+            </button> : null}
+            {canOperateUsers ? (
+              <div className="mt-3">
+              <label className="block text-xs text-slate-400" htmlFor="user-status-reason">账号状态变更原因</label>
+              <input id="user-status-reason" className={`${inputClass} mt-2`} maxLength={500} value={statusReason} onChange={event=>setStatusReason(event.target.value)} placeholder="填写核实后的处理原因（至少 5 字）" />
               <button
+                disabled={changingStatus || statusReason.trim().length < 5}
                 className={`${buttonClass} mt-3 ${selectedUser.status === "disabled" ? "" : "border-red-300/20 bg-red-500/10 text-red-100 hover:bg-red-500/20"}`}
                 onClick={() => void handleUserStatus(selectedUser.status === "disabled" ? "active" : "disabled")}
                 type="button"
               >
                 {selectedUser.status === "disabled" ? "启用用户账号" : "停用用户账号"}
               </button>
+              </div>
             ) : null}
           </div>
         </div>
@@ -1007,85 +1069,13 @@ export function AdminPage() {
   }
 
   function renderAdmins() {
-    const adminUsers = users.filter((user) => {
-      const role = user.memberships[0]?.roleKey;
-      return role === "tenant_admin" || role === "system_admin";
-    });
-    return (
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <SectionCard title="管理员账号">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="text-xs text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">用户</th>
-                  <th className="px-3 py-2">当前身份</th>
-                  <th className="px-3 py-2">会员</th>
-                  <th className="px-3 py-2">最近登录</th>
-                  <th className="px-3 py-2">积分</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adminUsers.map((user) => {
-                  const membership = user.memberships[0];
-                  return (
-                    <tr
-                      className="cursor-pointer border-t border-white/8 hover:bg-white/[0.03]"
-                      key={user.id}
-                      onClick={() => setSelectedUserId(user.id)}
-                    >
-                      <td className="px-3 py-3 text-white">{user.email}</td>
-                      <td className="px-3 py-3 text-slate-300">{roleLabel(membership?.roleKey)}</td>
-                      <td className="px-3 py-3 text-slate-300">{membershipLabel(membership?.membershipTier)}</td>
-                      <td className="px-3 py-3 text-slate-300">{formatDate(user.lastLoginAt)}</td>
-                      <td className="px-3 py-3 text-slate-300">{formatNumber(user.wallet.availableCredits)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {!adminUsers.length ? <div className="px-3 py-6 text-sm text-slate-400">暂无管理员账号。</div> : null}
-          </div>
-        </SectionCard>
-        <SectionCard title="身份调整">
-          {selectedUser && selectedMembership ? (
-            <div className="space-y-3">
-              <div className="text-sm text-slate-300">{selectedUser.email}</div>
-              <div className="grid gap-2">
-                {ROLE_OPTIONS.map((option) => (
-                  <button
-                    className={`h-10 rounded border px-3 text-left text-sm ${
-                      roleKey === option.roleKey
-                        ? "border-sky-300/40 bg-sky-500/15 text-sky-100"
-                        : "border-white/10 bg-black/20 text-slate-300"
-                    }`}
-                    key={option.roleKey}
-                    onClick={() => setRoleKey(option.roleKey)}
-                    type="button"
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              <button className={buttonClass} onClick={() => void handleRoleSave()} type="button">
-                保存身份
-              </button>
-              <div className="text-xs leading-5 text-slate-500">
-                超级管理员可以提升用户为管理员；管理员可以看用户和运营数据，但不能管理系统级线路和供应商连接。
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-slate-400">请选择用户。</div>
-          )}
-        </SectionCard>
-      </div>
-    );
+    return <PlatformAccessPanel users={users} query={query} onQueryChange={setQuery} selectedUserId={selectedUserId} onSelectUser={setSelectedUserId} />;
   }
 
   function renderCredits() {
     return (
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <SectionCard title="创建兑换码">
+        {canAdjustBilling ? <SectionCard title="创建兑换码">
           <div className="grid gap-3">
             <Field label="点数">
               <input className={inputClass} onChange={(event) => setRedeemCreditsValue(event.target.value)} value={redeemCreditsValue} />
@@ -1119,7 +1109,7 @@ export function AdminPage() {
               </div>
             ) : null}
           </div>
-        </SectionCard>
+        </SectionCard> : null}
         <SectionCard title="兑换码记录">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-2">
@@ -1163,7 +1153,7 @@ export function AdminPage() {
                       >
                         <Copy size={14} />
                       </button>
-                      {code.status !== "redeemed" ? (
+                      {canAdjustBilling && code.status !== "redeemed" ? (
                         <button
                           aria-label="删除未兑换兑换码"
                           className="grid h-8 w-8 place-items-center rounded border border-red-300/20 bg-red-500/10 text-red-100 hover:bg-red-500/20"

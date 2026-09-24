@@ -1,3 +1,4 @@
+import { gatewayTestEmailSender, verifyGatewayRegistration } from "./gateway-auth.fixture.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "vitest";
 
@@ -80,14 +81,16 @@ afterAll(() => {
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
   return buildApp({
     env: testEnv,
+    authEmailSender: gatewayTestEmailSender,
     logger: false,
     pool,
     storageProvider: new MemoryStorageProvider(),
   });
 }
 
-async function registerOwner(
+async function registerPlatformAdministrator(
   api: ReturnType<typeof buildTestApp>,
+  adminPool: ReturnType<typeof createPgPool>,
   email: string,
   tenantName: string,
 ) {
@@ -102,8 +105,14 @@ async function registerOwner(
     url: "/api/v2/auth/register",
   });
 
-  expect(response.statusCode).toBe(201);
-  return response.json();
+  expect(response.statusCode, response.body).toBe(202);
+  const identity = await verifyGatewayRegistration(api, email, response.json().challengeToken);
+  // Test fixtures assign platform authority explicitly; tenant ownership grants none.
+  await adminPool.query(
+    "INSERT INTO platform_role_assignments (user_id, role_key, version, reason) VALUES ($1, 'platform_super_admin', 1, 'Gateway integration test fixture')",
+    [identity.user.id],
+  );
+  return identity;
 }
 
 describeWithDatabase("ai route test API", () => {
@@ -119,7 +128,7 @@ describeWithDatabase("ai route test API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, adminEmail, "Route Test Owner");
+        const owner = await registerPlatformAdministrator(api, adminPool, adminEmail, "Route Test Owner");
 
         const install = await api.inject({
           headers: {
@@ -135,26 +144,28 @@ describeWithDatabase("ai route test API", () => {
           },
           url: "/api/v2/admin/ai/plugins/mock.local-dev.image/install",
         });
-        expect(install.statusCode).toBe(201);
+        expect(install.statusCode, install.body).toBe(201);
 
         const routes = await adminPool.query<{ id: string; route_key: string }>(
           `
             SELECT id::text AS id, route_key
             FROM ai_routes
-            WHERE tenant_id = $1::uuid
+            WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
               AND route_key IN ('image.default', 'image.fail')
             ORDER BY route_key ASC
           `,
-          [owner.currentTenant.id],
+          [null],
         );
         const successRoute = routes.rows.find((route) => route.route_key === "image.default");
         const failRoute = routes.rows.find((route) => route.route_key === "image.fail");
         expect(successRoute?.id).toBeTruthy();
         expect(failRoute?.id).toBeTruthy();
 
-        const tenantRouteRejected = await api.inject({ headers: { authorization: `Bearer ${owner.accessToken}` },
+        await adminPool.query("UPDATE ai_routes SET tenant_id=$2 WHERE id=$1", [successRoute?.id, owner.currentTenant.id]);
+        const tenantRouteTest = await api.inject({ headers: { authorization: `Bearer ${owner.accessToken}` },
           method: "POST", url: `/api/v2/admin/ai/routes/${successRoute?.id}/test` });
-        expect(tenantRouteRejected.statusCode).toBe(404);
+        expect(tenantRouteTest.statusCode).toBe(200);
+        expect(tenantRouteTest.json().status).toBe("ok");
         await adminPool.query("UPDATE ai_routes SET tenant_id=NULL WHERE id=ANY($1::uuid[])", [[successRoute?.id, failRoute?.id]]);
 
         const successTest = await api.inject({
@@ -174,18 +185,18 @@ describeWithDatabase("ai route test API", () => {
           status: "ok",
         });
         expect(successTest.json().responseSummary).toMatchObject({
-          apiMode: "mock",
-          connectionName: null,
+          apiMode: "sync",
+          connectionName: "Mock Local Dev (mock.local-dev.image) Connection",
           outputCount: 1,
           providerKey: "mock-local-dev",
           status: "succeeded",
-          upstreamModel: "mock-image",
+          upstreamModel: "mock-image-v1",
         });
         expect(successTest.json().requestSummary).toMatchObject({
-          apiMode: "mock",
+          apiMode: "sync",
           providerKey: "mock-local-dev",
           routeKey: "image.default",
-          upstreamModel: "mock-image",
+          upstreamModel: "mock-image-v1",
         });
         expect(JSON.stringify(successTest.json())).not.toContain("mock-route-test-secret");
         expect(JSON.stringify(successTest.json())).not.toContain("iVBORw0KGgo");
@@ -234,7 +245,7 @@ describeWithDatabase("ai route test API", () => {
           `,
           [owner.currentTenant.id],
         );
-        expect(healthRows.rows.map((row) => row.status)).toEqual(["ok", "failed"]);
+        expect(healthRows.rows.map((row) => row.status)).toEqual(["ok", "ok", "failed"]);
         expect(JSON.stringify(healthRows.rows)).not.toContain("mock-route-test-secret");
         expect(JSON.stringify(healthRows.rows)).not.toContain("iVBORw0KGgo");
 
@@ -272,11 +283,12 @@ describeWithDatabase("ai route test API", () => {
           },
           url: "/api/v2/auth/login",
         });
-        expect(viewerLogin.statusCode).toBe(200);
+        expect(viewerLogin.statusCode).toBe(202);
+        const viewerIdentity = await verifyGatewayRegistration(api, "route-test-viewer@example.com", viewerLogin.json().challengeToken);
 
         const forbiddenTest = await api.inject({
           headers: {
-            authorization: `Bearer ${viewerLogin.json().accessToken}`,
+            authorization: `Bearer ${viewerIdentity.accessToken}`,
           },
           method: "POST",
           url: `/api/v2/admin/ai/routes/${successRoute?.id}/test`,
@@ -285,7 +297,7 @@ describeWithDatabase("ai route test API", () => {
         expect(forbiddenTest.json()).toMatchObject({
           error: {
             code: "FORBIDDEN",
-            message: "Missing permission: admin:system",
+            message: "Missing permission: platform:console:access",
           },
         });
 

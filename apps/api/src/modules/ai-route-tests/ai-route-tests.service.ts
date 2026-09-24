@@ -12,11 +12,13 @@ import {
   type AiGatewayTextResult,
   type AiPluginTestManifest,
 } from "@aigc-flow/ai-gateway-core";
-import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
+import { createPgPool, recordAuditLogWithClient, withTenantTransaction } from "@aigc-flow/db";
+import { withPlatformTransaction } from "../../http/platform-transaction.js";
 
 import type { RunRouteTestInput } from "./ai-route-tests.schemas.js";
 
 type TenantContext = {
+  permissions?: readonly string[];
   ipHash?: string | null;
   requestId?: string | null;
   tenantId: string;
@@ -25,7 +27,10 @@ type TenantContext = {
   userId: string | null;
 };
 
+type PlatformTestContext = Omit<TenantContext, "tenantId"> & { tenantId: string | null };
+
 type RouteRecord = {
+  tenant_id: string | null;
   api_mode: string | null;
   configuration_revision: number;
   connection_name: string | null;
@@ -127,19 +132,29 @@ export class AiRouteTestService {
   }
 
   async testAdminDraftRoute(
-    context: TenantContext,
+    context: PlatformTestContext,
     routeId: string,
     input: RunRouteTestInput,
   ): Promise<RouteTestResultView> {
-    // The future HTTP caller must enforce system-admin before entering this platform-only boundary.
+    if (!context.permissions?.includes("platform:console:access") || !context.permissions.includes("platform:routes:write")) {
+      throw new AiRouteTestApiError(403, "FORBIDDEN", "Insufficient platform capability");
+    }
+    if (!context.permissions.includes("platform:connections:manage")
+      && Object.keys(input).some((field) => !["prompt", "messages", "maxTokens", "temperature"].includes(field))) {
+      throw new AiRouteTestApiError(403, "FORBIDDEN", "Operators cannot override route test model or metadata");
+    }
     const route = await this.getPlatformDraftRoute(context, routeId);
-    return this.testLoadedRoute(context, route, input);
+    // The target scope comes from the authorized row, never from caller input.
+    const tenantId = route.tenant_id ?? context.tenantId;
+    if (!tenantId) throw new AiRouteTestApiError(409, "ROUTE_TENANT_REQUIRED", "A global route test needs an explicit workspace context");
+    return this.testLoadedRoute({ ...context, tenantId }, route, input, true);
   }
 
   private async testLoadedRoute(
     context: TenantContext,
     route: RouteRecord,
     input: RunRouteTestInput,
+    platformOperation = false,
   ): Promise<RouteTestResultView> {
     const defaultTest = this.findDefaultTest(route.package_key, route.route_key);
     const requestSummary = this.buildRequestSummary(route, defaultTest, input);
@@ -152,6 +167,7 @@ export class AiRouteTestService {
       const responseSummary = this.summarizeSuccess(route, result);
       return this.recordHealthCheck({
         checkedBy: context.userId,
+        platformOperation,
         context,
         error: null,
         latencyMs,
@@ -168,6 +184,7 @@ export class AiRouteTestService {
       };
       return this.recordHealthCheck({
         checkedBy: context.userId,
+        platformOperation,
         context,
         error: normalizedError,
         latencyMs,
@@ -179,10 +196,10 @@ export class AiRouteTestService {
     }
   }
 
-  private async getPlatformDraftRoute(context: TenantContext, routeId: string): Promise<RouteRecord> {
-    return withTenantTransaction(context, async (client) => {
+  private async getPlatformDraftRoute(context: PlatformTestContext, routeId: string): Promise<RouteRecord> {
+    return withPlatformTransaction(this.pool, context, "platform:routes:write", async (client) => {
       const result = await client.query<RouteRecord>(
-        `SELECT route.id::text AS id,route.route_key,route.route_label,route.modality,route.api_mode,
+        `SELECT route.id::text AS id,route.tenant_id::text AS tenant_id,route.route_key,route.route_label,route.modality,route.api_mode,
           route.upstream_model,route.configuration_revision,provider.key AS provider_key,model.model_key,
           connection.name AS connection_name,package.package_key
          FROM ai_routes route JOIN ai_providers provider ON provider.id=route.provider_id
@@ -190,15 +207,15 @@ export class AiRouteTestService {
          LEFT JOIN ai_provider_connections connection ON connection.id=route.connection_id
          LEFT JOIN tenant_ai_plugin_installs install ON install.id=route.plugin_install_id
          LEFT JOIN ai_plugin_packages package ON package.id=install.package_id
-         WHERE route.id=$1::uuid AND route.tenant_id IS NULL AND route.deleted_at IS NULL
+         WHERE route.id=$1::uuid AND route.deleted_at IS NULL
            AND provider.status='active' AND (route.model_id IS NULL OR model.status='active') LIMIT 1`,
         [routeId],
       );
       if (!result.rows[0]) {
-        throw new AiRouteTestApiError(404, "ROUTE_NOT_FOUND", "Platform draft route not found");
+        throw new AiRouteTestApiError(404, "ROUTE_NOT_FOUND", "Route not found");
       }
       return result.rows[0];
-    }, this.pool);
+    });
   }
 
   private async getTenantRoute(context: TenantContext, routeId: string): Promise<RouteRecord> {
@@ -274,6 +291,9 @@ export class AiRouteTestService {
         model: input.model ?? route.model_key,
         routeKey: route.route_key,
         temperature: input.temperature ?? null,
+      }, {
+        routeId: route.id, includeInactiveRoute: true,
+        trafficClass: "admin_test", source: "admin", billedUserId: null, traceId: context.traceId ?? null,
       });
     }
 
@@ -291,6 +311,7 @@ export class AiRouteTestService {
         routeKey: route.route_key,
       }, {
         includeInactiveRoute: true,
+        trafficClass: "admin_test", source: "admin", billedUserId: null, traceId: context.traceId ?? null,
         requestConfigOverride: {
           timeoutMs: this.routeTestTimeoutMs,
         },
@@ -304,6 +325,9 @@ export class AiRouteTestService {
       prompt,
       routeKey: route.route_key,
     }, {
+      includeInactiveRoute: true,
+      trafficClass: "admin_test", source: "admin", billedUserId: null, traceId: context.traceId ?? null,
+      routeId: route.id,
       requestConfigOverride: {
         timeoutMs: this.routeTestTimeoutMs,
       },
@@ -338,6 +362,7 @@ export class AiRouteTestService {
         },
         {
           includeInactiveRoute: true,
+          trafficClass: "admin_test", source: "admin", billedUserId: null, traceId: context.traceId ?? null,
           requestConfigOverride: { timeoutMs: this.routeTestTimeoutMs },
         },
       );
@@ -455,8 +480,10 @@ export class AiRouteTestService {
     responseSummary: Record<string, unknown>;
     route: RouteRecord;
     status: "failed" | "ok";
+    platformOperation?: boolean;
   }): Promise<RouteTestResultView> {
-    return withTenantTransaction(options.context, async (client: PoolClient) => {
+    const write = async (client: PoolClient): Promise<RouteTestResultView> => {
+      await client.query("SELECT set_config('app.platform_route_test', 'true', true)");
       const result = await client.query<{
         created_at: string;
         id: string;
@@ -512,6 +539,16 @@ export class AiRouteTestService {
       }
 
       const row = result.rows[0];
+      if (options.platformOperation) {
+        await recordAuditLogWithClient(client, {
+          action: "ai.route.test", actorType: "user", actorUserId: options.checkedBy,
+          tenantId: options.context.tenantId, resourceId: options.route.id, resourceType: "ai_route",
+          requestId: options.context.requestId, traceId: options.context.traceId,
+          ipHash: options.context.ipHash, userAgent: options.context.userAgent,
+          metadata: { routeKey: options.route.route_key, configurationRevision: options.route.configuration_revision,
+            status: options.status, healthCheckId: row.id, targetTenantId: options.route.tenant_id },
+        });
+      }
       return {
         checkedAt: row.created_at,
         error: options.error,
@@ -523,6 +560,9 @@ export class AiRouteTestService {
         routeKey: options.route.route_key,
         status: options.status,
       };
-    }, this.pool);
+    };
+    return options.platformOperation
+      ? withPlatformTransaction(this.pool, options.context, "platform:routes:write", write)
+      : withTenantTransaction(options.context, write, this.pool);
   }
 }

@@ -1,3 +1,5 @@
+import { gatewayTestEmailSender, verifyGatewayRegistration } from "./gateway-auth.fixture.js";
+import { resolvePlatformCapabilities } from "../src/modules/platform-access/platform-access.policy.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, test } from "vitest";
 
@@ -79,14 +81,16 @@ afterAll(() => {
 function buildTestApp(pool: ReturnType<typeof createPgPool>) {
   return buildApp({
     env: testEnv,
+    authEmailSender: gatewayTestEmailSender,
     logger: false,
     pool,
     storageProvider: new MemoryStorageProvider(),
   });
 }
 
-async function registerOwner(
+async function registerPlatformAdministrator(
   api: ReturnType<typeof buildTestApp>,
+  adminPool: ReturnType<typeof createPgPool>,
   email: string,
   tenantName: string,
 ) {
@@ -101,8 +105,14 @@ async function registerOwner(
     url: "/api/v2/auth/register",
   });
 
-  expect(response.statusCode).toBe(201);
-  return response.json();
+  expect(response.statusCode, response.body).toBe(202);
+  const identity = await verifyGatewayRegistration(api, email, response.json().challengeToken);
+  // Test fixtures assign platform authority explicitly; tenant ownership grants none.
+  await adminPool.query(
+    "INSERT INTO platform_role_assignments (user_id, role_key, version, reason) VALUES ($1, 'platform_super_admin', 1, 'Gateway integration test fixture')",
+    [identity.user.id],
+  );
+  return identity;
 }
 
 describeWithDatabase("ai plugin admin API", () => {
@@ -118,7 +128,7 @@ describeWithDatabase("ai plugin admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "plugin-owner@example.com", "Plugin Owner");
+        const owner = await registerPlatformAdministrator(api, adminPool, "plugin-owner@example.com", "Plugin Owner");
 
         const listBefore = await api.inject({
           headers: {
@@ -146,7 +156,7 @@ describeWithDatabase("ai plugin admin API", () => {
           },
           url: "/api/v2/admin/ai/plugins/pixellelabs.nano-banana-pro/install",
         });
-        expect(install.statusCode).toBe(201);
+        expect(install.statusCode, install.body).toBe(201);
         expect(install.json()).toMatchObject({
           catalogModelKeys: ["gemini-3-pro-image-preview"],
           packageKey: "pixellelabs.nano-banana-pro",
@@ -176,13 +186,13 @@ describeWithDatabase("ai plugin admin API", () => {
               (
                 SELECT COUNT(*)::text
                 FROM ai_provider_connections
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
               ) AS connection_count,
               (
                 SELECT name
                 FROM ai_provider_connections
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
                 ORDER BY created_at ASC
                 LIMIT 1
@@ -190,7 +200,7 @@ describeWithDatabase("ai plugin admin API", () => {
               (
                 SELECT adapter_kind
                 FROM ai_provider_connections
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
                 ORDER BY created_at ASC
                 LIMIT 1
@@ -198,7 +208,7 @@ describeWithDatabase("ai plugin admin API", () => {
               (
                 SELECT metadata->>'generatedBy'
                 FROM ai_provider_connections
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND provider_id = (SELECT provider_id FROM tenant_ai_plugin_installs WHERE id = $2::uuid)
                 ORDER BY created_at ASC
                 LIMIT 1
@@ -206,42 +216,42 @@ describeWithDatabase("ai plugin admin API", () => {
               (
                 SELECT COUNT(*)::text
                 FROM ai_routes
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND plugin_install_id = $2::uuid
                   AND status = 'active'
               ) AS route_active_count,
               (
                 SELECT connection_id IS NOT NULL
                 FROM ai_routes
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND plugin_install_id = $2::uuid
                 LIMIT 1
               ) AS route_connection_matches,
               (
                 SELECT api_mode
                 FROM ai_routes
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND plugin_install_id = $2::uuid
                 LIMIT 1
               ) AS route_api_mode,
               (
                 SELECT upstream_model
                 FROM ai_routes
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND plugin_install_id = $2::uuid
                 LIMIT 1
               ) AS route_upstream_model,
               (
                 SELECT request_path
                 FROM ai_routes
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND plugin_install_id = $2::uuid
                 LIMIT 1
               ) AS route_request_path,
               (
                 SELECT COUNT(*)::text
                 FROM ai_model_catalog
-                WHERE tenant_id = $1::uuid
+                WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
                   AND plugin_install_id = $2::uuid
                   AND status = 'active'
               ) AS catalog_active_count,
@@ -259,14 +269,14 @@ describeWithDatabase("ai plugin admin API", () => {
                   AND encode(encrypted_secret, 'escape') LIKE '%pixellelabs-pro-test-secret%'
               ) AS credential_secret_contains_raw
           `,
-          [owner.currentTenant.id, install.json().id, install.json().credentialId],
+          [null, install.json().id, install.json().credentialId],
         );
         expect(dbState.rows[0]).toEqual({
           catalog_active_count: "1",
-          connection_adapter_kind: "sync",
+          connection_adapter_kind: "pixellelabs-gemini-image",
           connection_count: "1",
           connection_metadata_generated_by: "template-install",
-          connection_name: "Nano Banana Pro Connection",
+          connection_name: "Nano Banana Pro (pixellelabs.nano-banana-pro) Connection",
           credential_secret_contains_raw: false,
           pricing_count: "1",
           provider_key: "pixellelabs",
@@ -290,7 +300,7 @@ describeWithDatabase("ai plugin admin API", () => {
           status: "published",
         });
 
-        const serviceContext = { tenantId: owner.currentTenant.id, userId: owner.user.id };
+        const serviceContext = { tenantId: owner.currentTenant.id, userId: owner.user.id, permissions: resolvePlatformCapabilities("platform_super_admin") };
         await adminPool.query("UPDATE tenant_ai_plugin_installs SET status='disabled' WHERE id=$1", [install.json().id]);
         await adminPool.query("UPDATE ai_routes SET status='inactive',deleted_at=now() WHERE plugin_install_id=$1", [install.json().id]);
         await adminPool.query("UPDATE ai_provider_connections SET status='inactive',credential_id=NULL WHERE metadata->>'installId'=$1", [install.json().id]);
@@ -326,7 +336,11 @@ describeWithDatabase("ai plugin admin API", () => {
         }
         const installWon = reinstallResult!.status === "fulfilled" && deleteResult!.status === "rejected";
         const deleteWon = deleteResult!.status === "fulfilled" && reinstallResult!.status === "rejected";
-        expect(installWon || deleteWon).toBe(true);
+        expect(installWon || deleteWon, JSON.stringify([reinstallResult!, deleteResult!].map((result) => ({
+          status: result.status,
+          code: result.status === "rejected" ? result.reason?.code : undefined,
+          message: result.status === "rejected" ? result.reason?.message : undefined,
+        })))).toBe(true);
         if (installWon && deleteResult!.status === "rejected") expect(deleteResult!.reason).toMatchObject({ code: "CREDENTIAL_IN_USE" });
         if (deleteWon && reinstallResult!.status === "rejected") expect(reinstallResult!.reason).toMatchObject({ code: "PLUGIN_CREDENTIAL_UNAVAILABLE" });
         const danglingDeleted = await adminPool.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM api_credentials credential
@@ -356,11 +370,11 @@ describeWithDatabase("ai plugin admin API", () => {
           `
             SELECT COUNT(*)::text AS inactive_count
             FROM ai_routes
-            WHERE tenant_id = $1::uuid
+            WHERE tenant_id IS NOT DISTINCT FROM $1::uuid
               AND plugin_install_id = $2::uuid
               AND status = 'inactive'
           `,
-          [owner.currentTenant.id, install.json().id],
+          [null, install.json().id],
         );
         expect(disabledRoutes.rows[0]?.inactive_count).toBe("1");
 
@@ -408,11 +422,12 @@ describeWithDatabase("ai plugin admin API", () => {
           },
           url: "/api/v2/auth/login",
         });
-        expect(viewerLogin.statusCode).toBe(200);
+        expect(viewerLogin.statusCode).toBe(202);
+        const viewerIdentity = await verifyGatewayRegistration(api, "plugin-viewer@example.com", viewerLogin.json().challengeToken);
 
         const forbiddenInstall = await api.inject({
           headers: {
-            authorization: `Bearer ${viewerLogin.json().accessToken}`,
+            authorization: `Bearer ${viewerIdentity.accessToken}`,
           },
           method: "POST",
           payload: {
@@ -440,7 +455,7 @@ describeWithDatabase("ai plugin admin API", () => {
         await runMigrations(adminPool);
         appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "pixelhub-plugin-owner@example.com", "PixelHub Plugin Owner");
+        const owner = await registerPlatformAdministrator(api, adminPool, "pixelhub-plugin-owner@example.com", "PixelHub Plugin Owner");
 
         const install = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -457,7 +472,7 @@ describeWithDatabase("ai plugin admin API", () => {
           url: "/api/v2/admin/ai/plugins/pixelhub.video/install",
         });
 
-        expect(install.statusCode).toBe(201);
+        expect(install.statusCode, install.body).toBe(201);
         expect(install.json()).toMatchObject({
           credentialId: null,
           packageKey: "pixelhub.video",
@@ -527,7 +542,7 @@ describeWithDatabase("ai plugin admin API", () => {
         await runMigrations(adminPool);
         appPool = createPgPool({ connectionString: await createAppDatabaseUrl() });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "pixelhub-incomplete-owner@example.com", "PixelHub Incomplete Owner");
+        const owner = await registerPlatformAdministrator(api, adminPool, "pixelhub-incomplete-owner@example.com", "PixelHub Incomplete Owner");
 
         const install = await api.inject({
           headers: { authorization: `Bearer ${owner.accessToken}` },
@@ -568,7 +583,7 @@ describeWithDatabase("ai plugin admin API", () => {
           connectionString: await createAppDatabaseUrl(),
         });
         const api = buildTestApp(appPool);
-        const owner = await registerOwner(api, "video-plugin-owner@example.com", "Video Plugin Owner");
+        const owner = await registerPlatformAdministrator(api, adminPool, "video-plugin-owner@example.com", "Video Plugin Owner");
 
         const install = await api.inject({
           headers: {
@@ -581,7 +596,7 @@ describeWithDatabase("ai plugin admin API", () => {
           url: "/api/v2/admin/ai/plugins/tapflow.video-editor-ffmpeg/install",
         });
 
-        expect(install.statusCode).toBe(201);
+        expect(install.statusCode, install.body).toBe(201);
         expect(install.json()).toMatchObject({
           catalogModelKeys: ["video-editor-ffmpeg"],
           packageKey: "tapflow.video-editor-ffmpeg",

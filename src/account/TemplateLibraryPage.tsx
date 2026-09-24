@@ -7,6 +7,7 @@ import {
   ACCOUNT_ROUTE,
 } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
+import { hasPlatformCapability } from "../auth/productRoles";
 import {
   disableAiPluginInstall,
   installAiPlugin,
@@ -72,9 +73,9 @@ function MetricCard({ label, value }: { label: string; value: number | string })
 }
 
 export function TemplateLibraryPage() {
-  const { permissions } = useAuth();
-  const canRead = permissions.includes("admin:system");
-  const canManage = permissions.includes("admin:system");
+  const access = useAuth();
+  const canRead = hasPlatformCapability(access, "platform:integrations:manage");
+  const canManage = canRead;
 
   const [state, setState] = useState<LoadState>("idle");
   const [activeModality, setActiveModality] = useState<AiPluginModality>("image");

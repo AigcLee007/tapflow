@@ -159,8 +159,8 @@ describe("WorkspaceShell", () => {
 
   test("shows operations console for admins", () => {
     renderShell(createAuthState({
-      permissions: ["admin:system"],
-      roles: ["tenant_admin"],
+      permissions: ["platform:console:access"],
+      roles: ["platform_operator"],
     }));
 
     fireEvent.click(screen.getByRole("button", { name: /test@example.com/ }));

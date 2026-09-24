@@ -2,10 +2,11 @@ import type { Pool } from "pg";
 
 import { createPgPool, withTenantTransaction } from "@aigc-flow/db";
 
+import { snapshotPendingProviderRoute, type PendingProviderRoute } from "./pending-provider-route.js";
 import { AiGateway } from "./ai-gateway.js";
 import { CredentialVault } from "./credential-vault.js";
 import { AiGatewayError } from "./errors.js";
-import { redactValue } from "./redaction.js";
+import { createProviderTelemetry, type ProviderTelemetryFields, type RuntimeTelemetryMetadata } from "./provider-request-telemetry.js";
 import { RouteResolver } from "./route-resolver.js";
 import { readVideoCapabilities, validateVideoGenerationRequest } from "./video-generation-contract.js";
 import type {
@@ -68,7 +69,7 @@ function buildRuntimeRequestConfig(row: RuntimeRouteRecord): Record<string, unkn
   };
 }
 
-type AiCallLogInsertInput = {
+type AiCallLogInsertInput = ProviderTelemetryFields & {
   adapterKindSnapshot?: string | null;
   apiModeSnapshot?: string | null;
   connectionId?: string | null;
@@ -96,7 +97,7 @@ type AiCallLogInsertInput = {
   workflowRunId?: string | null;
 };
 
-type RuntimeLogMetadata = {
+type RuntimeLogMetadata = RuntimeTelemetryMetadata & {
   generationId?: string | null;
   includeInactiveRoute?: boolean;
   logger?: RuntimeLogger | null;
@@ -237,13 +238,13 @@ function maybeEmitT3RequestDebug(
       metadataReferenceImageKinds: referenceImages.map(classifyReferenceValue),
       model: request.model ?? null,
       params: pickDebugParams(request.metadata),
-      prompt: request.prompt,
+      promptLength: request.prompt.length,
       providerImageCount:
         typeof providerBody.imageCount === "number"
           ? providerBody.imageCount
           : null,
       providerModel: typeof providerBody.model === "string" ? providerBody.model : null,
-      providerPrompt: typeof providerBody.prompt === "string" ? providerBody.prompt : null,
+      providerPromptLength: typeof providerBody.prompt === "string" ? providerBody.prompt.length : null,
       providerUsesEditEndpoint:
         typeof providerRequest.url === "string"
           ? providerRequest.url.includes("/images/edits")
@@ -325,9 +326,11 @@ export class DatabaseMediaRuntime {
     request: PollTaskRequest,
     metadata?: RuntimeLogMetadata,
   ): Promise<ProviderTaskResult> {
-    const selectedRoute = request.routeId
+    const executionId = metadata?.executionId ?? metadata?.nodeRunId ?? metadata?.generationId;
+    const pendingRoute = executionId ? await this.getPendingRoute(context, executionId, request.providerTaskId) : null;
+    const selectedRoute = pendingRoute ?? (request.routeId
       ? await this.getRuntimeRouteById(context, request.routeId, Boolean(metadata?.includeInactiveRoute))
-      : await this.resolveRoute(context, modality, request.routeKey ?? null);
+      : await this.resolveRoute(context, modality, request.routeKey ?? null));
     const routeForCall = metadata?.requestConfigOverride
       ? {
           ...selectedRoute,
@@ -338,6 +341,7 @@ export class DatabaseMediaRuntime {
         }
       : selectedRoute;
 
+    const telemetry = createProviderTelemetry(context, routeForCall, metadata, (input) => this.insertAiCallLog(input), "poll", request.providerTaskId);
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
 
@@ -361,11 +365,12 @@ export class DatabaseMediaRuntime {
       const result = await this.aiGateway.pollTask({
         apiKey,
         request,
-        route: routeForCall,
+        route: telemetry.route,
       });
 
-      const normalizedStatus = result.status === "failed" ? "failed" : "succeeded";
+      const normalizedStatus = result.status;
       await this.insertAiCallLog({
+        ...telemetry.fields,
         adapterKindSnapshot:
           selectedRoute.connection?.adapterKind ?? selectedRoute.provider.kind ?? null,
         apiModeSnapshot: selectedRoute.requestConfig.apiMode as string | null | undefined,
@@ -374,9 +379,9 @@ export class DatabaseMediaRuntime {
         error:
           result.status === "failed"
             ? {
-                ...(result.error ?? {}),
-                providerRequest: redactValue(result.providerRequest, [apiKey]),
-                providerResponse: redactValue(result.providerResponse, [apiKey]),
+                code: "PROVIDER_TASK_FAILED",
+                message: "The provider task failed",
+
               }
             : null,
         inputTokens: result.usage?.inputTokens ?? null,
@@ -428,6 +433,7 @@ export class DatabaseMediaRuntime {
     } catch (error) {
       const normalizedError = this.toAiGatewayError(error);
       await this.insertAiCallLog({
+        ...telemetry.fields,
         adapterKindSnapshot:
           selectedRoute.connection?.adapterKind ?? selectedRoute.provider.kind ?? null,
         apiModeSnapshot: selectedRoute.requestConfig.apiMode as string | null | undefined,
@@ -435,9 +441,8 @@ export class DatabaseMediaRuntime {
         connectionNameSnapshot: selectedRoute.connection?.name ?? null,
         error: {
           code: normalizedError.code,
-          message: normalizedError.message,
-          providerRequest: redactValue(normalizedError.providerRequest, [apiKey]),
-          providerResponse: redactValue(normalizedError.providerResponse, [apiKey]),
+          message: "The provider operation failed",
+
         },
         latencyMs: Date.now() - startedAt,
         modelId: selectedRoute.model.id,
@@ -503,6 +508,7 @@ export class DatabaseMediaRuntime {
         }
       : selectedRoute;
     assertRouteSupportsRuntimeMediaRequest(modality, routeForCall, request);
+    const telemetry = createProviderTelemetry(context, routeForCall, metadata, (input) => this.insertAiCallLog(input), "generate");
     const apiKey = this.getApiKeyForRoute(selectedRoute);
     const startedAt = Date.now();
 
@@ -523,10 +529,15 @@ export class DatabaseMediaRuntime {
     );
 
     try {
-      const result = await caller(routeForCall, apiKey);
+      const result = await caller(telemetry.route, apiKey);
       maybeEmitT3RequestDebug(metadata?.logger, context, request, selectedRoute.routeKey, metadata, result);
+      if (result.status === "waiting_provider") {
+        const taskIds = result.providerTaskIds?.length ? result.providerTaskIds : result.providerTaskId ? [result.providerTaskId] : [];
+        await this.savePendingRoutes(context, telemetry.fields.executionId!, routeForCall, taskIds);
+      }
 
       await this.insertAiCallLog({
+        ...telemetry.fields,
         adapterKindSnapshot:
           selectedRoute.connection?.adapterKind ?? selectedRoute.provider.kind ?? null,
         apiModeSnapshot: selectedRoute.requestConfig.apiMode as string | null | undefined,
@@ -545,7 +556,7 @@ export class DatabaseMediaRuntime {
         requestSummary: {
           assetCount: request.inputAssets?.length ?? 0,
           hasMetadata: Boolean(request.metadata && Object.keys(request.metadata).length > 0),
-          promptPreview: request.prompt.slice(0, 200),
+          promptLength: request.prompt.length,
           routeKey: selectedRoute.routeKey,
         },
         responseSummary: {
@@ -556,7 +567,7 @@ export class DatabaseMediaRuntime {
         routeId: selectedRoute.routeId,
         routeKeySnapshot: selectedRoute.routeKey,
         routeLabelSnapshot: selectedRoute.routeLabel ?? null,
-        status: result.status === "failed" ? "failed" : "succeeded",
+        status: result.status,
         tenantId: context.tenantId,
         upstreamModelSnapshot: selectedRoute.upstreamModel ?? null,
         workflowRunId: metadata?.workflowRunId ?? null,
@@ -585,6 +596,7 @@ export class DatabaseMediaRuntime {
     } catch (error) {
       const normalizedError = this.toAiGatewayError(error);
       await this.insertAiCallLog({
+        ...telemetry.fields,
         adapterKindSnapshot:
           selectedRoute.connection?.adapterKind ?? selectedRoute.provider.kind ?? null,
         apiModeSnapshot: selectedRoute.requestConfig.apiMode as string | null | undefined,
@@ -592,9 +604,8 @@ export class DatabaseMediaRuntime {
         connectionNameSnapshot: selectedRoute.connection?.name ?? null,
         error: {
           code: normalizedError.code,
-          message: normalizedError.message,
-          providerRequest: redactValue(normalizedError.providerRequest, [apiKey]),
-          providerResponse: redactValue(normalizedError.providerResponse, [apiKey]),
+          message: "The provider operation failed",
+
         },
         latencyMs: Date.now() - startedAt,
         modelId: selectedRoute.model.id,
@@ -606,7 +617,7 @@ export class DatabaseMediaRuntime {
         requestSummary: {
           assetCount: request.inputAssets?.length ?? 0,
           hasMetadata: Boolean(request.metadata && Object.keys(request.metadata).length > 0),
-          promptPreview: request.prompt.slice(0, 200),
+          promptLength: request.prompt.length,
           routeKey: selectedRoute.routeKey,
         },
         responseSummary: {
@@ -639,6 +650,31 @@ export class DatabaseMediaRuntime {
       );
       throw normalizedError;
     }
+  }
+
+  private async savePendingRoutes(context: RuntimeContext, executionId: string, route: ResolvedRoute, taskIds: string[]): Promise<void> {
+    const snapshot = snapshotPendingProviderRoute(route);
+    await withTenantTransaction(context, async (client) => {
+      for (const taskId of taskIds) {
+        await client.query(`INSERT INTO ai_provider_task_routes (tenant_id, execution_id, provider_task_id, route_snapshot, credential_id)
+          VALUES ($1::uuid, $2, $3, $4::jsonb, $5::uuid) ON CONFLICT DO NOTHING`,
+          [context.tenantId, executionId, taskId, JSON.stringify(snapshot), route.credential.id]);
+      }
+    }, this.pool);
+  }
+
+  private async getPendingRoute(context: RuntimeContext, executionId: string, taskId: string): Promise<ResolvedRoute | null> {
+    return withTenantTransaction(context, async (client) => {
+      const result = await client.query<{ route_snapshot: PendingProviderRoute; credential_id: string; encrypted_secret: Buffer | null; nonce: Buffer | null; auth_tag: Buffer | null }>(`
+        SELECT pr.route_snapshot, pr.credential_id::text, c.encrypted_secret, c.nonce, c.auth_tag
+        FROM ai_provider_task_routes pr
+        LEFT JOIN api_credentials c ON c.id = pr.credential_id AND c.status <> 'deleted'
+        WHERE pr.tenant_id = $1::uuid AND pr.execution_id = $2 AND pr.provider_task_id = $3`,
+        [context.tenantId, executionId, taskId]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return { ...row.route_snapshot, credential: { id: row.credential_id, encryptedSecret: row.encrypted_secret, nonce: row.nonce, authTag: row.auth_tag } };
+    }, this.pool);
   }
 
   private getApiKeyForRoute(selectedRoute: ResolvedRoute): string {
@@ -853,7 +889,9 @@ export class DatabaseMediaRuntime {
               error,
               latency_ms,
               input_tokens,
-              output_tokens
+              output_tokens,
+              record_level, operation, execution_id, source, traffic_class, actor_user_id, billed_user_id,
+              trace_id, attempt, provider_request_id, provider_task_id, request_started_at, request_completed_at, request_dispatched, http_status
             )
             VALUES (
               $1::uuid,
@@ -880,7 +918,9 @@ export class DatabaseMediaRuntime {
               $22::jsonb,
               $23::int,
               $24::int,
-              $25::int
+              $25::int,
+              $26, $27, $28, $29, $30, $31::uuid, $32::uuid,
+              $33, $34::int, $35, $36, $37::timestamptz, $38::timestamptz, $39::boolean, $40::int
             )
           `,
           [
@@ -909,6 +949,10 @@ export class DatabaseMediaRuntime {
             input.latencyMs ?? null,
             input.inputTokens ?? null,
             input.outputTokens ?? null,
+            input.recordLevel ?? "summary", input.operation ?? "generate", input.executionId ?? null, input.source ?? "unknown",
+            input.trafficClass ?? "unknown", input.actorUserId ?? null, input.billedUserId ?? null, input.traceId ?? null,
+            input.attempt ?? null, input.providerRequestId ?? null, input.providerTaskId ?? null,
+            input.requestStartedAt ?? null, input.requestCompletedAt ?? null, input.requestDispatched ?? null, input.httpStatus ?? null,
           ],
         );
       },

@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
-import { safeRecordAuditLog } from "@aigc-flow/db";
 
 import { requireAuth, requirePermission, requireTenant } from "../../http/auth-middleware.js";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 import { parseCnyToCents, verifyXunhuSignature } from "./xunhu.client.js";
 import { PaymentsApiError } from "./payments.service.js";
 import { adminCreateRechargePlanSchema, adminPaymentListSchema, adminPlanParamsSchema, adminRefundPaymentSchema, adminUpdateRechargePlanSchema, createPaymentCheckoutSchema, paymentParamsSchema } from "./payments.schemas.js";
@@ -14,7 +14,7 @@ function sendError(request: FastifyRequest, reply: FastifyReply, statusCode: num
 }
 function routeError(error: unknown, request: FastifyRequest, reply: FastifyReply) {
   if (error instanceof ZodError) return sendError(request, reply, 400, "VALIDATION_ERROR", "Request validation failed");
-  if (error instanceof PaymentsApiError) return sendError(request, reply, error.statusCode, error.code, error.message);
+  if (error instanceof PaymentsApiError || error instanceof PlatformTransactionError) return sendError(request, reply, error.statusCode, error.code, error.message);
   request.log.error({ err: error }, "payment route failed");
   return sendError(request, reply, 500, "INTERNAL_ERROR", "Payment operation failed");
 }
@@ -27,26 +27,8 @@ function parseNotification(form: FormFields): { amountCents: number; eventTime: 
   return { amountCents: parseCnyToCents(form.total_fee), eventTime: new Date(seconds * 1000).toISOString(), merchantOrderId: form.trade_order_id, openOrderId: form.open_order_id || null, providerState: status as "OD" | "CD" | "RD" | "UD", transactionId: form.transaction_id || null };
 }
 
-async function requirePlatformBillingAdmin(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | void> {
-  if (!request.ctx.roles.includes("system_admin") && !request.ctx.roles.includes("admin_email")) {
-    return sendError(request, reply, 403, "FORBIDDEN", "Platform billing administrator access is required");
-  }
-}
-
-async function auditPaymentAdminAction(request: FastifyRequest, action: string, resourceId: string, metadata: Record<string, unknown>): Promise<void> {
-  await safeRecordAuditLog({
-    action,
-    actorType: "user",
-    actorUserId: request.ctx.userId,
-    ipHash: request.ctx.ipHash,
-    metadata,
-    requestId: request.ctx.requestId,
-    resourceId,
-    resourceType: "billing_wallet_payment",
-    tenantId: request.ctx.tenantId!,
-    traceId: request.ctx.traceId,
-    userAgent: request.ctx.userAgent,
-  }, { pool: request.server.paymentsService.walletPayments.pool });
+function paymentAudit(request: FastifyRequest, action: string, reason?: string) {
+  return { action, reason, requestId: request.ctx.requestId, traceId: request.ctx.traceId, ipHash: request.ctx.ipHash, userAgent: request.ctx.userAgent };
 }
 
 export function registerPaymentRoutes(app: FastifyInstance): void {
@@ -62,17 +44,16 @@ export function registerPaymentRoutes(app: FastifyInstance): void {
   app.get("/api/v2/billing/recharge-plans", { preHandler: [requireAuth] }, async (request, reply) => {
     try { return reply.send(await app.paymentsService.listPlans(request.ctx.userId!)); } catch (error) { return routeError(error, request, reply); }
   });
-  const platformPlanHandlers = [requireAuth, requireTenant, requirePermission("billing:plans:manage"), requirePlatformBillingAdmin];
-  const platformPaymentHandlers = [requireAuth, requireTenant, requirePermission("billing:payments:manage"), requirePlatformBillingAdmin];
-  const platformRefundHandlers = [requireAuth, requireTenant, requirePermission("billing:refund"), requirePlatformBillingAdmin];
+  const platformPlanHandlers = [requireAuth, requirePermission("platform:billing:manage")];
+  const platformPaymentHandlers = [requireAuth, requirePermission("platform:payments:read")];
+  const platformRefundHandlers = [requireAuth, requirePermission("platform:billing:manage")];
   app.get("/api/v2/admin/billing/recharge-plans", { preHandler: platformPlanHandlers }, async (request, reply) => {
-    try { return reply.send(await app.paymentsService.listAdminPlans()); } catch (error) { return routeError(error, request, reply); }
+    try { return reply.send(await app.paymentsService.listAdminPlans(request.ctx)); } catch (error) { return routeError(error, request, reply); }
   });
   app.post("/api/v2/admin/billing/recharge-plans", { preHandler: platformPlanHandlers }, async (request, reply) => {
     try {
       const body = adminCreateRechargePlanSchema.parse(request.body);
-      const plan = await app.paymentsService.createAdminPlan(body);
-      await auditPaymentAdminAction(request, "billing.recharge_plan.create", plan.id, { after: { active: plan.active, amountCents: plan.amountCents, credits: plan.credits, key: plan.key, validityDays: plan.validityDays }, reason: body.reason });
+      const plan = await app.paymentsService.createAdminPlan(request.ctx, body, paymentAudit(request, "billing.recharge_plan.create", body.reason));
       return reply.code(201).send(plan);
     } catch (error) { return routeError(error, request, reply); }
   });
@@ -80,19 +61,17 @@ export function registerPaymentRoutes(app: FastifyInstance): void {
     try {
       const params = adminPlanParamsSchema.parse(request.params);
       const body = adminUpdateRechargePlanSchema.parse(request.body);
-      const plan = await app.paymentsService.updateAdminPlan(params.planId, body);
-      await auditPaymentAdminAction(request, "billing.recharge_plan.update", plan.id, { after: { active: plan.active, amountCents: plan.amountCents, credits: plan.credits, key: plan.key, validityDays: plan.validityDays }, reason: body.reason });
+      const plan = await app.paymentsService.updateAdminPlan(request.ctx, params.planId, body, paymentAudit(request, "billing.recharge_plan.update", body.reason));
       return reply.send(plan);
     } catch (error) { return routeError(error, request, reply); }
   });
   app.get("/api/v2/admin/billing/payments", { preHandler: platformPaymentHandlers }, async (request, reply) => {
-    try { return reply.send(await app.paymentsService.listAdminPayments(adminPaymentListSchema.parse(request.query))); } catch (error) { return routeError(error, request, reply); }
+    try { return reply.send(await app.paymentsService.listAdminPayments(request.ctx, adminPaymentListSchema.parse(request.query))); } catch (error) { return routeError(error, request, reply); }
   });
-  app.post("/api/v2/admin/billing/payments/:paymentId/query", { preHandler: platformPaymentHandlers }, async (request, reply) => {
+  app.post("/api/v2/admin/billing/payments/:paymentId/query", { preHandler: platformRefundHandlers }, async (request, reply) => {
     try {
       const params = paymentParamsSchema.parse(request.params);
-      const payment = await app.paymentsService.queryAdminPayment(params.paymentId);
-      await auditPaymentAdminAction(request, "billing.payment.query", params.paymentId, { status: payment.status });
+      const payment = await app.paymentsService.queryAdminPayment(request.ctx, params.paymentId, paymentAudit(request, "billing.payment.query"));
       return reply.send(payment);
     } catch (error) { return routeError(error, request, reply); }
   });
@@ -100,8 +79,7 @@ export function registerPaymentRoutes(app: FastifyInstance): void {
     try {
       const params = paymentParamsSchema.parse(request.params);
       const body = adminRefundPaymentSchema.parse(request.body);
-      const payment = await app.paymentsService.refundAdminPayment(params.paymentId, body.reason);
-      await auditPaymentAdminAction(request, "billing.payment.refund", params.paymentId, { reason: body.reason, status: payment.status });
+      const payment = await app.paymentsService.refundAdminPayment(request.ctx, params.paymentId, body.reason, paymentAudit(request, "billing.payment.refund", body.reason));
       return reply.send(payment);
     } catch (error) { return routeError(error, request, reply); }
   });

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 
 import {
   requireAuth,
@@ -23,10 +24,6 @@ function sendError(
 }
 
 function getObservabilityContext(request: FastifyRequest) {
-  if (!request.ctx.tenantId) {
-    throw new Error("tenant required");
-  }
-
   return {
     tenantId: request.ctx.tenantId,
     userId: request.ctx.userId,
@@ -36,8 +33,7 @@ function getObservabilityContext(request: FastifyRequest) {
 export function registerObservabilityRoutes(app: FastifyInstance): void {
   const adminHandlers = [
     requireAuth,
-    requireTenant,
-    requirePermission("admin:system"),
+    requirePermission("platform:console:access"),
   ];
 
   app.get(
@@ -49,6 +45,7 @@ export function registerObservabilityRoutes(app: FastifyInstance): void {
       try {
         return reply.send(await app.observabilityService.getAdminHealth());
       } catch (error) {
+        if (error instanceof PlatformTransactionError) return sendError(request, reply, error.statusCode, error.code, error.message);
         request.log.error(
           {
             err: error,
@@ -75,6 +72,7 @@ export function registerObservabilityRoutes(app: FastifyInstance): void {
           await app.observabilityService.getAdminMetrics(getObservabilityContext(request)),
         );
       } catch (error) {
+        if (error instanceof PlatformTransactionError) return sendError(request, reply, error.statusCode, error.code, error.message);
         request.log.error(
           {
             err: error,

@@ -1,3 +1,4 @@
+import { observeProviderFetch } from "./provider-request-telemetry.js";
 import { AiGatewayError } from "./errors.js";
 import { normalizeOpenAiCompatibleImageSize } from "./image-size.js";
 import { buildProductionImagePrompt } from "./production-image-prompt.js";
@@ -831,7 +832,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "stream", this.fetchImplementation, providerRequest.url, {
         body: JSON.stringify(payload),
         headers: providerRequest.headers,
         method: "POST",
@@ -948,7 +949,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "generate", this.fetchImplementation, providerRequest.url, {
         body: JSON.stringify(payload),
         headers: providerRequest.headers,
         method: "POST",
@@ -1050,7 +1051,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "generate", this.fetchImplementation, providerRequest.url, {
         body: JSON.stringify(payload),
         headers: providerRequest.headers,
         method: "POST",
@@ -1236,7 +1237,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, isAsync ? "submit" : "generate", this.fetchImplementation, providerRequest.url, {
         body: requestBody,
         headers: requestHeaders,
         method: "POST",
@@ -1349,7 +1350,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "poll", this.fetchImplementation, providerRequest.url, {
         headers: requestHeaders,
         method: "GET",
         signal: AbortSignal.timeout(context.timeoutMs),
@@ -1573,7 +1574,7 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(providerRequest.url, {
+      response = await observeProviderFetch(context, "generate", this.fetchImplementation, providerRequest.url, {
         body: JSON.stringify(payload),
         headers: requestHeaders,
         method: "POST",

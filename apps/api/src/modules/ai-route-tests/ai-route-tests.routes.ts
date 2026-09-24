@@ -4,7 +4,6 @@ import { ZodError } from "zod";
 import {
   requireAuth,
   requirePermission,
-  requireTenant,
 } from "../../http/auth-middleware.js";
 import {
   type RouteTestParams,
@@ -13,6 +12,7 @@ import {
   runRouteTestSchema,
 } from "./ai-route-tests.schemas.js";
 import { AiRouteTestApiError } from "./ai-route-tests.service.js";
+import { PlatformTransactionError } from "../../http/platform-transaction.js";
 
 function sendError(
   request: FastifyRequest,
@@ -33,11 +33,8 @@ function sendError(
 }
 
 function getTenantContext(request: FastifyRequest) {
-  if (!request.ctx.tenantId) {
-    throw new AiRouteTestApiError(400, "TENANT_REQUIRED", "Current request is missing tenant context");
-  }
-
   return {
+    permissions: request.ctx.permissions,
     ipHash: request.ctx.ipHash,
     requestId: request.ctx.requestId,
     tenantId: request.ctx.tenantId,
@@ -63,7 +60,7 @@ function handleRouteError(
     );
   }
 
-  if (error instanceof AiRouteTestApiError) {
+  if (error instanceof AiRouteTestApiError || error instanceof PlatformTransactionError) {
     return sendError(request, reply, error.statusCode, error.code, error.message);
   }
 
@@ -81,7 +78,7 @@ function handleRouteError(
 }
 
 export function registerAiRouteTestRoutes(app: FastifyInstance): void {
-  const authHandlers = [requireAuth, requireTenant, requirePermission("admin:system")];
+  const authHandlers = [requireAuth, requirePermission("platform:console:access"), requirePermission("platform:routes:write")];
 
   app.post(
     "/api/v2/admin/ai/routes/:routeId/test",

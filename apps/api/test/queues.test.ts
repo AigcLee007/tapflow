@@ -1,5 +1,5 @@
-iimport { currentLegalConsent } from "./legal-consent.fixture.js";
-mport { afterAll, describe, expect, test } from "vitest";
+import { currentLegalConsent } from "./legal-consent.fixture.js";
+import { afterAll, describe, expect, test } from "vitest";
 
 import { createPgPool } from "@aigc-flow/db";
 

@@ -13,6 +13,7 @@ import {
 
 import { ACCOUNT_AI_SETTINGS_ROUTE, ACCOUNT_ROUTE } from "../app/routes";
 import { useAuth } from "../auth/useAuth";
+import { hasPlatformCapability } from "../auth/productRoles";
 import { MenuSelect } from "../components/menu/MenuSelect";
 import {
   createAdminCredential,
@@ -170,7 +171,7 @@ function MetricCard({ label, value }: { label: string; value: string | number })
 }
 
 export function ProviderSettingsPage() {
-  const { permissions } = useAuth();
+  const access = useAuth();
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -219,9 +220,9 @@ export function ProviderSettingsPage() {
   );
   const [rotateSecret, setRotateSecret] = useState("");
 
-  const canRead = permissions.includes("admin:system");
-  const canManage = permissions.includes("admin:system");
-  const canManageCredentials = permissions.includes("admin:system");
+  const canRead = hasPlatformCapability(access, "platform:connections:read");
+  const canManage = hasPlatformCapability(access, "platform:connections:manage");
+  const canManageCredentials = canManage;
 
   const connectionRows = useMemo<ConnectionRow[]>(
     () =>

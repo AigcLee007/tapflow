@@ -1,3 +1,4 @@
+import { observeProviderFetch } from "./provider-request-telemetry.js";
 import { AiGatewayError } from "./errors.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import { readVideoCapabilities, readVideoReferenceMetadata, validateVideoGenerationRequest } from "./video-generation-contract.js";
@@ -77,7 +78,7 @@ export class PixelleLabsH3VideoAdapter implements ProviderAdapter {
   private async request(context: ProviderCallContext, method: "GET" | "POST", path: string, body?: Record<string, unknown>, providerRequest?: unknown) {
     const url = `${context.baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
     let response: Response;
-    try { response = await this.fetchImplementation(url, { body: body ? JSON.stringify(body) : undefined, headers: { Authorization: `Bearer ${context.apiKey}`, ...(body ? { "Content-Type": "application/json" } : {}) }, method, signal: AbortSignal.timeout(context.timeoutMs) }); }
+    try { response = await observeProviderFetch(context, method === "GET" ? "poll" : "submit", this.fetchImplementation, url, { body: body ? JSON.stringify(body) : undefined, headers: { Authorization: `Bearer ${context.apiKey}`, ...(body ? { "Content-Type": "application/json" } : {}) }, method, signal: AbortSignal.timeout(context.timeoutMs) }); }
     catch (error) { throw new AiGatewayError({ code: error instanceof Error && /abort|timeout/i.test(error.name) ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE", message: "PixelleLabs H3video request failed", providerRequest, statusCode: 502 }); }
     const text = await response.text(); let parsed: unknown = null; try { parsed = text ? JSON.parse(text) : null; } catch { throw new AiGatewayError({ code: "PROVIDER_UNAVAILABLE", message: "PixelleLabs returned invalid JSON", providerRequest, statusCode: 502 }); }
     if (!response.ok) { const code = response.status === 400 ? "PROVIDER_BAD_REQUEST" : response.status === 401 || response.status === 403 ? "PROVIDER_AUTH_FAILED" : response.status === 429 ? "PROVIDER_RATE_LIMITED" : "PROVIDER_UNAVAILABLE"; throw new AiGatewayError({ code, message: "PixelleLabs rejected the H3video request", providerRequest, providerResponse: { httpStatus: response.status }, statusCode: response.status }); }

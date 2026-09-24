@@ -9,7 +9,7 @@ import { PromptApiError, PromptsService, __promptsServiceTestUtils } from "../sr
 const context = { tenantId: "9c07e9dd-9853-4d6d-bb37-22b4b0d55884", userId: "f4bba6ab-89aa-4af7-a30e-bfb00afc5f6f" };
 
 function poolWithQuery(query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }>) {
-  return { connect: async () => ({ query, release: vi.fn() }) } as never;
+  return { connect: async () => ({ query: async (sql: string, values?: unknown[]) => sql.includes("app.current_platform_role") ? { rows: [{ role_key: "platform_super_admin" }] } : query(sql, values), release: vi.fn() }) } as never;
 }
 
 describe("PromptsService lifecycle", () => {

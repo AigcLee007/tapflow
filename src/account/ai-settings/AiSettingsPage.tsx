@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRightLeft,
@@ -14,6 +14,7 @@ import {
 
 import { ACCOUNT_PROVIDER_SETTINGS_ROUTE } from "../../app/routes";
 import { useAuth } from "../../auth/useAuth";
+import { hasPlatformCapability } from "../../auth/productRoles";
 import { MenuSelect } from "../../components/menu/MenuSelect";
 import { ModelConfigurationWizard } from "./ModelConfigurationWizard";
 import {
@@ -34,8 +35,8 @@ import {
   updateAdminRoute,
 } from "../../services/v2AiGatewayAdminApi";
 import {
-  listAiModelCatalog,
-  listAiModelRoutes,
+  listAdminAiModelCatalog,
+  listAdminAiModelRoutes,
   testAiRoute,
   type AiModelCatalogItem,
   type AiModelCatalogRoute,
@@ -278,12 +279,18 @@ function buildCreateState(
 }
 
 export function AiSettingsPage() {
-  const { permissions } = useAuth();
-  const canRead = permissions.includes("admin:system");
-  const canManage = permissions.includes("admin:system");
+  const access = useAuth();
+  const canRead = hasPlatformCapability(access, "platform:models:read");
+  const canManage = hasPlatformCapability(access, "platform:routes:write");
+  const canConfigure = hasPlatformCapability(access, "platform:connections:manage")
+    && hasPlatformCapability(access, "platform:pricing:publish");
 
   const [state, setState] = useState<LoadState>("idle");
-  const [activeModality, setActiveModality] = useState<Modality>("image");
+  const [activeModality, setActiveModality] = useState<Modality>(() => {
+    const value = new URLSearchParams(window.location.search).get("modality");
+    return value === "text" || value === "video" ? value : "image";
+  });
+  const initialDeepLinkResolved = useRef(false);
   const [models, setModels] = useState<AiModelCatalogItem[]>([]);
   const [routes, setRoutes] = useState<AiModelCatalogRoute[]>([]);
   const [adminRoutes, setAdminRoutes] = useState<AdminRoute[]>([]);
@@ -293,6 +300,7 @@ export function AiSettingsPage() {
   const [credentials, setCredentials] = useState<AdminCredential[]>([]);
   const [selectedModelKey, setSelectedModelKey] = useState("");
   const [selectedRouteId, setSelectedRouteId] = useState("");
+  const initialRouteTarget = useRef(new URLSearchParams(window.location.search).get("route"));
   const [routeTest, setRouteTest] = useState<AiRouteTestResult | null>(null);
   const [editor, setEditor] = useState<RouteEditorState>(buildEditorState(null));
   const [createEditor, setCreateEditor] = useState<RouteCreateState | null>(null);
@@ -349,31 +357,27 @@ export function AiSettingsPage() {
     [providerModels, selectedAdminRoute?.modelId],
   );
   const selectedProviderName = selectedCatalogRoute?.providerName || "-";
-  const isSelectedRouteTenantEditable = Boolean(selectedAdminRoute?.tenantId);
+  const isSelectedRouteEditable = Boolean(selectedAdminRoute && canManage);
   const isSelectedRouteDefault = Boolean(selectedRouteRow?.isDefault);
   const selectedRouteSource = routeSourceLabel(selectedAdminRoute);
 
   const selectedRouteEditHint = useMemo(() => {
     if (!selectedAdminRoute) return "请选择一条线路后再管理。";
-    if (!isSelectedRouteTenantEditable) {
-      return "当前是系统线路，参数只能查看和测试；你仍可以启停线路。需要修改参数时，请先复制成租户线路。";
-    }
+    if (!canConfigure) return "运营权限可调整线路名称、状态和默认线路；连接与请求配置由超级管理员维护。";
+    if (!selectedAdminRoute.tenantId) return "当前是平台线路，修改会影响使用这条线路的工作区。";
     if (isSelectedRouteDefault) {
       return "当前是默认线路。停用后如果没有其他可用线路，该模型会从前台隐藏。";
     }
     return "当前是租户线路，可以直接修改、停用或删除。";
-  }, [isSelectedRouteDefault, isSelectedRouteTenantEditable, selectedAdminRoute]);
+  }, [canConfigure, isSelectedRouteDefault, selectedAdminRoute]);
 
   const selectedRouteNextStep = useMemo(() => {
     if (!selectedAdminRoute) return "先从左侧列表选择一条线路。";
-    if (!isSelectedRouteTenantEditable) {
-      return "推荐先复制成租户线路，再调整上游模型、API 模式或请求路径。";
-    }
     if (isSelectedRouteDefault) {
       return "如果你准备停用这条线路，先把另一条线路设为默认。";
     }
     return "如果这条线路已经验证通过，可以把它设为默认线路。";
-  }, [isSelectedRouteDefault, isSelectedRouteTenantEditable, selectedAdminRoute]);
+  }, [isSelectedRouteDefault, isSelectedRouteEditable, selectedAdminRoute]);
 
   const selectedProviderConnections = useMemo(() => {
     if (!selectedAdminRoute?.providerId) return [];
@@ -475,13 +479,24 @@ export function AiSettingsPage() {
     try {
       const [nextModels, nextAdminRoutes, nextProviders, nextProviderModels, nextConnections, nextCredentials] =
         await Promise.all([
-        listAiModelCatalog(activeModality),
+        listAdminAiModelCatalog(activeModality),
         listAdminRoutes(),
         listAdminProviders(),
         listAdminModels(),
         listAdminProviderConnections(),
         listAdminCredentials(),
         ]);
+      const deepLink = new URLSearchParams(window.location.search);
+      const linkedRoute = nextAdminRoutes.find(item => item.id === deepLink.get("route"));
+      const linkedModelId = deepLink.get("modelId") ?? linkedRoute?.modelId;
+      if (!initialDeepLinkResolved.current) {
+        const linkedModality = linkedRoute?.modality ?? nextProviderModels.find(item => item.id === linkedModelId)?.modality;
+        if (linkedModality && linkedModality !== activeModality) {
+          setActiveModality(linkedModality);
+          return;
+        }
+        initialDeepLinkResolved.current = true;
+      }
       setModels(nextModels);
       setAdminRoutes(nextAdminRoutes);
       setProviders(nextProviders);
@@ -490,6 +505,8 @@ export function AiSettingsPage() {
       setCredentials(nextCredentials);
       setSelectedModelKey((current) => {
         if (current && nextModels.some((model) => model.modelKey === current)) return current;
+        const linked = nextModels.find(model => model.modelId === linkedModelId || model.modelKey === deepLink.get("model"));
+        if (linked) return linked.modelKey;
         return nextModels[0]?.modelKey || "";
       });
       setState("ready");
@@ -521,11 +538,14 @@ export function AiSettingsPage() {
     }
 
     let cancelled = false;
-    void listAiModelRoutes(selectedModelKey)
+    void listAdminAiModelRoutes(selectedModelKey)
       .then((nextRoutes) => {
         if (cancelled) return;
         setRoutes(nextRoutes);
+        const linkedRoute = nextRoutes.find((route) => route.routeId === initialRouteTarget.current);
+        if (linkedRoute) initialRouteTarget.current = null;
         setSelectedRouteId((current) => {
+          if (linkedRoute) return linkedRoute.routeId;
           if (current && nextRoutes.some((route) => route.routeId === current)) return current;
           const defaultRoute =
             nextRoutes.find((route) => route.routeKey === selectedModel?.defaultRouteKey) ??
@@ -631,17 +651,12 @@ export function AiSettingsPage() {
   }
 
   async function handleSaveRoute() {
-    if (!selectedAdminRoute) return;
-    if (!selectedAdminRoute.tenantId) {
-      setError("系统线路暂时只读，请先复制为当前租户线路再编辑。");
-      return;
-    }
-
+    if (!canManage || !selectedAdminRoute) return;
     setSavingRouteId(selectedAdminRoute.id);
     setError("");
     setMessage("");
     try {
-      const updatedRoute = await updateAdminRoute(selectedAdminRoute.id, {
+      const updatedRoute = await updateAdminRoute(selectedAdminRoute.id, canConfigure ? {
         adminNotes: editor.adminNotes.trim() || null,
         apiMode: editor.apiMode.trim() || null,
         connectionId: editor.connectionId || null,
@@ -650,7 +665,7 @@ export function AiSettingsPage() {
         routeLabel: editor.routeLabel.trim() || null,
         status: editor.status,
         upstreamModel: editor.upstreamModel.trim() || null,
-      });
+      } : { routeLabel: editor.routeLabel.trim() || null, status: editor.status });
       setMessage(`已保存线路：${updatedRoute.routeLabel || updatedRoute.routeKey}`);
       await refresh();
     } catch (cause) {
@@ -894,7 +909,7 @@ export function AiSettingsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={openNewModelWizard} type="button">
+          <button className={buttonClass} disabled={!canConfigure} onClick={openNewModelWizard} type="button">
             <Plus size={15} />
             配置新模型
           </button>
@@ -1012,7 +1027,7 @@ export function AiSettingsPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 className={buttonClass}
-                disabled={!selectedModel || !canManage}
+                disabled={!selectedModel || !canConfigure}
                 onClick={openCreatePanel}
                 type="button"
               >
@@ -1402,7 +1417,7 @@ export function AiSettingsPage() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       className={buttonClass}
-                      disabled={!canManage || creatingRoute}
+                      disabled={!canConfigure || creatingRoute}
                       onClick={() => void handleCreateRoute()}
                       type="button"
                     >
@@ -1451,7 +1466,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">显示线路名称</span>
                           <input
                             className={inputClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!canManage}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, routeLabel: event.target.value }))
                             }
@@ -1462,7 +1477,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">内部备注名称</span>
                           <input
                             className={inputClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!canConfigure}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, internalLabel: event.target.value }))
                             }
@@ -1493,7 +1508,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">上游模型</span>
                           <input
                             className={inputClass}
-                            disabled={!isSelectedRouteTenantEditable}
+                            disabled={!canConfigure || !isSelectedRouteEditable}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, upstreamModel: event.target.value }))
                             }
@@ -1504,7 +1519,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">API 模式</span>
                           <input
                             className={inputClass}
-                            disabled={!isSelectedRouteTenantEditable}
+                            disabled={!canConfigure || !isSelectedRouteEditable}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, apiMode: event.target.value }))
                             }
@@ -1515,7 +1530,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">请求路径</span>
                           <input
                             className={inputClass}
-                            disabled={!isSelectedRouteTenantEditable}
+                            disabled={!canConfigure || !isSelectedRouteEditable}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, requestPath: event.target.value }))
                             }
@@ -1526,7 +1541,7 @@ export function AiSettingsPage() {
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">管理备注</span>
                           <textarea
                             className={textareaClass}
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!canConfigure}
                             onChange={(event) =>
                               setEditor((current) => ({ ...current, adminNotes: event.target.value }))
                             }
@@ -1536,7 +1551,7 @@ export function AiSettingsPage() {
                         <label className="block">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">线路状态</span>
                           <MenuSelect
-                            disabled={!selectedAdminRoute.tenantId}
+                            disabled={!canManage}
                             fullWidth
                             label="edit route status"
                             onChange={(value) =>
@@ -1576,7 +1591,7 @@ export function AiSettingsPage() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             className={buttonClass}
-                            disabled={!canManage}
+                            disabled={!canConfigure}
                             onClick={openBackupWizard}
                             type="button"
                           >
@@ -1598,7 +1613,7 @@ export function AiSettingsPage() {
                           </button>
                           <button
                             className={buttonClass}
-                            disabled={!canManage || savingRouteId === selectedAdminRoute.id || !isSelectedRouteTenantEditable}
+                            disabled={!canManage || savingRouteId === selectedAdminRoute.id || !isSelectedRouteEditable}
                             onClick={() => void handleSaveRoute()}
                             type="button"
                           >
@@ -1611,7 +1626,7 @@ export function AiSettingsPage() {
                           </button>
                           <button
                             className={buttonClass}
-                            disabled={!canManage || actionRouteId === selectedAdminRoute.id}
+                            disabled={!canConfigure || actionRouteId === selectedAdminRoute.id}
                             onClick={() => void handleDuplicateRoute()}
                             type="button"
                           >
@@ -1652,7 +1667,8 @@ export function AiSettingsPage() {
                             disabled={
                               !canManage ||
                               actionRouteId === selectedAdminRoute.id ||
-                              !isSelectedRouteTenantEditable ||
+                              !isSelectedRouteEditable ||
+                              !canConfigure ||
                               isSelectedRouteDefault
                             }
                             onClick={() => void handleDeleteRoute()}

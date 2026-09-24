@@ -22,7 +22,7 @@ export class PersonalWalletServiceError extends Error {
 }
 
 type LedgerRow = { id: string; wallet_id: string; user_id: string; tenant_id: string | null; usage_event_id: string | null; entry_type: string; amount_credits: string; idempotency_key: string; created_at: string };
-type WalletSummaryRow = { wallet_id: string; user_id: string; balance: string; reserved: string; expiring: string; nearest: string | null };
+type WalletSummaryRow = { wallet_id: string; user_id: string; balance: string; reserved: string; refund_held: string; expiring: string; nearest: string | null };
 function mapLedger(row: LedgerRow): WalletLedgerView { return { id: row.id, walletId: row.wallet_id, userId: row.user_id, tenantId: row.tenant_id, usageEventId: row.usage_event_id, entryType: row.entry_type, amountCredits: Number(row.amount_credits), idempotencyKey: row.idempotency_key, createdAt: row.created_at }; }
 function emptySummary(): WalletSummaryView { return { walletId: "", balanceCredits: 0, reservedCredits: 0, availableCredits: 0, expiringSoonCredits: 0, nearestExpiryAt: null }; }
 
@@ -44,13 +44,14 @@ export class PersonalWalletService {
     if (uniqueUserIds.length === 0) return summaries;
     const result = await client.query<WalletSummaryRow>(`
         SELECT wallet.id::text AS wallet_id, wallet.user_id::text AS user_id, wallet.balance_credits::text AS balance, wallet.reserved_credits::text AS reserved,
-          COALESCE(SUM(credit_grant.remaining_credits - credit_grant.reserved_credits) FILTER (WHERE credit_grant.status = 'active' AND credit_grant.expires_at <= now() + interval '30 days'), 0)::text AS expiring,
-          MIN(credit_grant.expires_at)::text AS nearest
+          COALESCE(SUM(credit_grant.remaining_credits - credit_grant.reserved_credits) FILTER (WHERE credit_grant.status = 'active' AND COALESCE(credit_grant.refund_hold, false) = true), 0)::text AS refund_held,
+          COALESCE(SUM(credit_grant.remaining_credits - credit_grant.reserved_credits) FILTER (WHERE credit_grant.status = 'active' AND COALESCE(credit_grant.refund_hold, false) = false AND credit_grant.expires_at <= now() + interval '30 days'), 0)::text AS expiring,
+          (MIN(credit_grant.expires_at) FILTER (WHERE credit_grant.status = 'active' AND COALESCE(credit_grant.refund_hold, false) = false))::text AS nearest
         FROM billing_wallets wallet LEFT JOIN billing_wallet_credit_grants credit_grant ON credit_grant.wallet_id = wallet.id AND credit_grant.status = 'active'
         WHERE wallet.user_id = ANY($1::uuid[]) GROUP BY wallet.id, wallet.user_id`, [uniqueUserIds]);
     for (const row of result.rows) {
-      const balance = Number(row.balance); const reserved = Number(row.reserved);
-      summaries.set(row.user_id, { walletId: row.wallet_id, balanceCredits: balance, reservedCredits: reserved, availableCredits: Math.max(balance - reserved, 0), expiringSoonCredits: Number(row.expiring), nearestExpiryAt: row.nearest });
+      const balance = Number(row.balance); const reserved = Number(row.reserved); const refundHeld = Number(row.refund_held ?? "0");
+      summaries.set(row.user_id, { walletId: row.wallet_id, balanceCredits: balance, reservedCredits: reserved, availableCredits: Math.max(balance - reserved - refundHeld, 0), expiringSoonCredits: Number(row.expiring), nearestExpiryAt: row.nearest });
     }
     return summaries;
   }

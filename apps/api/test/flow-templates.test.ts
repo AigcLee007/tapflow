@@ -33,6 +33,7 @@ describe('flow template lifecycle schemas', () => {
     const client = {
       query: async (sql: string, values?: unknown[]) => {
         queries.push({ sql, values });
+        if (sql.includes('app.current_platform_role')) return { rows: [{ role_key: 'platform_super_admin' }] };
         if ((sql.includes('SELECT id::text AS id') && sql.includes('FOR UPDATE')) || sql.includes('UPDATE flow_templates SET graph_json') || sql.includes('last_tested_graph_hash FROM flow_templates')) {
           return {
             rows: [
@@ -61,7 +62,7 @@ describe('flow template lifecycle schemas', () => {
   test('rejects publishing a draft before it has entered testing', async () => {
     const client = {
       query: async (sql: string) => ({
-        rows: sql.includes('FOR UPDATE')
+        rows: sql.includes('app.current_platform_role') ? [{ role_key: 'platform_super_admin' }] : sql.includes('FOR UPDATE')
           ? [{ id: randomUUID(), status: 'draft', graph_json: { nodes: [], edges: [] }, input_schema: [], node_count: 0 }]
           : [],
       }),
@@ -83,7 +84,7 @@ describe('flow template lifecycle schemas', () => {
       graph_json: { nodes: [{ id: 'node-a', data: { prompt: 'hello' } }], edges: [] }, id: randomUUID(), input_schema: [], node_count: 1,
       published_at: null, published_by: null, status: 'draft', tenant_id: null, title: 'Validated', updated_at: '2026-08-13T00:00:00.000Z', version: 0, version_snapshot_id: null, visibility: 'official',
     };
-    const client = { query: async (sql: string, values?: unknown[]) => { queries.push({ sql, values }); return { rows: [record] }; }, release: () => undefined } as unknown as PoolClient;
+    const client = { query: async (sql: string, values?: unknown[]) => { queries.push({ sql, values }); return { rows: sql.includes('app.current_platform_role') ? [{ role_key: 'platform_super_admin' }] : [record] }; }, release: () => undefined } as unknown as PoolClient;
     const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
 
     await service.validateDraft({ tenantId: randomUUID(), userId: randomUUID() }, record.id);
@@ -128,7 +129,7 @@ describe('flow template lifecycle schemas', () => {
       graph_json: { nodes: [{ id: 'node-a', data: { prompt: 'old' } }], edges: [] }, id: randomUUID(), input_schema: [], node_count: 1,
       published_at: '2026-08-13T00:00:00.000Z', published_by: randomUUID(), status: 'published', tenant_id: null, title: 'Published', updated_at: '2026-08-13T00:00:00.000Z', version: 1, version_snapshot_id: null, visibility: 'official',
     };
-    const client = { query: async (sql: string) => { queries.push({ sql }); return { rows: sql.includes('FOR UPDATE') ? [published] : [] }; }, release: () => undefined } as unknown as PoolClient;
+    const client = { query: async (sql: string) => { queries.push({ sql }); return { rows: sql.includes('app.current_platform_role') ? [{ role_key: 'platform_super_admin' }] : sql.includes('FOR UPDATE') ? [published] : [] }; }, release: () => undefined } as unknown as PoolClient;
     const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
 
     await expect(service.markTesting({ tenantId: randomUUID(), userId: randomUUID() }, published.id)).rejects.toMatchObject({ code: 'FLOW_TEMPLATE_DRAFT_REQUIRED', statusCode: 409 });
@@ -146,7 +147,7 @@ describe('flow template lifecycle schemas', () => {
     const client = {
       query: async (sql: string) => {
         queries.push({ sql });
-        return { rows: sql.includes('FOR UPDATE') || sql.includes('UPDATE flow_templates') ? [published] : [] };
+        return { rows: sql.includes('app.current_platform_role') ? [{ role_key: 'platform_super_admin' }] : sql.includes('FOR UPDATE') || sql.includes('UPDATE flow_templates') ? [published] : [] };
       }, release: () => undefined,
     } as unknown as PoolClient;
     const service = new FlowTemplatesService({ pool: { connect: async () => client } as unknown as ReturnType<typeof createPgPool> });
@@ -280,12 +281,12 @@ describe('flow template lifecycle schemas', () => {
     expect(template.versionId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  test('establishes the server-trusted system-admin database context', async () => {
-    const queries: string[] = [];
+  test('establishes a server-verified platform content scope without the broad system-admin flag', async () => {
+    const queries: Array<{ sql: string; values?: unknown[] }> = [];
     const client = {
-      query: async (sql: string) => {
-        queries.push(sql);
-        return { rows: [] };
+      query: async (sql: string, values?: unknown[]) => {
+        queries.push({ sql, values });
+        return { rows: sql.includes('app.current_platform_role') ? [{ role_key: 'platform_super_admin' }] : [] };
       },
       release: () => undefined,
     } as unknown as PoolClient;
@@ -297,7 +298,8 @@ describe('flow template lifecycle schemas', () => {
       pool,
     );
 
-    expect(queries).toContain("SELECT set_config('app.is_system_admin', 'true', true)");
+    expect(queries.some(({ sql, values }) => sql.includes("set_config('app.platform_scope'") && values?.[0] === 'platform:content:manage')).toBe(true);
+    expect(queries.some(({ sql, values }) => sql.includes("set_config('app.is_system_admin'") && values?.[0] === 'false')).toBe(true);
   });
 });
 

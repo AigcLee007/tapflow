@@ -8,12 +8,13 @@ import {
 import {
   createPgPool,
   safeRecordAuditLog,
-  withTenantTransaction,
 } from "@aigc-flow/db";
+import { withPlatformTransaction } from "../../http/platform-transaction.js";
 
 import type { InstallPluginInput, ListPluginsQuery } from "./ai-plugins.schemas.js";
 
 type TenantContext = {
+  permissions?: readonly string[];
   ipHash?: string | null;
   requestId?: string | null;
   tenantId: string;
@@ -21,6 +22,12 @@ type TenantContext = {
   userAgent?: string | null;
   userId: string | null;
 };
+
+function requirePluginManagement(context: TenantContext): void {
+  if (!context.permissions?.includes("platform:console:access") || !context.permissions.includes("platform:connections:manage")) {
+    throw new AiPluginApiError(403, "FORBIDDEN", "Insufficient platform capability");
+  }
+}
 
 const PLATFORM_TENANT_ID: string | null = null;
 
@@ -159,6 +166,7 @@ export class AiPluginService {
     packageKey: string,
     input: InstallPluginInput,
   ): Promise<InstalledPluginView> {
+    requirePluginManagement(context);
     const manifest = this.requireManifest(packageKey);
     if (manifest.provider.capabilities?.requiresBaseUrlOverride === true && !input.baseUrlOverride?.trim()) {
       throw new AiPluginApiError(
@@ -168,7 +176,7 @@ export class AiPluginService {
       );
     }
     const credentialBindings = this.resolveCredentialBindingInputs(manifest, input);
-    return withTenantTransaction(context, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const packageId = await this.upsertPluginPackage(client, manifest);
       const providerId = await this.upsertProvider(client, manifest, input.baseUrlOverride ?? undefined);
       const modelIdsByKey = await this.upsertModels(client, manifest, providerId);
@@ -259,7 +267,7 @@ export class AiPluginService {
         manifest,
         modelIdsByKey,
         providerId,
-        routeCredentialBindings,
+        routeCredentialBindings: credentialBindings.kind === "route-scoped" ? routeCredentialBindings : undefined,
         status: status === "published" ? "active" : "inactive",
         tenantId: PLATFORM_TENANT_ID,
       });
@@ -302,14 +310,16 @@ export class AiPluginService {
         catalogModelKeys,
         routeKeys,
       };
-    }, this.pool);
+    });
   }
 
   async publishInstall(context: TenantContext, installId: string): Promise<InstalledPluginView> {
+    requirePluginManagement(context);
     return this.updateInstallStatus(context, installId, "published");
   }
 
   async disableInstall(context: TenantContext, installId: string): Promise<InstalledPluginView> {
+    requirePluginManagement(context);
     return this.updateInstallStatus(context, installId, "disabled");
   }
 
@@ -318,7 +328,7 @@ export class AiPluginService {
     installId: string,
     status: "disabled" | "published",
   ): Promise<InstalledPluginView> {
-    return withTenantTransaction(context, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:connections:manage", async (client) => {
       const row = await this.getInstallById(client, PLATFORM_TENANT_ID, installId);
       const routeStatus = status === "published" ? "active" : "inactive";
       const catalogStatus = routeStatus;
@@ -381,11 +391,11 @@ export class AiPluginService {
         catalogModelKeys: await this.listCatalogModelKeys(client, PLATFORM_TENANT_ID, installId),
         routeKeys: await this.listRouteKeys(client, PLATFORM_TENANT_ID, installId),
       };
-    }, this.pool);
+    });
   }
 
   private async listInstallsByPackageKey(context: TenantContext): Promise<Map<string, PluginInstallView>> {
-    return withTenantTransaction(context, async (client) => {
+    return withPlatformTransaction(this.pool, context, "platform:connections:read", async (client) => {
       const result = await client.query<PluginInstallRecord>(
         `
           SELECT
@@ -407,7 +417,7 @@ export class AiPluginService {
         [],
       );
       return new Map(result.rows.map((row) => [row.package_key, this.mapInstall(row)]));
-    }, this.pool);
+    });
   }
 
   private requireManifest(packageKey: string): AiPluginManifest {

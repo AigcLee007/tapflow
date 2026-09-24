@@ -6,10 +6,11 @@ const userId = "00000000-0000-4000-8000-000000000001";
 const tenantId = "00000000-0000-4000-8000-000000000002";
 
 describe("AdminApiService redeem-code scope", () => {
-  test("creates a global code when a system administrator omits tenantId", async () => {
+  test("creates a global code when a platform super administrator omits tenantId", async () => {
     let insertParameters: unknown[] | undefined;
     const client = {
       query: vi.fn(async (sql: string, parameters?: unknown[]) => {
+        if (sql.includes("app.current_platform_role")) return { rows: [{ role_key: "platform_super_admin" }] };
         if (sql.includes("INSERT INTO billing_redeem_codes")) {
           insertParameters = parameters;
           return {
@@ -36,9 +37,9 @@ describe("AdminApiService redeem-code scope", () => {
       {
         ipHash: null,
         isAuthenticated: true,
-        permissions: ["billing:redeem:manage"],
+        permissions: ["platform:billing:adjust"],
         requestId: "request-1",
-        roles: ["system_admin"],
+        roles: ["platform_super_admin"],
         sessionId: "session-1",
         tenantId,
         traceId: "trace-1",

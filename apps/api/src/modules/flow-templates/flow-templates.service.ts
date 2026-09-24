@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createPgPool, withTenantTransaction } from '@aigc-flow/db';
 import type { Pool, PoolClient } from 'pg';
+import { setPlatformContext } from '../../http/platform-transaction.js';
 
 import type {
   FlowTemplateAdminListQuery,
@@ -20,7 +21,7 @@ export type SystemAdminFlowTemplateContext = Required<FlowTemplateContext>;
 
 /**
  * Establishes the database RLS context for service methods reached through an
- * already-authorized `admin:system` route. Never derive this flag from input.
+ * already-authorized platform content route, with a fresh database role check.
  */
 export async function withSystemAdminFlowTemplateTransaction<T>(
   ctx: SystemAdminFlowTemplateContext,
@@ -32,7 +33,7 @@ export async function withSystemAdminFlowTemplateTransaction<T>(
     await client.query('BEGIN');
     await client.query("SELECT set_config('app.tenant_id', $1, true)", [ctx.tenantId]);
     await client.query("SELECT set_config('app.user_id', $1, true)", [ctx.userId]);
-    await client.query("SELECT set_config('app.is_system_admin', 'true', true)");
+    await setPlatformContext(client, ctx, 'platform:content:manage');
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
