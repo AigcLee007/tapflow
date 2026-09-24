@@ -3,12 +3,12 @@
 .agent-v6-heading { margin: 0; line-height: 1.25; }
 .agent-v6-quote { border-inline-start: 3px solid #c9cdd5; padding-inline-start: 12px; color: #5f6570; }
 .agent-v6-divider { width: 100%; border: 0; border-top: 1px solid #e2e4e8; }
-.agent-v6-understanding, .agent-v6-question, .agent-v6-choice, .agent-v6-comparison, .agent-v6-brief, .agent-v6-confirmation, .agent-v6-progress, .agent-v6-results { border: 1px solid #e3e5e9; border-radius: 12px; padding: 14px; background: #fff; min-width: 0; }
+.agent-v6-understanding, .agent-v6-question, .agent-v6-choice, .agent-v6-comparison, .agent-v6-brief, .agent-v6-confirmation, .agent-v6-progress, .agent-v6-results { border: 1px solid #e3e5e9; border-radius: 12px; padding: 14px; background: #fff; color: #1f2937; min-width: 0; }
 .agent-v6-understanding { border-inline-start: 3px solid #7d8798; }
 .agent-v6-eyebrow, .agent-v6-muted, .agent-v6-progress small { color: #6d7480; font-size: 11px; }
 .agent-v6-understanding h3, .agent-v6-question h3, .agent-v6-choice h3, .agent-v6-comparison h3, .agent-v6-brief h3, .agent-v6-confirmation h3, .agent-v6-progress h3, .agent-v6-results h3, .agent-v6-results h4 { margin: 5px 0 10px; }
 .agent-v6-choice-grid, .agent-v6-question-options, .agent-v6-result-grid, .agent-v6-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.agent-v6-choice-grid button, .agent-v6-question-options button, .agent-v6-actions button { min-height: 38px; border: 1px solid #d8dce3; border-radius: 9px; background: #fff; padding: 7px 10px; cursor: pointer; }
+.agent-v6-choice-grid button, .agent-v6-question-options button, .agent-v6-actions button { min-height: 38px; border: 1px solid #d8dce3; border-radius: 9px; background: #fff; color: #1f2937; padding: 7px 10px; cursor: pointer; }
 .agent-v6-choice-grid button { display: grid; gap: 3px; text-align: start; min-width: 130px; }
 .agent-v6-choice-grid button[aria-pressed="true"] { border-color: #44546a; background: #eef2f7; }
 .agent-v6-choice-grid button:focus-visible, .agent-v6-question-options button:focus-visible, .agent-v6-actions button:focus-visible, .agent-v6-brief input:focus-visible { outline: 2px solid #315fce; outline-offset: 2px; }

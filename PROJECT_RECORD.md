@@ -1,6 +1,12 @@
 ﻿# Project Record
 
-Last updated: 2026-09-23
+Last updated: 2026-09-25
+
+## 2026-09-25 - Agent workspace rendering repair
+
+- Fixed canonical text questions rendering the same prompt twice by omitting the duplicate title field.
+- Fixed white protocol cards inheriting white workspace text, and bound the visible execution mode to the runtime session mode.
+- Focused Agent panel, V6 integration, block-normalizer tests, and the frontend production build pass. Live staging redeploy and authenticated browser acceptance remain pending.
 
 ## 2026-09-23 - Resolve duplicate migration versions before staging retry
 
