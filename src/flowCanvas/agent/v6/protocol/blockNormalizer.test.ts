@@ -19,6 +19,14 @@ describe("normalizeBlocks", () => {
     expect(blocks.filter((block) => block.type === "bullet_list").flatMap((block) => block.items)).toEqual(expect.arrayContaining(["图片：首帧 × 1", "数量：3", "预计费用：12 积分", "写入范围：素材库、会话结果"]));
   });
 
+  it("does not duplicate a text question prompt as both title and prompt", () => {
+    expect(normalizeBlocks([
+      { type: "question_set", questions: [{ id: "subject", prompt: "请提供产品名称", kind: "text", required: true }] },
+    ])).toEqual([
+      { type: "question", id: "subject", prompt: "请提供产品名称", options: [] },
+    ]);
+  });
+
   it("drops provider and HTML fields from blocks", () => {
     expect(
       normalizeBlocks([{ type: "heading", level: 2, text: "方案", provider: "x", html: "<script/>" }]),

@@ -133,7 +133,7 @@ function normalizeCanonical(value: unknown): ConversationBlock[] | null {
       const prompt = text(question.prompt);
       if (!questionId || !prompt) return [];
       const options = array(question.options).map(option).filter((item): item is AgentOption => Boolean(item));
-      if (question.kind === "text") return [{ type: "question", id: questionId, title: prompt, prompt, options: [] }];
+      if (question.kind === "text") return [{ type: "question", id: questionId, prompt, options: [] }];
       return options.length ? [{ type: "choice_grid", id: questionId, title: prompt, options, selectionMode: question.kind === "multiple" ? "multiple" : "single" }] : [];
     });
   }

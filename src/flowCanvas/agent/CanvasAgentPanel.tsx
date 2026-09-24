@@ -157,6 +157,7 @@ export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
     history={history}
     model={model}
     modelOptions={modelOptions}
+    mode={runtime.mode}
     onBlockAction={handleBlockAction}
     onCancel={() => { void runtime.submitDecision({ type: "cancel_execution" }); }}
     onCapability={(capability) => {
