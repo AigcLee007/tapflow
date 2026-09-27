@@ -67,10 +67,12 @@ export type AgentSessionEventRecord = {
   graphRevision?: number | null;
   id: string;
   idempotencyKey?: string | null;
+  projectId: string | null;
   seq: number;
   sessionId: string;
   taskId: string | null;
   turnId: string | null;
+  flowId: string | null;
 };
 
 export type AppendAgentSessionEventInput = {
@@ -427,7 +429,7 @@ export class AgentSessionRepository {
 
   async getSessionEvents(context: AgentContext, sessionId: string, afterSeq = 0): Promise<AgentSessionEventRecord[]> {
     return withTenantTransaction(context, async (client) => {
-      await this.requireSession(client, sessionId);
+      const session = await this.requireSession(client, sessionId);
       const result = await client.query<{
         agent_namespace: string | null;
         agent_version: string | null;
@@ -473,10 +475,12 @@ export class AgentSessionRepository {
         graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
         id: row.id,
         idempotencyKey: row.idempotency_key,
+        projectId: session.project_id,
         seq: Number(row.seq),
         sessionId: row.session_id,
         taskId: row.task_id,
         turnId: row.turn_id,
+        flowId: session.flow_id,
       }));
     }, this.pool);
   }
@@ -684,7 +688,7 @@ export class AgentSessionRepository {
     input: AppendAgentSessionEventInput,
   ): Promise<AgentSessionEventRecord> {
     return withTenantTransaction(context, async (client) => {
-      await this.requireSession(client, input.sessionId);
+      const session = await this.requireSession(client, input.sessionId);
       if (input.agentVersion === "v2" && input.turnId) {
         await this.assertTurnActiveClient(client, context.tenantId, input.turnId);
       }
@@ -783,10 +787,12 @@ export class AgentSessionRepository {
         graphRevision: row.graph_revision === null ? null : Number(row.graph_revision),
         id: row.id,
         idempotencyKey: row.idempotency_key,
+        projectId: session.project_id,
         seq: Number(row.seq),
         sessionId: row.session_id,
         taskId: row.task_id,
         turnId: row.turn_id,
+        flowId: session.flow_id,
       };
     }, this.pool);
   }

@@ -1,205 +1,110 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AgentContextSnapshot, AgentDecisionType, AgentTurnResponse } from "./agentProtocol";
+import { agentRuntimeApi, type AgentRuntimeApi, type AgentRuntimeSession } from "./agentRuntimeApi";
+import { initialAgentRuntimeState, reduceAgentEvents, reduceAgentHistory, reduceAgentTurn, type AgentRuntimeState } from "./agentEventReducer";
+import { SessionController } from "./SessionController";
 
-import { useFlowCanvasStore } from "../../store/flowCanvasStore";
-import type { AgentReferenceContext } from "../agentReferenceContext";
-import type { AgentContextSnapshot } from "./agentProtocol";
-import { agentRuntimeApi, type AgentRuntimeResponse as AgentV6Response, type AgentRuntimeScope as AgentV6Scope } from "./agentRuntimeApi";
-import { applyResponse, createReplayState, restoreHistory, type ReplayState } from "../v6/replay/ReplayState";
-import type { AgentExecutionMode, ConversationBlock, ResultRef } from "../v6/protocol/conversationTypes";
-import type { BriefField } from "../v6/protocol/conversationTypes";
-
-export type AgentRuntimeDecision =
-  | { type: "answer_question"; answer: string | string[]; questionId?: string }
-  | { type: "edit_brief"; fields: BriefField[] }
-  | { type: "approve_plan" }
-  | { type: "cancel_execution" }
-  | { type: "retry_execution" }
-  | { type: "revise_plan"; instruction: string }
-  | { type: "result_action"; action: "place" | "select" | "reference" | "variant" | "edit"; resultIds: string[]; instruction?: string };
-
-type SubmitTextOptions = { modelKey?: string | null; referenceContext?: AgentReferenceContext };
-
-function buildTitle(prompt: string) {
+const idempotencyKey = (prefix: string) => {
+  const uuid = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}:${uuid}`;
+};
+const titleFromPrompt = (prompt: string) => {
   const value = prompt.replace(/\s+/g, " ").trim();
-  return value.length > 36 ? `${value.slice(0, 36)}...` : value || "新对话";
-}
+  return value.length > 36 ? `${value.slice(0, 36)}…` : value || "新对话";
+};
 
-function scopeFromCanvas(): AgentV6Scope {
-  const canvas = useFlowCanvasStore.getState();
-  return {
-    projectId: canvas.backendProjectId ?? canvas.projectId ?? null,
-    flowId: canvas.backendFlowId,
-    graphRevision: canvas.version,
-  };
-}
-
-function createIdempotencyKey(kind: string) {
-  return `${kind}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-}
-
-function contextFromReferences(scope: AgentV6Scope, options: SubmitTextOptions): AgentContextSnapshot {
-  const refs = (options.referenceContext?.items ?? []).flatMap((item) => {
-    const source = item.kind === "canvas_node" ? "canvas" : item.kind === "upload" ? "upload" : "asset";
-    if (!item.refId || !item.label) return [];
-    return [{
-      refId: item.refId,
-      source,
-      ...(item.nodeId ? { nodeId: item.nodeId } : {}),
-      ...(item.assetId ? { assetId: item.assetId } : {}),
-      ...(item.role ? { role: item.role } : {}),
-      label: item.label,
-    }];
-  });
-  return { ...scope, refs, skillIds: [], appIds: [], modelKey: options.modelKey ?? null };
-}
-
-function responseState(current: ReplayState, response: AgentV6Response, scope: AgentV6Scope) {
-  return applyResponse(current, response, scope);
-}
-
-export function useAgentRuntime(initialSessionId?: string | null) {
-  const [state, setState] = useState<ReplayState>(() => createReplayState(scopeFromCanvas()));
-  const [sessionTitle, setSessionTitle] = useState("新对话");
+export function useAgentRuntime(options: { projectId: string | null; flowId: string | null; contextSnapshot: AgentContextSnapshot; api?: AgentRuntimeApi }) {
+  const api = options.api ?? agentRuntimeApi;
+  const controller = useMemo(() => new SessionController(api), [api]);
+  const [state, setState] = useState<AgentRuntimeState>(() => initialAgentRuntimeState());
+  const [session, setSession] = useState<AgentRuntimeSession | null>(null);
   const [busy, setBusy] = useState(false);
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const decisionKeys = useRef(new Map<string, string>());
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  const apply = useCallback((response: AgentV6Response, scope: AgentV6Scope) => {
-    setState((current) => responseState(current, response, scope));
-  }, []);
-
-  const ensureSession = useCallback(async (prompt: string, scope: AgentV6Scope) => {
-    if (state.sessionId) return state.sessionId;
-    const created = await agentRuntimeApi.createSession({ ...scope, title: buildTitle(prompt), mode: state.mode });
-    if (created.mode !== state.mode) await agentRuntimeApi.setMode(created.id, { ...scope, mode: state.mode });
-    setSessionTitle(created.title);
-    setState((current) => ({ ...current, sessionId: created.id, mode: created.mode }));
-    const url = new URL(window.location.href);
-    url.searchParams.set("agentSession", created.id);
-    window.history.replaceState(window.history.state, "", url);
+  const applyResponse = useCallback((response: AgentTurnResponse) => setState((current) => reduceAgentTurn(current, response)), []);
+  const ensureSession = useCallback(async (prompt: string) => {
+    if (session?.id) return session.id;
+    const created = await controller.create({ flowId: options.flowId, projectId: options.projectId, title: titleFromPrompt(prompt), mode: "manual_confirmation" });
+    setSession(created);
     return created.id;
-  }, [state.mode, state.sessionId]);
+  }, [controller, options.flowId, options.projectId, session?.id]);
 
-  const submitText = useCallback(async (prompt: string, options: SubmitTextOptions = {}) => {
-    const text = prompt.trim();
-    if (!text || busy) return;
-    setBusy(true);
-    const scope = scopeFromCanvas();
+  const submitTurn = useCallback(async (prompt: string) => {
+    const value = prompt.trim();
+    if (!value || busy) return null;
+    setBusy(true); setError(null);
     try {
-      const sessionId = await ensureSession(text, scope);
-      const response = await agentRuntimeApi.submitTurn(sessionId, {
-        ...scope,
-        prompt: text,
-        idempotencyKey: createIdempotencyKey("turn"),
-        modelKey: options.modelKey ?? null,
-        contextSnapshot: contextFromReferences(scope, options) as never,
-      });
-      apply(response, scope);
-    } catch (error) {
-      setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Agent 暂时无法处理本次请求。", phase: "recoverable_error" }));
-      throw error;
-    } finally {
-      setBusy(false);
-    }
-  }, [apply, busy, ensureSession]);
+      const sessionId = await ensureSession(value);
+      const response = await api.submitTurn(sessionId, { contextSnapshot: options.contextSnapshot, idempotencyKey: idempotencyKey("turn"), prompt: value });
+      applyResponse(response);
+      return response;
+    } catch (cause) { const next = cause instanceof Error ? cause : new Error("Agent 请求失败"); setError(next); throw next; }
+    finally { setBusy(false); }
+  }, [api, applyResponse, busy, ensureSession, options.contextSnapshot]);
 
-  const submitDecision = useCallback(async (decision: AgentRuntimeDecision) => {
-    if (!state.sessionId || !state.turnId || busy) return;
-    setBusy(true);
-    const scope = scopeFromCanvas();
-    const payload = decision.type === "answer_question"
-      ? { answers: { [decision.questionId ?? "answer"]: decision.answer } }
-      : decision.type === "edit_brief"
-        ? { instruction: JSON.stringify({ fields: decision.fields.map((field) => ({ key: field.label, value: field.value })) }) }
-      : decision.type === "result_action"
-        ? { action: decision.action, resultIds: decision.resultIds, ...(decision.instruction ? { instruction: decision.instruction } : {}) }
-        : decision.type === "revise_plan"
-          ? { instruction: decision.instruction }
-        : {};
+  const submitDecision = useCallback(async (input: { blockId: string; type: AgentDecisionType; payload: Record<string, unknown>; graphRevision?: number; decisionId?: string; idempotencyKey?: string }) => {
+    if (!session?.id || !state.latest?.turnId || decisionBusy) return null;
+    const key = input.idempotencyKey ?? decisionKeys.current.get(input.blockId) ?? idempotencyKey(`decision:${input.type}`);
+    decisionKeys.current.set(input.blockId, key);
+    setDecisionBusy(true); setError(null);
     try {
-      const response = await agentRuntimeApi.submitDecision(state.sessionId, state.turnId, {
-        ...scope,
-        type: decision.type,
-        payload,
-        idempotencyKey: createIdempotencyKey("decision"),
-      });
-      apply(response, scope);
-    } catch (error) {
-      setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Agent 决策提交失败。", phase: "recoverable_error" }));
-      throw error;
-    } finally {
-      setBusy(false);
-    }
-  }, [apply, busy, state.sessionId, state.turnId]);
+      const response = await api.submitDecision(session.id, state.latest.turnId, { ...input, idempotencyKey: key });
+      applyResponse(response);
+      return response;
+    } catch (cause) { const next = cause instanceof Error ? cause : new Error("Decision 提交失败"); setError(next); throw next; }
+    finally { setDecisionBusy(false); }
+  }, [api, applyResponse, decisionBusy, session?.id, state.latest?.turnId]);
 
-  const openSession = useCallback(async (sessionId: string) => {
-    const scope = scopeFromCanvas();
+  const openSession = useCallback(async (id: string) => {
+    setBusy(true); setError(null);
     try {
-      const history = await agentRuntimeApi.getHistory(sessionId, scope);
-      setSessionTitle(history.session.title);
-      setState(restoreHistory(history, scope));
-      const url = new URL(window.location.href);
-      url.searchParams.set("agentSession", sessionId);
-      window.history.replaceState(window.history.state, "", url);
-    } catch (error) {
-      setState((current) => ({ ...current, error: error instanceof Error ? error.message : "无法恢复 Agent 会话。", phase: "recoverable_error" }));
-      throw error;
-    }
-  }, []);
-
-  const newConversation = useCallback(() => {
-    setSessionTitle("新对话");
-    setState(createReplayState(scopeFromCanvas()));
-    const url = new URL(window.location.href);
-    url.searchParams.delete("agentSession");
-    window.history.replaceState(window.history.state, "", url);
-  }, []);
-
-  useEffect(() => {
-    const sessionId = initialSessionId ?? new URLSearchParams(window.location.search).get("agentSession");
-    if (sessionId && sessionId !== state.sessionId) void openSession(sessionId);
-  }, [initialSessionId, openSession, state.sessionId]);
-
-  const setExecutionMode = useCallback((mode: AgentExecutionMode) => {
-    setState((current) => ({ ...current, mode }));
-    if (state.sessionId) void agentRuntimeApi.setMode(state.sessionId, { ...scopeFromCanvas(), mode }).catch(() => undefined);
-  }, [state.sessionId]);
-
-  const renameSession = useCallback(async (title: string) => {
-    const next = title.trim();
-    if (!next || !state.sessionId) return;
-    const session = await agentRuntimeApi.renameSession(state.sessionId, { ...scopeFromCanvas(), title: next });
-    setSessionTitle(session.title);
-  }, [state.sessionId]);
-
-  useEffect(() => {
-    if (!state.sessionId || !state.turnId || state.phase !== "executing") return;
-    let disposed = false;
-    const refresh = async () => {
+      const history = await controller.open(id);
+      setSession(history.session);
+      setState((current) => reduceAgentHistory(current, history.turns, current.replayCursor));
       try {
-        const scope = scopeFromCanvas();
-        const latest = await agentRuntimeApi.refreshTurn(state.sessionId!, state.turnId!, scope);
-        if (!disposed) apply(latest, scope);
-      } catch { /* transient worker/API delay; the next poll retries */ }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => { disposed = true; window.clearInterval(timer); };
-  }, [apply, state.phase, state.sessionId, state.turnId]);
+        const replay = await api.listEvents(id, { afterSeq: 0 });
+        setState((current) => reduceAgentEvents(current, replay.events, replay.replayCursor, replay.lastSeq));
+      } catch (cause) {
+        if ((cause as { code?: string } | null)?.code === "REPLAY_RESYNC_REQUIRED" || (cause instanceof Error && cause.message.includes("REPLAY_RESYNC_REQUIRED"))) setState((current) => reduceAgentHistory(current, history.turns, current.replayCursor));
+      }
+      return history;
+    }
+    catch (cause) { const next = cause instanceof Error ? cause : new Error("无法打开会话"); setError(next); throw next; }
+    finally { setBusy(false); }
+  }, [controller]);
+  const newConversation = useCallback(() => { controller.clear(); setSession(null); setState(initialAgentRuntimeState()); setError(null); decisionKeys.current.clear(); }, [controller]);
+  const setMode = useCallback(async (mode: "auto" | "manual_confirmation") => { if (!session?.id) return null; const next = await api.setMode(session.id, mode); setSession(next); return next; }, [api, session?.id]);
+  const cancel = useCallback(async (reason?: string) => { if (!session?.id || !state.latest) return null; const response = await api.cancel(session.id, { graphRevision: state.latest.graphRevision, idempotencyKey: idempotencyKey("cancel"), reason, turnId: state.latest.turnId }); applyResponse(response); return response; }, [api, applyResponse, session?.id, state.latest]);
 
-  return useMemo(() => ({
-    blocks: state.blocks as ConversationBlock[],
-    busy,
-    error: state.error ?? null,
-    graphRevision: state.graphRevision,
-    mode: state.mode,
-    newConversation,
-    openSession,
-    phase: state.phase,
-    results: state.results as ResultRef[],
-    sessionId: state.sessionId ?? null,
-    sessionTitle,
-    setExecutionMode,
-    submitDecision,
-    submitText,
-    renameSession,
-  }), [busy, newConversation, openSession, renameSession, sessionTitle, setExecutionMode, state, submitDecision, submitText]);
+  useEffect(() => {
+    if (!session?.id || !api.streamEvents) return;
+    const controllerAbort = new AbortController();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const consume = async () => {
+      try {
+        await api.streamEvents?.(session.id, { afterSeq: stateRef.current.lastSeq, replayCursor: stateRef.current.replayCursor, signal: controllerAbort.signal }, (event) => {
+          if (event.seq > stateRef.current.lastSeq + 1) {
+            void api.getHistory(session.id).then((history) => setState((current) => reduceAgentHistory(current, history.turns, current.replayCursor))).catch(() => undefined);
+            return;
+          }
+          setState((current) => reduceAgentEvents(current, [event], event.replayCursor, event.seq));
+        });
+      } catch (cause) {
+        if (stopped || controllerAbort.signal.aborted) return;
+        if ((cause as { code?: string } | null)?.code === "REPLAY_RESYNC_REQUIRED" || (cause instanceof Error && cause.message.includes("REPLAY_RESYNC_REQUIRED"))) {
+          try { const history = await api.getHistory(session.id); setState((current) => reduceAgentHistory(current, history.turns, current.replayCursor)); } catch { /* retry below */ }
+        }
+      }
+      if (!stopped) retryTimer = setTimeout(() => { void consume(); }, 250);
+    };
+    void consume();
+    return () => { stopped = true; controllerAbort.abort(); if (retryTimer) clearTimeout(retryTimer); };
+  }, [api, session?.id]);
+
+  return { ...state, session, busy, decisionBusy, error, submitTurn, submitDecision, openSession, newConversation, setMode, cancel };
 }

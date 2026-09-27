@@ -66,6 +66,16 @@ export type AgentDecisionType =
   | "cancel_execution"
   | "retry_execution";
 
+export const AGENT_ERROR_CODES = [
+  "AGENT_PAYLOAD_INVALID", "AGENT_BLOCK_INVALID", "AGENT_SCOPE_FORBIDDEN",
+  "DECISION_ALREADY_RESOLVED", "DECISION_STALE", "GRAPH_REVISION_CONFLICT",
+  "REPLAY_RESYNC_REQUIRED", "PRICING_NOT_FOUND", "MODEL_MODALITY_MISMATCH",
+  "AGENT_PLANNER_UNAVAILABLE", "PROVIDER_EXECUTION_FAILED",
+] as const;
+export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
+export const agentPhaseSchema = { parse(value: unknown): AgentPhase { if (!(typeof value === "string" && ["idle", "understanding", "waiting_for_input", "planning", "waiting_for_confirmation", "executing", "verifying", "presenting_results", "refining", "failed", "cancelled", "recoverable_error"].includes(value))) throw new Error("Invalid AgentPhase"); return value as AgentPhase; } };
+export const agentErrorCodeSchema = { parse(value: unknown): AgentErrorCode { if (typeof value !== "string" || !(AGENT_ERROR_CODES as readonly string[]).includes(value)) throw new Error("Invalid AgentErrorCode"); return value as AgentErrorCode; } };
+
 export type AgentQuestionKind = "text" | "single" | "multiple";
 export type AgentQuestionOption = { id: string; label: string };
 export type AgentQuestion = {
@@ -171,6 +181,33 @@ export type ConversationBlock =
   | AgentProgressBlock
   | AgentResultGroupBlock
   | AgentErrorRecoveryBlock;
+
+export type AgentDecision = {
+  decisionId: string;
+  sessionId: string;
+  turnId: string;
+  blockId: string;
+  type: AgentDecisionType;
+  graphRevision: number;
+  idempotencyKey: string;
+  allowedTypes?: AgentDecisionType[];
+};
+export type AgentErrorResponse = { code: AgentErrorCode; message: string; requestId?: string; retryable: boolean; currentState?: Record<string, unknown>; resyncUrl?: string };
+export type AgentTurnResponse = {
+  sessionId: string;
+  turnId: string;
+  phase: AgentPhase;
+  blocks: ConversationBlock[];
+  contextSnapshot: AgentContextSnapshot;
+  pendingDecision: AgentDecision | null;
+  executionState: AgentExecutionState;
+  replayCursor: string | null;
+  stateVersion: number;
+  graphRevision: number;
+  resultGroupId?: string;
+  error?: AgentErrorResponse;
+};
+export const agentTurnResponseSchema = { parse(value: unknown): AgentTurnResponse { if (!isRecord(value)) throw new Error("Invalid AgentTurnResponse"); const raw = value as Record<string, unknown>; agentPhaseSchema.parse(raw.phase); if (typeof raw.sessionId !== "string" || typeof raw.turnId !== "string" || !Array.isArray(raw.blocks) || typeof raw.stateVersion !== "number" || typeof raw.graphRevision !== "number" || (raw.replayCursor !== null && typeof raw.replayCursor !== "string")) throw new Error("Invalid AgentTurnResponse"); const contextSnapshot = normalizeAgentContextSnapshot(raw.contextSnapshot); const blocks = normalizeConversationBlocks(raw.blocks); const pendingDecision = raw.pendingDecision === null ? null : raw.pendingDecision as AgentDecision; if (pendingDecision && (typeof pendingDecision.decisionId !== "string" || !["answer_question", "edit_brief", "approve_plan", "revise_plan", "result_action", "cancel_execution", "retry_execution"].includes(pendingDecision.type))) throw new Error("Invalid AgentDecision"); const error = isRecord(raw.error) && typeof raw.error.code === "string" ? { code: agentErrorCodeSchema.parse(raw.error.code), message: typeof raw.error.message === "string" ? raw.error.message : "Agent error", retryable: raw.error.retryable === true } : undefined; return { sessionId: raw.sessionId, turnId: raw.turnId, phase: raw.phase as AgentPhase, blocks, contextSnapshot, pendingDecision, executionState: raw.executionState as AgentExecutionState, replayCursor: raw.replayCursor as string | null, stateVersion: raw.stateVersion, graphRevision: raw.graphRevision, ...(typeof raw.resultGroupId === "string" ? { resultGroupId: raw.resultGroupId } : {}), ...(error ? { error } : {}) }; } };
 
 export class AgentProtocolError extends Error {
   readonly code: "AGENT_CONTEXT_UNSAFE" | "AGENT_BLOCK_INVALID";

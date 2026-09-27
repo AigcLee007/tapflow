@@ -963,6 +963,23 @@ export class AgentService {
     return withTenantTransaction(context, async (client) => {
       const session = await this.requireSession(client, sessionId, true);
       this.assertSessionScope({ projectId: session.project_id, flowId: session.flow_id }, scope);
+      const idempotencyKey = typeof (scope as AgentSessionScopeInput & { idempotencyKey?: unknown }).idempotencyKey === "string"
+        ? (scope as AgentSessionScopeInput & { idempotencyKey: string }).idempotencyKey : null;
+      if (idempotencyKey) {
+        const prior = await client.query<{ turn_id: string }>(
+          `SELECT turn_id::text AS turn_id FROM agent_v5_decisions WHERE tenant_id = $1::uuid AND idempotency_key = $2 LIMIT 1`,
+          [context.tenantId, idempotencyKey],
+        );
+        if (prior.rows[0]) {
+          const existing = await client.query<V5TurnRow>(
+            `SELECT id::text AS id, session_id::text AS session_id, blocks_json, conversation_phase, execution_state,
+                    graph_revision::text AS graph_revision, plan_json, requires_confirmation
+               FROM agent_turns WHERE tenant_id = $1::uuid AND id = $2::uuid AND session_id = $3::uuid LIMIT 1`,
+            [context.tenantId, prior.rows[0].turn_id, sessionId],
+          );
+          if (existing.rows[0]) return this.projectV5Turn({ ...existing.rows[0], sessionId });
+        }
+      }
       const found = await client.query<V5TurnRow>(
         `
           SELECT id::text AS id, session_id::text AS session_id, blocks_json, conversation_phase,
@@ -1073,10 +1090,11 @@ export class AgentService {
       );
       await client.query(
         `
-          INSERT INTO agent_v5_decisions (tenant_id, session_id, turn_id, decision_json, from_phase, to_phase, created_by)
-          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5, $6, $7::uuid)
+          INSERT INTO agent_v5_decisions (tenant_id, session_id, turn_id, decision_json, from_phase, to_phase, idempotency_key, created_by)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5, $6, $7, $8::uuid)
+          ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
         `,
-        [context.tenantId, sessionId, turnId, JSON.stringify(decision), fromPhase, nextPhase, context.userId],
+        [context.tenantId, sessionId, turnId, JSON.stringify(decision), fromPhase, nextPhase, idempotencyKey, context.userId],
       );
 
       return this.projectV5Turn({

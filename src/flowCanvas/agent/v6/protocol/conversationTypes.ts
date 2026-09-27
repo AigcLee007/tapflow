@@ -74,6 +74,7 @@ export type AgentContextSnapshot = {
   appRefs: string[];
   modelKey: string | null;
   graphRevision: number;
+  stateVersion: number;
 };
 
 export type AgentDecisionMetadata = {

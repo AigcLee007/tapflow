@@ -132,14 +132,16 @@ describe("Agent V6 server orchestrator", () => {
     expect(service.recordV5Decision).toHaveBeenCalledTimes(1);
   });
 
-  it("delegates confirmed decisions and deduplicates the same turn idempotency key", async () => {
+  it("delegates idempotent requests to the durable service boundary", async () => {
     const service = serviceStub();
     const orchestrator = new AgentV6Orchestrator(service);
     const first = await orchestrator.submitTurn(context, ids.sessionId, input);
     const second = await orchestrator.submitTurn(context, ids.sessionId, input);
 
     expect(second).toEqual(first);
-    expect(service.createV5Turn).toHaveBeenCalledTimes(1);
+    expect(service.createV5Turn).toHaveBeenCalledTimes(2);
+    expect(service.createV5Turn.mock.calls[0]?.[2]).toMatchObject({ idempotencyKey: input.idempotencyKey });
+    expect(service.createV5Turn.mock.calls[1]?.[2]).toMatchObject({ idempotencyKey: input.idempotencyKey });
 
     const result = await orchestrator.submitDecision(context, ids.sessionId, ids.turnId, {
       flowId: ids.flowId,

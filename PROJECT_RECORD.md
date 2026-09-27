@@ -7008,3 +7008,9 @@ Added email-code password recovery: request/resend/confirm APIs, hashed one-time
 - Added migrations `000101_platform_bootstrap_target_helper.sql`, `000102_platform_bootstrap_target_check.sql`, and `000103_platform_bootstrap_target_helper_acl.sql` to keep the deployment-only bootstrap target validation in a table-owner security-definer helper. Existing deployed migrations `000086` and `000098`-`000100` remain unchanged so their recorded checksums stay valid.
 - Added focused migration assertions covering the owner-safe helper, replacement function, temporary role membership, and cleanup. Database package tests pass (64 passed, 38 skipped without PostgreSQL), and the database package build passes.
 - Commit `9f32c6cc` was pushed to `main`. Real staging migration/bootstrap verification remains pending; Docker/PostgreSQL was unavailable in the local environment.
+
+## 2026-09-27 - P1 release commit synchronized with main
+
+- Rebased the P1 canonical Agent/runtime changes onto the current `origin/main` history without force-pushing. The durable runtime migration was renumbered to `000104_agent_runtime_reliability.sql` because migration `000085` is already occupied by deployed result-lineage history.
+- Kept the remote Runtime core and existing platform changes intact while retaining the P1 canonical frontend boundary, default-off runtime build flag, replay/UI additions, and Vitest temporary-tree exclusions. The two untracked local planning documents that conflicted during rebase were preserved outside the repository.
+- API build and DB/AI Gateway focused suites pass after synchronization. Remaining API test failures are existing platform/AI Gateway infrastructure cases: one V6 idempotency expectation, one credential permission fixture, and one test requiring `DATABASE_URL`. No provider, worker, billing, execution flag, or deployment action was performed here.

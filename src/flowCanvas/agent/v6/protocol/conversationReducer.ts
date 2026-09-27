@@ -78,6 +78,7 @@ export function initialConversationState(overrides: Partial<ConversationState> =
     turnId,
     error: typeof overrides.error === "string" ? boundedText(overrides.error, AGENT_V6_TEXT_MAX_LENGTH) : null,
     graphRevision,
+    stateVersion: typeof overrides.stateVersion === "number" && Number.isInteger(overrides.stateVersion) && overrides.stateVersion >= 0 ? overrides.stateVersion : 0,
     plan: normalizePlan(overrides.plan ?? undefined),
     contextSnapshot: context,
     replaySeq: typeof overrides.replaySeq === "number" && Number.isInteger(overrides.replaySeq) && overrides.replaySeq >= 0 ? overrides.replaySeq : 0,

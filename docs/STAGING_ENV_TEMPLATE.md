@@ -318,6 +318,7 @@ Relay D:
 - `VITE_AGENT_SKILLS_ENABLED = false`
 - `VITE_AGENT_SKILL_AUTHORING_ENABLED = false`
 - `VITE_AGENT_SKILL_RUNTIME_ENABLED = false`
+- `VITE_AGENT_RUNTIME_CANONICAL = false`
 - `Agent v2 rollout note = enable API/runtime flags only after migration and focused smoke tests; enable the matching Vite flags in the same frontend build. Keep all flags false for rollback.`
 - `Agent V3 rollout note = the two server flags are conjunctive; enable V3 only when both AGENT_V3_ENABLED and AGENT_V3_RUNTIME_ENABLED are true. Keep V3 and Vite flags false by default. Production/staging must not silently fall back to another runtime.`
 - `AGENT_PLANNER_ENABLED = false`

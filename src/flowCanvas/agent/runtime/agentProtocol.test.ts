@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  agentErrorCodeSchema,
+  agentPhaseSchema,
+  agentTurnResponseSchema,
   normalizeAgentContextSnapshot,
   normalizeConversationBlocks,
   type AgentContextSnapshot,
@@ -83,5 +86,15 @@ describe("canonical agent protocol", () => {
     expect(() => normalizeConversationBlocks([{ type: "understanding", text: "ok", provider: "secret" }])).toThrowError("AGENT_BLOCK_INVALID");
     expect(() => normalizeConversationBlocks([{ type: "understanding", text: "data:image/png;base64,abc" }])).toThrowError("AGENT_BLOCK_INVALID");
     expect(() => normalizeConversationBlocks([{ type: "not-a-block", text: "ok" }])).toThrowError("AGENT_BLOCK_INVALID");
+  });
+
+  it("shares the canonical response and error vocabulary with the server", () => {
+    expect(agentPhaseSchema.parse("recoverable_error")).toBe("recoverable_error");
+    expect(agentErrorCodeSchema.parse("REPLAY_RESYNC_REQUIRED")).toBe("REPLAY_RESYNC_REQUIRED");
+    expect(agentTurnResponseSchema.parse({
+      sessionId: "session-1", turnId: "turn-1", phase: "waiting_for_input", blocks: [],
+      contextSnapshot: snapshot, pendingDecision: null, executionState: "idle", replayCursor: "event-1",
+      stateVersion: 3, graphRevision: 7,
+    })).toMatchObject({ replayCursor: "event-1", stateVersion: 3 });
   });
 });

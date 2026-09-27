@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { agentContextSnapshotSchema, agentDecisionTypeSchema } from "./runtime/agent-protocol.js";
+
 export const viewportSchema = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
@@ -58,6 +60,8 @@ export const getAgentEventsQuerySchema = z.object({
   afterSeq: z.coerce.number().int().nonnegative().optional(),
   flowId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional(),
+  replayCursor: z.string().trim().min(1).max(200).optional(),
+  follow: z.coerce.boolean().optional(),
 });
 
 export const agentSessionScopeSchema = z.object({
@@ -126,6 +130,21 @@ export const createAgentTurnSchema = z.object({
   referenceContext: agentReferenceContextSchema.optional(),
   snapshot: canvasAgentSnapshotSchema,
 });
+
+export const canonicalAgentTurnSchema = z.object({
+  contextSnapshot: agentContextSnapshotSchema,
+  idempotencyKey: z.string().trim().min(1).max(200),
+  prompt: z.string().trim().min(1).max(8_000),
+}).strict();
+
+export const canonicalAgentDecisionSchema = z.object({
+  blockId: z.string().trim().min(1).max(200),
+  decisionId: z.string().trim().min(1).max(200).optional(),
+  graphRevision: z.number().int().nonnegative().optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+  payload: z.record(z.string(), z.unknown()).default({}),
+  type: agentDecisionTypeSchema,
+}).strict();
 
 /**
  * V5 keeps the composer contract deliberately small and product-facing.  It
