@@ -27,10 +27,10 @@ export function useAgentRuntime(options: { projectId: string | null; flowId: str
 
   const applyResponse = useCallback((response: AgentTurnResponse) => setState((current) => reduceAgentTurn(current, response)), []);
   const ensureSession = useCallback(async (prompt: string) => {
-    if (session?.id) return session.id;
+    if (session?.id) return session;
     const created = await controller.create({ flowId: options.flowId, projectId: options.projectId, title: titleFromPrompt(prompt), mode: "manual_confirmation" });
     setSession(created);
-    return created.id;
+    return created;
   }, [controller, options.flowId, options.projectId, session?.id]);
 
   const submitTurn = useCallback(async (prompt: string) => {
@@ -38,8 +38,11 @@ export function useAgentRuntime(options: { projectId: string | null; flowId: str
     if (!value || busy) return null;
     setBusy(true); setError(null);
     try {
-      const sessionId = await ensureSession(value);
-      const response = await api.submitTurn(sessionId, { contextSnapshot: options.contextSnapshot, idempotencyKey: idempotencyKey("turn"), prompt: value });
+      const currentSession = await ensureSession(value);
+      const contextSnapshot = currentSession.graphRevision === undefined
+        ? options.contextSnapshot
+        : { ...options.contextSnapshot, graphRevision: currentSession.graphRevision };
+      const response = await api.submitTurn(currentSession.id, { contextSnapshot, idempotencyKey: idempotencyKey("turn"), prompt: value });
       applyResponse(response);
       return response;
     } catch (cause) { const next = cause instanceof Error ? cause : new Error("Agent 请求失败"); setError(next); throw next; }
