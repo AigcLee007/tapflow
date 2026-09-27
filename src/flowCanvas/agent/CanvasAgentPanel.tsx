@@ -219,7 +219,14 @@ function CanvasAgentV6Panel(props: CanvasAgentPanelProps) {
   const busy = session.phase === "understanding" || session.phase === "executing";
   const handleBlockAction = React.useCallback((action: AgentV6BlockAction) => {
     if (action.type === "select_choice") {
-      void session.submitDecision({ type: "select_choice", optionIds: action.optionIds });
+      const recoveryAction = action.blockId === "recovery" ? action.optionIds[0] : undefined;
+      if (recoveryAction === "retry") {
+        void session.submitDecision({ type: "retry_execution" });
+      } else if (recoveryAction === "revise") {
+        void session.submitDecision({ type: "revise_plan" });
+      } else {
+        void session.submitDecision({ type: "select_choice", optionIds: action.optionIds });
+      }
     } else if (action.type === "answer_question") {
       void session.submitDecision({ type: "select_choice", optionIds: [action.value] });
     } else if (action.type === "confirm_execution") {

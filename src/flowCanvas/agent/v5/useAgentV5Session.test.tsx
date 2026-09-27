@@ -47,6 +47,7 @@ describe("useAgentV5Session", () => {
         },
       ],
       phase: "waiting_for_choice",
+      graphRevision: 7,
       sessionId: "00000000-0000-4000-8000-000000000003",
       turnId: "00000000-0000-4000-8000-000000000004",
     });
@@ -125,6 +126,30 @@ describe("useAgentV5Session", () => {
       blocks: [expect.objectContaining({ type: "brief_card" })],
       phase: "drafting_brief",
     });
+  });
+
+  it("binds recovery decisions to the durable turn graph revision", async () => {
+    submitAgentV5Decision.mockResolvedValue({
+      blocks: [],
+      graphRevision: 7,
+      phase: "recoverable_error",
+      sessionId: "00000000-0000-4000-8000-000000000003",
+      turnId: "00000000-0000-4000-8000-000000000004",
+    });
+    const { result } = renderHook(() => useAgentV5Session());
+
+    await act(async () => {
+      await result.current.submitText("设计儿童陪伴玩具");
+    });
+    await act(async () => {
+      await result.current.submitDecision({ type: "retry_execution" });
+    });
+
+    expect(submitAgentV5Decision).toHaveBeenLastCalledWith(
+      "00000000-0000-4000-8000-000000000003",
+      "00000000-0000-4000-8000-000000000004",
+      { graphRevision: 7, type: "retry_execution" },
+    );
   });
 
   it("hydrates durable V5 blocks and phase when opening a historical session", async () => {

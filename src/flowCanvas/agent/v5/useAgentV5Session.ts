@@ -88,6 +88,9 @@ export function useAgentV5Session() {
         ...current,
         blocks,
         confirmed: phase === "executing" ? current.confirmed : false,
+        contextSnapshot: response.graphRevision === undefined
+          ? current.contextSnapshot
+          : { ...current.contextSnapshot, graphRevision: response.graphRevision },
         error: null,
         phase,
         results: resultRefsFromBlocks(blocks),
@@ -147,14 +150,17 @@ export function useAgentV5Session() {
   const submitDecision = useCallback(async (decision: AgentDecision) => {
     if (!sessionId || !state.turnId) return;
     try {
-      const response = await submitAgentV5Decision(sessionId, state.turnId, decision as Record<string, unknown>);
+      const decisionWithRevision = (decision.type === "retry_execution" || decision.type === "revise_plan") && decision.graphRevision === undefined
+        ? { ...decision, graphRevision: state.contextSnapshot.graphRevision }
+        : decision;
+      const response = await submitAgentV5Decision(sessionId, state.turnId, decisionWithRevision as Record<string, unknown>);
       applyTurnResponse({ ...response, sessionId: response.sessionId || sessionId, turnId: response.turnId || state.turnId });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Agent 决策提交失败。";
       setState((current) => reduceAgentV5State(current, { error: message, type: "turn_failed" }));
       throw error;
     }
-  }, [applyTurnResponse, sessionId, state.turnId]);
+  }, [applyTurnResponse, sessionId, state.contextSnapshot.graphRevision, state.turnId]);
 
   const openSession = useCallback(async (nextSessionId: string) => {
     const history = await getAgentSessionHistory(nextSessionId);

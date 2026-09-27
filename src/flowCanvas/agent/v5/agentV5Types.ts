@@ -153,6 +153,8 @@ export type AgentDecision =
     }
   | { type: "confirm"; decisionId?: string }
   | { type: "cancel"; decisionId?: string; reason?: string }
+  | { type: "retry_execution"; decisionId?: string; graphRevision?: number; idempotencyKey?: string }
+  | { type: "revise_plan"; decisionId?: string; prompt?: string; graphRevision?: number; idempotencyKey?: string }
   | { type: "select_choice"; questionId?: string; optionIds: string[] }
   | { type: "update_brief"; field: string; value: string }
   | { type: "run_skill"; skillId: string; decisionId?: string }

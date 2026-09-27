@@ -7,6 +7,7 @@ import { normalizeAgentV5Blocks } from "./agentV5Blocks";
 export type AgentV5TurnResponse = {
   blocks: ConversationBlock[];
   executionState?: string;
+  graphRevision?: number;
   phase: AgentV5Phase;
   sessionId: string;
   turnId: string;
@@ -29,6 +30,7 @@ function normalizeResponse(value: unknown): AgentV5TurnResponse {
   return {
     blocks: normalizeAgentV5Blocks(record.blocks ?? record.conversationBlocks ?? record.message),
     executionState: typeof record.executionState === "string" ? record.executionState : undefined,
+    graphRevision: typeof record.graphRevision === "number" && Number.isInteger(record.graphRevision) && record.graphRevision >= 0 ? record.graphRevision : undefined,
     phase,
     sessionId: typeof record.sessionId === "string" ? record.sessionId : "",
     turnId: typeof record.turnId === "string" ? record.turnId : "",
@@ -46,10 +48,10 @@ export function submitAgentV5Turn(sessionId: string, input: AgentV5TurnInput) {
 }
 
 export function submitAgentV5Decision(sessionId: string, turnId: string, decision: Record<string, unknown>) {
-  const type = decision.type === "confirm" ? "approve_plan" : decision.type === "cancel" ? "cancel_execution" : decision.type === "select_choice" ? "answer_question" : decision.type === "update_brief" ? "edit_brief" : decision.type === "result_action" || decision.type === "refine" || typeof decision.action === "string" ? "result_action" : "revise_plan";
+  const type = decision.type === "confirm" ? "approve_plan" : decision.type === "cancel" ? "cancel_execution" : decision.type === "retry_execution" ? "retry_execution" : decision.type === "revise_plan" ? "revise_plan" : decision.type === "select_choice" ? "answer_question" : decision.type === "update_brief" ? "edit_brief" : decision.type === "result_action" || decision.type === "refine" || typeof decision.action === "string" ? "result_action" : "revise_plan";
   const resultAction = decision.action === "place" || decision.action === "select" || decision.action === "reference" || decision.action === "variant" || decision.action === "edit" ? decision.action : "variant";
   const resultIds = Array.isArray(decision.resultIds) ? decision.resultIds.filter((value): value is string => typeof value === "string") : typeof decision.resultId === "string" ? [decision.resultId] : [];
-  const payload = type === "approve_plan" || type === "cancel_execution" ? {} : type === "answer_question" ? { answers: { [String(decision.questionId ?? "answer")]: Array.isArray(decision.optionIds) ? decision.optionIds[0] : "" } } : type === "edit_brief" ? { instruction: `${String(decision.field ?? "")}: ${String(decision.value ?? "")}` } : type === "result_action" ? { action: resultAction, resultIds, ...(typeof decision.prompt === "string" ? { instruction: decision.prompt } : {}) } : { instruction: typeof decision.prompt === "string" ? decision.prompt : "修改计划" };
+  const payload = type === "approve_plan" || type === "cancel_execution" || type === "retry_execution" ? {} : type === "answer_question" ? { answers: { [String(decision.questionId ?? "answer")]: Array.isArray(decision.optionIds) ? decision.optionIds[0] : "" } } : type === "edit_brief" ? { instruction: `${String(decision.field ?? "")}: ${String(decision.value ?? "")}` } : type === "result_action" ? { action: resultAction, resultIds, ...(typeof decision.prompt === "string" ? { instruction: decision.prompt } : {}) } : { instruction: typeof decision.prompt === "string" ? decision.prompt : "修改计划" };
   return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}/decisions`, { graphRevision: typeof decision.graphRevision === "number" ? decision.graphRevision : 0, idempotencyKey: typeof decision.idempotencyKey === "string" ? decision.idempotencyKey : `decision-${Date.now()}`, type, payload }).then(normalizeResponse);
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { apiPost } from "../../../services/v2HttpClient";
-import { submitAgentV5Turn } from "./agentV5Api";
+import { submitAgentV5Decision, submitAgentV5Turn } from "./agentV5Api";
 
 vi.mock("../../../services/v2HttpClient", () => ({
   apiGet: vi.fn(),
@@ -29,5 +29,18 @@ describe("submitAgentV5Turn", () => {
     expect(apiPost).toHaveBeenCalledWith("/agent/sessions/s/turns", expect.objectContaining({
       contextSnapshot: expect.objectContaining({ graphRevision: 7 }),
     }));
+  });
+
+  it("sends recovery actions as canonical retry decisions", async () => {
+    vi.mocked(apiPost).mockResolvedValue({ sessionId: "s", turnId: "t", phase: "executing", blocks: [] });
+
+    await submitAgentV5Decision("s", "t", { type: "retry_execution", graphRevision: 3, idempotencyKey: "retry-1" });
+
+    expect(apiPost).toHaveBeenCalledWith("/agent/sessions/s/turns/t/decisions", {
+      graphRevision: 3,
+      idempotencyKey: "retry-1",
+      payload: {},
+      type: "retry_execution",
+    });
   });
 });
