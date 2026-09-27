@@ -160,7 +160,7 @@ function plan(value: unknown): ConfirmationPlan {
   };
 }
 
-function normalizeOne(raw: unknown): ConversationBlock | undefined {
+function normalizeOne(raw: unknown): ConversationBlock | ConversationBlock[] | undefined {
   if (typeof raw === "string") {
     const paragraph = text(raw);
     return paragraph ? { type: "paragraph", text: paragraph } : undefined;
@@ -265,6 +265,22 @@ function normalizeOne(raw: unknown): ConversationBlock | undefined {
       const title = text(raw.title, AGENT_V5_LABEL_MAX_LENGTH);
       return steps.length ? { type: "progress_card", ...(title ? { title } : {}), steps } : undefined;
     }
+    case "error_recovery": {
+      const message = text(raw.message);
+      if (!message) return undefined;
+      const recoveryOptions = Array.isArray(raw.actions)
+        ? raw.actions.slice(0, AGENT_V5_MAX_ITEMS).filter(isRecord).map((action) => {
+          const actionId = id(action.id ?? action.action);
+          const label = text(action.label, AGENT_V5_LABEL_MAX_LENGTH);
+          return actionId && label ? { id: actionId, label } : undefined;
+        }).filter((action): action is AgentOption => Boolean(action))
+        : [];
+      const recoveryId = id(raw.id) ?? "recovery";
+      return [
+        { type: "paragraph", text: message },
+        ...(recoveryOptions.length ? [{ type: "choice_grid" as const, id: recoveryId, title: "恢复任务", options: recoveryOptions, selectionMode: "single" as const }] : []),
+      ];
+    }
     case "result_group": {
       const parsedResults = results(raw.results);
       const title = text(raw.title, AGENT_V5_LABEL_MAX_LENGTH);
@@ -282,6 +298,8 @@ export function normalizeAgentV5Blocks(input: unknown): ConversationBlock[] {
   const values = typeof input === "string" ? [input] : Array.isArray(input) ? input : [];
   return values
     .slice(0, AGENT_V5_MAX_ITEMS)
-    .map(normalizeOne)
-    .filter((block): block is ConversationBlock => Boolean(block));
+    .flatMap((value) => {
+      const block = normalizeOne(value);
+      return Array.isArray(block) ? block : block ? [block] : [];
+    });
 }

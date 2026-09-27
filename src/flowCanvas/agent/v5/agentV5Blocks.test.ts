@@ -81,4 +81,28 @@ describe("agent V5 block normalization", () => {
       { type: "divider", html: "<script>bad</script>", provider: "private" },
     ])).toEqual([{ type: "divider" }]);
   });
+
+  it("projects canonical recovery blocks so planner failures are visible and actionable", () => {
+    expect(normalizeAgentV5Blocks([{
+      type: "error_recovery",
+      id: "recovery",
+      message: "规划器暂时不可用",
+      actions: [
+        { id: "retry", label: "重试恢复", action: "retry" },
+        { id: "revise", label: "修改计划", action: "revise" },
+      ],
+    }])).toEqual([
+      { type: "paragraph", text: "规划器暂时不可用" },
+      {
+        type: "choice_grid",
+        id: "recovery",
+        title: "恢复任务",
+        options: [
+          { id: "retry", label: "重试恢复" },
+          { id: "revise", label: "修改计划" },
+        ],
+        selectionMode: "single",
+      },
+    ]);
+  });
 });
