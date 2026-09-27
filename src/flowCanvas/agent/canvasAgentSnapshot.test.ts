@@ -7,6 +7,7 @@ describe("buildCanvasAgentSnapshot", () => {
     const snapshot = buildCanvasAgentSnapshot({
       edges: [],
       flowId: "flow-1",
+      graphRevision: 7,
       nodeOutputs: {
         "image-1": {
           assets: [
@@ -42,6 +43,7 @@ describe("buildCanvasAgentSnapshot", () => {
     });
 
     expect(snapshot.selectedNodeIds).toEqual(["image-1"]);
+    expect(snapshot.graphRevision).toBe(7);
     expect(snapshot.nodes[0]).toMatchObject({
       assetId: "asset-1",
       id: "image-1",

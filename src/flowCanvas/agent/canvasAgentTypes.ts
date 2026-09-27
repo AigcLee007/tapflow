@@ -101,6 +101,7 @@ export type CanvasAgentSnapshot = {
     }
   >;
   flowId: string | null;
+  graphRevision?: number;
   nodeOutputs: Record<
     string,
     {

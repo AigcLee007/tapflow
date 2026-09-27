@@ -6,6 +6,7 @@ import type { CanvasAgentSnapshot } from "./canvasAgentTypes";
 type SnapshotInput = {
   edges: Edge<FlowEdgeData>[];
   flowId: string | null;
+  graphRevision?: number;
   nodeOutputs: Record<string, FlowRuntimeNodeOutput>;
   nodes: Node<FlowNodeData>[];
   projectId: string | null;
@@ -31,6 +32,7 @@ export function buildCanvasAgentSnapshot(input: SnapshotInput): CanvasAgentSnaps
       targetHandle: edge.targetHandle ?? null,
     })),
     flowId: input.flowId,
+    ...(Number.isSafeInteger(input.graphRevision) && input.graphRevision >= 0 ? { graphRevision: input.graphRevision } : {}),
     nodeOutputs: Object.fromEntries(
       Object.entries(input.nodeOutputs).map(([nodeId, output]) => [nodeId, compactRuntimeOutput(output)]),
     ),

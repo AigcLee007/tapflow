@@ -38,7 +38,10 @@ function normalizeResponse(value: unknown): AgentV5TurnResponse {
 export function submitAgentV5Turn(sessionId: string, input: AgentV5TurnInput) {
   const source = input.contextSnapshot ?? {};
   const refs = Array.isArray((source as Record<string, unknown>).refs) ? (source as Record<string, unknown>).refs : (input.referenceContext?.items ?? []).map((item) => ({ refId: item.refId, source: item.kind === "upload" ? "upload" : item.kind === "canvas_node" ? "canvas" : "asset", assetId: item.assetId, nodeId: item.nodeId, label: item.label }));
-  const contextSnapshot = { projectId: typeof (source as Record<string, unknown>).projectId === "string" ? (source as Record<string, unknown>).projectId : input.snapshot.projectId, flowId: typeof (source as Record<string, unknown>).flowId === "string" ? (source as Record<string, unknown>).flowId : input.snapshot.flowId, graphRevision: typeof (source as Record<string, unknown>).graphRevision === "number" ? (source as Record<string, unknown>).graphRevision : 0, refs, skillIds: [], appIds: [], modelKey: input.modelKey ?? null };
+  const graphRevision = typeof (source as Record<string, unknown>).graphRevision === "number"
+    ? (source as Record<string, unknown>).graphRevision
+    : input.snapshot.graphRevision;
+  const contextSnapshot = { projectId: typeof (source as Record<string, unknown>).projectId === "string" ? (source as Record<string, unknown>).projectId : input.snapshot.projectId, flowId: typeof (source as Record<string, unknown>).flowId === "string" ? (source as Record<string, unknown>).flowId : input.snapshot.flowId, graphRevision: typeof graphRevision === "number" ? graphRevision : 0, refs, skillIds: [], appIds: [], modelKey: input.modelKey ?? null };
   return apiPost<unknown>(`/agent/sessions/${encodeURIComponent(sessionId)}/turns`, { contextSnapshot, idempotencyKey: `turn-${Date.now()}`, prompt: input.prompt }).then(normalizeResponse);
 }
 

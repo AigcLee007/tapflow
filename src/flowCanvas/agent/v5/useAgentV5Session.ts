@@ -102,6 +102,7 @@ export function useAgentV5Session() {
     return buildCanvasAgentSnapshot({
       edges: canvas.edges,
       flowId: canvas.backendFlowId,
+      graphRevision: canvas.version,
       nodeOutputs: canvas.nodeOutputByNodeId,
       nodes: canvas.nodes,
       projectId: canvas.backendProjectId ?? canvas.projectId ?? null,
