@@ -49,6 +49,8 @@ type Modality = "image" | "text" | "video";
 
 type RouteEditorState = {
   adminNotes: string;
+  /** Text routes only: advertise streaming + tool calling so the canvas agent may use it. */
+  agentToolCalling?: boolean;
   apiMode: string;
   connectionId: string;
   internalLabel: string;
@@ -209,9 +211,36 @@ function findAdminRouteByKey(routes: AdminRoute[], routeKey: string | null | und
   return routes.find((item) => item.routeKey === routeKey) ?? null;
 }
 
+function readRouteCapabilities(route: AdminRoute | null): Record<string, unknown> {
+  const capabilities = route?.requestConfig?.capabilities;
+  return capabilities && typeof capabilities === "object" && !Array.isArray(capabilities)
+    ? capabilities as Record<string, unknown>
+    : {};
+}
+
+/** The gateway only lets the agent use a route that explicitly advertises both flags. */
+function readAgentToolCalling(route: AdminRoute | null): boolean {
+  const capabilities = readRouteCapabilities(route);
+  return capabilities.supportsTextStreaming === true && capabilities.supportsToolCalling === true;
+}
+
+function withAgentToolCalling(route: AdminRoute, enabled: boolean): Record<string, unknown> {
+  const { supportsTextStreaming, ...otherCapabilities } = readRouteCapabilities(route);
+  return {
+    ...route.requestConfig,
+    capabilities: {
+      ...otherCapabilities,
+      // Turning the switch off only withdraws tool calling; plain streaming stays as it was.
+      ...(enabled ? { supportsTextStreaming: true } : supportsTextStreaming !== undefined ? { supportsTextStreaming } : {}),
+      supportsToolCalling: enabled,
+    },
+  };
+}
+
 function buildEditorState(route: AdminRoute | null): RouteEditorState {
   return {
     adminNotes: route?.adminNotes ?? "",
+    agentToolCalling: readAgentToolCalling(route),
     apiMode: route?.apiMode ?? "",
     connectionId: route?.connectionId ?? "",
     internalLabel: route?.internalLabel ?? "",
@@ -665,6 +694,12 @@ export function AiSettingsPage() {
         routeLabel: editor.routeLabel.trim() || null,
         status: editor.status,
         upstreamModel: editor.upstreamModel.trim() || null,
+        // Only send requestConfig when the agent switch actually changed, so
+        // ordinary saves never rewrite the stored route config.
+        ...(selectedAdminRoute.modality === "text"
+          && Boolean(editor.agentToolCalling) !== readAgentToolCalling(selectedAdminRoute)
+          ? { requestConfig: withAgentToolCalling(selectedAdminRoute, Boolean(editor.agentToolCalling)) }
+          : {}),
       } : { routeLabel: editor.routeLabel.trim() || null, status: editor.status });
       setMessage(`已保存线路：${updatedRoute.routeLabel || updatedRoute.routeKey}`);
       await refresh();
@@ -1537,6 +1572,25 @@ export function AiSettingsPage() {
                             value={editor.requestPath}
                           />
                         </label>
+                        {selectedAdminRoute?.modality === "text" ? (
+                          <label className="flex items-start gap-3 md:col-span-2">
+                            <input
+                              checked={Boolean(editor.agentToolCalling)}
+                              className="mt-0.5 h-4 w-4 accent-sky-400"
+                              disabled={!canConfigure || !isSelectedRouteEditable}
+                              onChange={(event) =>
+                                setEditor((current) => ({ ...current, agentToolCalling: event.target.checked }))
+                              }
+                              type="checkbox"
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-slate-200">供画布 Agent 使用（流式输出 + 工具调用）</span>
+                              <span className="mt-1 block text-xs text-slate-400">
+                                上游需支持工具调用。GPT 用 chat-completions 或 responses 模式，Claude 用 claude 或 chat-completions，Gemini 中转线路请用 chat-completions。
+                              </span>
+                            </span>
+                          </label>
+                        ) : null}
                         <label className="block md:col-span-2">
                           <span className="mb-1.5 block text-xs font-medium text-slate-400">管理备注</span>
                           <textarea

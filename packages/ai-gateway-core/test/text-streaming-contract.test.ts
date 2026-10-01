@@ -178,3 +178,187 @@ describe("text streaming gateway contract", () => {
     ]);
   });
 });
+
+/** A second-round request: the model already called a tool and we return its result. */
+const toolLoopRequest: TextGenerationRequest = {
+  messages: [
+    { content: "You are a canvas agent", role: "system" },
+    { content: "Look at my canvas", role: "user" },
+    {
+      content: "",
+      role: "assistant",
+      toolCalls: [{ arguments: '{"scope":"all"}', callId: "call-1", name: "canvas_inspect" }],
+    },
+    { content: '{"nodes":3}', role: "tool", toolCallId: "call-1", toolName: "canvas_inspect" },
+  ],
+  tools: request.tools,
+  toolChoice: "auto",
+};
+
+function providerContext(requestConfig: Record<string, unknown>) {
+  return {
+    apiKey: "secret",
+    baseUrl: "https://provider.example",
+    modelKey: "product-model",
+    providerKey: "provider",
+    requestConfig,
+    routeId: "route",
+    routeKey: "text.route",
+    timeoutMs: 1000,
+  };
+}
+
+function sse(frames: unknown[]): Response {
+  return new Response(
+    [...frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`), "data: [DONE]\n\n"].join(""),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function capturingFetch(frames: unknown[]) {
+  const bodies: Array<Record<string, unknown>> = [];
+  const fetchImplementation = async (_url: string, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return sse(frames);
+  };
+  return { bodies, fetchImplementation: fetchImplementation as typeof fetch };
+}
+
+describe("tool-calling loop round trip", () => {
+  test("OpenAI chat mode sends assistant tool_calls and tool results", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
+    const adapter = new OpenAiCompatibleTextAdapter({ fetchImplementation });
+    await collect(adapter.streamText!(providerContext({}), toolLoopRequest));
+
+    expect(bodies[0]!.messages).toEqual([
+      { content: "You are a canvas agent", role: "system" },
+      { content: "Look at my canvas", role: "user" },
+      {
+        content: null,
+        role: "assistant",
+        tool_calls: [{ function: { arguments: '{"scope":"all"}', name: "canvas_inspect" }, id: "call-1", type: "function" }],
+      },
+      { content: '{"nodes":3}', role: "tool", tool_call_id: "call-1" },
+    ]);
+  });
+
+  test("OpenAI responses mode sends function_call items and function_call_output", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([{ type: "response.completed", response: {} }]);
+    const adapter = new OpenAiCompatibleTextAdapter({ fetchImplementation });
+    await collect(adapter.streamText!(providerContext({ apiMode: "responses" }), toolLoopRequest));
+
+    expect(bodies[0]!.input).toEqual([
+      { content: "You are a canvas agent", role: "system" },
+      { content: "Look at my canvas", role: "user" },
+      { arguments: '{"scope":"all"}', call_id: "call-1", name: "canvas_inspect", type: "function_call" },
+      { call_id: "call-1", output: '{"nodes":3}', type: "function_call_output" },
+    ]);
+  });
+
+  test("OpenAI responses mode joins name and argument deltas under call_id and reports tool_calls", async () => {
+    const { fetchImplementation } = capturingFetch([
+      { type: "response.output_item.added", item: { type: "function_call", id: "fc_item_1", call_id: "call_abc", name: "canvas.apply_ops" } },
+      { type: "response.function_call_arguments.delta", item_id: "fc_item_1", delta: '{"title":' },
+      { type: "response.function_call_arguments.delta", item_id: "fc_item_1", delta: '"Draft"}' },
+      { type: "response.completed", response: { usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 } } },
+    ]);
+    const gateway = new AiGateway({ test: new OpenAiCompatibleTextAdapter({ fetchImplementation }) });
+    const responsesRoute = route({ supportsTextStreaming: true, supportsToolCalling: true });
+    responsesRoute.requestConfig = { ...responsesRoute.requestConfig, apiMode: "responses" };
+
+    const events = await collect(gateway.streamText({ apiKey: "secret", request, route: responsesRoute }));
+
+    expect(events.filter((event) => event.type === "tool_call")).toEqual([
+      { type: "tool_call", callId: "call_abc", name: "canvas.apply_ops", arguments: '{"title":"Draft"}' },
+    ]);
+    expect(events.at(-1)).toEqual({ type: "done", finishReason: "tool_calls" });
+  });
+
+  test("relay claude protocol sends tool_use / tool_result blocks and merges consecutive results", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([{ type: "message_delta", delta: { stop_reason: "end_turn" } }]);
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation });
+    const twoResults: TextGenerationRequest = {
+      ...toolLoopRequest,
+      messages: [
+        { content: "Look at my canvas", role: "user" },
+        {
+          content: "Checking.",
+          role: "assistant",
+          toolCalls: [
+            { arguments: '{"scope":"all"}', callId: "toolu_1", name: "canvas_inspect" },
+            { arguments: "not json", callId: "toolu_2", name: "asset_search" },
+          ],
+        },
+        { content: '{"nodes":3}', role: "tool", toolCallId: "toolu_1" },
+        { content: '{"assets":[]}', role: "tool", toolCallId: "toolu_2" },
+      ],
+    };
+    await collect(adapter.streamText!(providerContext({ protocol: "claude" }), twoResults));
+
+    expect(bodies[0]!.messages).toEqual([
+      { content: "Look at my canvas", role: "user" },
+      {
+        content: [
+          { text: "Checking.", type: "text" },
+          { id: "toolu_1", input: { scope: "all" }, name: "canvas_inspect", type: "tool_use" },
+          { id: "toolu_2", input: {}, name: "asset_search", type: "tool_use" },
+        ],
+        role: "assistant",
+      },
+      {
+        content: [
+          { content: '{"nodes":3}', tool_use_id: "toolu_1", type: "tool_result" },
+          { content: '{"assets":[]}', tool_use_id: "toolu_2", type: "tool_result" },
+        ],
+        role: "user",
+      },
+    ]);
+  });
+
+  test("relay claude protocol keys argument deltas by the tool_use id and normalizes tool_use stop", async () => {
+    const { fetchImplementation } = capturingFetch([
+      { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_9", name: "canvas.apply_ops" } },
+      { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"title":' } },
+      { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '"Draft"}' } },
+      { type: "message_delta", delta: { stop_reason: "tool_use" } },
+    ]);
+    const gateway = new AiGateway({ test: new AittcoTextRelayAdapter({ fetchImplementation }) });
+    const claudeRoute = route({ supportsTextStreaming: true, supportsToolCalling: true });
+    claudeRoute.requestConfig = { ...claudeRoute.requestConfig, protocol: "claude" };
+
+    const events = await collect(gateway.streamText({ apiKey: "secret", request, route: claudeRoute }));
+
+    expect(events.filter((event) => event.type === "tool_call")).toEqual([
+      { type: "tool_call", callId: "toolu_9", name: "canvas.apply_ops", arguments: '{"title":"Draft"}' },
+    ]);
+    expect(events.at(-1)).toEqual({ type: "done", finishReason: "tool_calls" });
+  });
+
+  test("relay responses protocol joins name and argument deltas under call_id", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([
+      { type: "response.output_item.added", item: { type: "function_call", id: "fc_2", call_id: "call_rel", name: "canvas.apply_ops" } },
+      { type: "response.function_call_arguments.delta", item_id: "fc_2", delta: "{}" },
+      { type: "response.completed", response: {} },
+    ]);
+    const gateway = new AiGateway({ test: new AittcoTextRelayAdapter({ fetchImplementation }) });
+    const responsesRoute = route({ supportsTextStreaming: true, supportsToolCalling: true });
+    responsesRoute.requestConfig = { ...responsesRoute.requestConfig, protocol: "responses" };
+
+    const events = await collect(gateway.streamText({ apiKey: "secret", request: toolLoopRequest, route: responsesRoute }));
+
+    expect(events.filter((event) => event.type === "tool_call")).toEqual([
+      { type: "tool_call", callId: "call_rel", name: "canvas.apply_ops", arguments: "{}" },
+    ]);
+    expect(events.at(-1)).toEqual({ type: "done", finishReason: "tool_calls" });
+    expect(bodies[0]!.input).toContainEqual({ call_id: "call-1", output: '{"nodes":3}', type: "function_call_output" });
+  });
+
+  test("relay gemini protocol rejects tools instead of silently dropping them", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([]);
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation });
+
+    await expect(collect(adapter.streamText!(providerContext({ protocol: "gemini" }), request)))
+      .rejects.toMatchObject({ code: "TEXT_TOOL_CALLING_UNSUPPORTED_PROTOCOL" });
+    expect(bodies).toHaveLength(0);
+  });
+});

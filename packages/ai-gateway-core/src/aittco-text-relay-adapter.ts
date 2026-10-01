@@ -92,9 +92,104 @@ function splitSystemMessages(messages: TextMessage[]): { messages: TextMessage[]
     .map((message) => message.content.trim())
     .join("\n\n") || null;
   return {
-    messages: messages.filter((message) => message.role !== "system" && message.content.trim()),
+    // Keep assistant tool-call turns and tool results even when their text is
+    // empty: dropping them breaks the call/result pairing providers require.
+    messages: messages.filter((message) => message.role !== "system"
+      && (message.content.trim() || message.role === "tool" || Boolean(message.toolCalls?.length))),
     system,
   };
+}
+
+function geminiToolCallingUnsupported(routeKey: string | null): AiGatewayError {
+  return new AiGatewayError({
+    code: "TEXT_TOOL_CALLING_UNSUPPORTED_PROTOCOL",
+    details: { protocol: "gemini", ...(routeKey ? { routeKey } : {}) },
+    message: "The relay Gemini protocol does not support tool calling; configure this route with protocol \"chat-completions\"",
+    statusCode: 400,
+  });
+}
+
+function hasToolMessages(messages: TextMessage[]): boolean {
+  return messages.some((message) => message.role === "tool" || Boolean(message.toolCalls?.length));
+}
+
+type RelayMessage = Record<string, unknown>;
+
+/** Chat Completions relay: same shape as OpenAI. */
+function toRelayChatMessages(messages: TextMessage[]): RelayMessage[] {
+  return messages.map((message) => {
+    if (message.role === "tool") return { content: message.content, role: "tool", tool_call_id: message.toolCallId ?? "" };
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return {
+        content: message.content || null,
+        role: "assistant",
+        tool_calls: message.toolCalls.map((call) => ({
+          function: { arguments: call.arguments, name: call.name },
+          id: call.callId,
+          type: "function",
+        })),
+      };
+    }
+    return { content: message.content, role: message.role };
+  });
+}
+
+/** Responses relay: tool calls/results are standalone input items. */
+function toRelayResponsesInput(messages: TextMessage[]): RelayMessage[] {
+  return messages.flatMap((message): RelayMessage[] => {
+    if (message.role === "tool") return [{ call_id: message.toolCallId ?? "", output: message.content, type: "function_call_output" }];
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return [
+        ...(message.content.trim() ? [{ content: message.content, role: "assistant" }] : []),
+        ...message.toolCalls.map((call) => ({ arguments: call.arguments, call_id: call.callId, name: call.name, type: "function_call" })),
+      ];
+    }
+    return [{ content: message.content, role: message.role }];
+  });
+}
+
+function parseToolArguments(raw: string): unknown {
+  try {
+    const parsed = JSON.parse(raw || "{}") as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Claude Messages relay: assistant tool calls become `tool_use` blocks; tool
+ * results become `tool_result` blocks inside a user turn. Consecutive tool
+ * results are merged into one user turn because Claude requires roles to
+ * alternate.
+ */
+function toRelayClaudeMessages(messages: TextMessage[]): Array<{ content: unknown; role: "assistant" | "user" }> {
+  const result: Array<{ content: unknown; role: "assistant" | "user" }> = [];
+  for (const message of messages) {
+    if (message.role === "tool") {
+      const block = { content: message.content, tool_use_id: message.toolCallId ?? "", type: "tool_result" };
+      const previous = result[result.length - 1];
+      if (previous?.role === "user" && Array.isArray(previous.content)
+        && (previous.content as Array<Record<string, unknown>>).every((item) => item.type === "tool_result")) {
+        (previous.content as unknown[]).push(block);
+      } else {
+        result.push({ content: [block], role: "user" });
+      }
+      continue;
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      result.push({
+        content: [
+          ...(message.content.trim() ? [{ text: message.content, type: "text" }] : []),
+          ...message.toolCalls.map((call) => ({ id: call.callId, input: parseToolArguments(call.arguments), name: call.name, type: "tool_use" })),
+        ],
+        role: "assistant",
+      });
+      continue;
+    }
+    result.push({ content: message.content, role: message.role === "assistant" ? "assistant" : "user" });
+  }
+  return result;
 }
 
 function parseGeminiText(body: unknown): string | null {
@@ -247,6 +342,12 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     const requestConfig = asRecord(context.requestConfig);
     const protocol = resolveProtocol(requestConfig);
     const model = resolveUpstreamModel(requestConfig, context.modelKey);
+    if (protocol === "gemini" && request.tools?.length) {
+      // The relay's Gemini protocol is not wired for function calling. Fail
+      // loudly instead of silently dropping tools (the model would then answer
+      // without ever calling them). Use the chat-completions protocol instead.
+      throw geminiToolCallingUnsupported(context.routeKey);
+    }
     const { messages, system } = splitSystemMessages(request.messages);
     const images = readImageInputs(request.inputAssets);
     const basePayload = this.buildPayload(
@@ -303,6 +404,13 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
 
     let finishReason: string | undefined;
     const knownCallIds = new Map<number, string>();
+    // Claude: content_block_start carries the tool_use id; later
+    // input_json_delta events only carry the block index.
+    const claudeBlockCallIds = new Map<number, string>();
+    // Responses: output_item.added carries item.id + call_id; argument deltas
+    // only carry item_id.
+    const responsesItemCallIds = new Map<string, string>();
+    let sawResponsesToolCall = false;
     for await (const raw of readTextServerSentEvents(response)) {
       const event = readRelayStreamRecord(raw);
       if (protocol === "gemini") {
@@ -330,15 +438,21 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
         if (eventType === "content_block_delta" && typeof delta.text === "string" && delta.text) {
           yield { type: "text_delta", text: delta.text };
         }
-        if (eventType === "content_block_delta" && typeof delta.partial_json === "string") {
-          yield { type: "tool_call_delta", callId: typeof event.index === "number" ? `tool-call-${event.index}` : "tool-call-0", argumentsDelta: delta.partial_json };
-        }
+        const blockIndex = typeof event.index === "number" ? event.index : 0;
         const block = readRelayStreamRecord(event.content_block);
         if (eventType === "content_block_start" && block.type === "tool_use" && typeof block.name === "string") {
-          yield { type: "tool_call_delta", callId: typeof block.id === "string" ? block.id : "tool-call-0", name: block.name, argumentsDelta: "" };
+          const callId = typeof block.id === "string" && block.id ? block.id : `tool-call-${blockIndex}`;
+          claudeBlockCallIds.set(blockIndex, callId);
+          yield { type: "tool_call_delta", callId, name: block.name, argumentsDelta: "" };
+        }
+        if (eventType === "content_block_delta" && typeof delta.partial_json === "string") {
+          const callId = claudeBlockCallIds.get(blockIndex) ?? `tool-call-${blockIndex}`;
+          yield { type: "tool_call_delta", callId, argumentsDelta: delta.partial_json };
         }
         if (eventType === "message_delta") {
-          finishReason = typeof delta.stop_reason === "string" ? delta.stop_reason : finishReason;
+          // Normalize Claude's "tool_use" to the shared "tool_calls" reason.
+          const stopReason = typeof delta.stop_reason === "string" ? delta.stop_reason : null;
+          finishReason = stopReason === "tool_use" ? "tool_calls" : stopReason ?? finishReason;
           const usage = readRelayStreamRecord(delta.usage);
           if (Object.keys(usage).length > 0) {
             yield { type: "usage", usage: { inputTokens: asNumber(usage.input_tokens), outputTokens: asNumber(usage.output_tokens), totalTokens: asNumber(usage.input_tokens) !== null && asNumber(usage.output_tokens) !== null ? asNumber(usage.input_tokens)! + asNumber(usage.output_tokens)! : null } };
@@ -348,13 +462,23 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
       }
       if (protocol === "responses") {
         if (eventType === "response.output_text.delta" && typeof event.delta === "string") yield { type: "text_delta", text: event.delta };
-        if (eventType === "response.function_call_arguments.delta" && typeof event.delta === "string") yield { type: "tool_call_delta", callId: typeof event.item_id === "string" ? event.item_id : "tool-call-0", argumentsDelta: event.delta };
         if (eventType === "response.output_item.added") {
           const item = readRelayStreamRecord(event.item);
-          if (item.type === "function_call" && typeof item.name === "string") yield { type: "tool_call_delta", callId: typeof item.call_id === "string" ? item.call_id : "tool-call-0", name: item.name, argumentsDelta: "" };
+          if (item.type === "function_call" && typeof item.name === "string") {
+            const itemId = typeof item.id === "string" && item.id ? item.id : "";
+            const callId = typeof item.call_id === "string" && item.call_id ? item.call_id : itemId || "tool-call-0";
+            if (itemId) responsesItemCallIds.set(itemId, callId);
+            sawResponsesToolCall = true;
+            yield { type: "tool_call_delta", callId, name: item.name, argumentsDelta: "" };
+          }
+        }
+        if (eventType === "response.function_call_arguments.delta" && typeof event.delta === "string") {
+          const itemId = typeof event.item_id === "string" && event.item_id ? event.item_id : "";
+          const callId = (itemId && responsesItemCallIds.get(itemId)) || itemId || "tool-call-0";
+          yield { type: "tool_call_delta", callId, argumentsDelta: event.delta };
         }
         if (eventType === "response.completed") {
-          finishReason = "stop";
+          finishReason = sawResponsesToolCall ? "tool_calls" : "stop";
           const usage = readRelayStreamRecord(readRelayStreamRecord(event.response).usage);
           if (Object.keys(usage).length > 0) yield { type: "usage", usage: { inputTokens: asNumber(usage.input_tokens), outputTokens: asNumber(usage.output_tokens), totalTokens: asNumber(usage.total_tokens) } };
         }
@@ -485,6 +609,7 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     images: RelayImageInput[],
   ): Record<string, unknown> {
     const finalUserMessageIndex = messages.reduce<number>((lastIndex, message, index) => message.role === "user" ? index : lastIndex, -1);
+    if (protocol === "gemini" && hasToolMessages(messages)) throw geminiToolCallingUnsupported(null);
     if (protocol === "gemini") {
       return compactObject({
         contents: messages.map((message, index) => ({
@@ -501,28 +626,43 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
         systemInstruction: system ? { parts: [{ text: system }] } : undefined,
       });
     }
+    // Images attach to the last plain-text user turn (never to a tool-result turn).
+    const attachImages = <T extends Record<string, unknown>>(items: T[], toContent: (text: string) => unknown[]): T[] => {
+      if (!images.length) return items;
+      const index = items.map((item) => item.role === "user" && typeof item.content === "string").lastIndexOf(true);
+      if (index < 0) return items;
+      return items.map((item, itemIndex) => itemIndex === index ? { ...item, content: toContent(String(item.content)) } : item);
+    };
     if (protocol === "responses") {
+      const input = attachImages(toRelayResponsesInput(messages), (text) => [
+        { type: "input_text", text },
+        ...images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` })),
+      ]);
       return compactObject({
-        input: system ? [{ content: system, role: "system" }, ...messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` }))] : message.content }))] : messages.map((message, index) => ({ ...message, content: index === finalUserMessageIndex && images.length ? [{ type: "input_text", text: message.content }, ...images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` }))] : message.content })),
+        input: system ? [{ content: system, role: "system" }, ...input] : input,
         max_output_tokens: maxTokens,
         model,
         temperature,
       });
     }
     if (protocol === "chat-completions") {
+      const chatMessages = attachImages(toRelayChatMessages(messages), (text) => [
+        { type: "text", text },
+        ...images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.base64}` } })),
+      ]);
       return compactObject({
         max_tokens: maxTokens,
-        messages: (system ? [{ content: system, role: "system" as const }, ...messages] : messages).map((message, index) => ({ ...message, content: images.length && index === (system ? finalUserMessageIndex + 1 : finalUserMessageIndex) ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.base64}` } }))] : message.content })),
+        messages: system ? [{ content: system, role: "system" }, ...chatMessages] : chatMessages,
         model,
         temperature,
       });
     }
     return compactObject({
       max_tokens: maxTokens ?? 2048,
-      messages: messages.map((message, index) => ({
-        content: images.length && index === finalUserMessageIndex ? [{ type: "text", text: message.content }, ...images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } }))] : message.content,
-        role: message.role === "assistant" ? "assistant" : "user",
-      })),
+      messages: attachImages(toRelayClaudeMessages(messages), (text) => [
+        { type: "text", text },
+        ...images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } })),
+      ]),
       model,
       system: system ?? undefined,
       temperature,

@@ -112,6 +112,51 @@ describe("AiSettingsPage", () => {
     expect(updateAdminRouteMock).toHaveBeenCalledWith("admin-route-1", { routeLabel: "运营线路", status: "active" });
   });
 
+  test("text routes expose a canvas-agent switch that merges capability flags into requestConfig", async () => {
+    window.history.replaceState(null, "", "/admin/models?modality=text");
+    listAdminAiModelCatalogMock.mockResolvedValue([{
+      id: "catalog-text", capabilities: {}, defaultRouteKey: "text.gpt.line1", displayName: "GPT 5.5",
+      modality: "text", modelFamily: "gpt", modelId: "model-text", modelKey: "gpt-5.5", sortOrder: 1, status: "active", uiSchema: {},
+    }]);
+    listAdminAiModelRoutesMock.mockResolvedValue([{
+      estimatedCredits: 1, minChargeCredits: 1, modality: "text", modelFamily: "gpt", modelKey: "gpt-5.5",
+      pricingUnit: "text_generation", providerKey: "openai", providerName: "OpenAI",
+      routeId: "route-text", routeKey: "text.gpt.line1", routeLabel: "文本线路",
+    }]);
+    const textRoute = {
+      id: "admin-route-text", routeKey: "text.gpt.line1", routeLabel: "文本线路", providerId: "provider-1",
+      modelId: "model-text", credentialId: null, modality: "text", status: "active", baseUrlOverride: null,
+      requestConfig: { apiMode: "responses", model: "gpt-5.5", capabilities: { supportsImageInput: true } },
+      pricing: {}, tenantId: null, connectionId: "connection-1",
+    };
+    listAdminRoutesMock.mockResolvedValue([textRoute]);
+    updateAdminRouteMock.mockResolvedValue(textRoute);
+    render(<AuthContext.Provider value={createAuthState()}><AiSettingsPage /></AuthContext.Provider>);
+
+    const agentSwitch = await screen.findByRole("checkbox", { name: /供画布 Agent 使用/ }, { timeout: 5000 });
+    expect((agentSwitch as HTMLInputElement).checked).toBe(false);
+
+    // A plain save must not rewrite the stored config.
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "保存", exact: true })); });
+    expect(updateAdminRouteMock.mock.calls[0]![1]).not.toHaveProperty("requestConfig");
+
+    fireEvent.click(agentSwitch);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "保存", exact: true })); });
+    expect(updateAdminRouteMock.mock.calls[1]![1]).toMatchObject({
+      requestConfig: {
+        apiMode: "responses",
+        model: "gpt-5.5",
+        capabilities: { supportsImageInput: true, supportsTextStreaming: true, supportsToolCalling: true },
+      },
+    });
+  });
+
+  test("image routes do not show the canvas-agent switch", async () => {
+    render(<AuthContext.Provider value={createAuthState()}><AiSettingsPage /></AuthContext.Provider>);
+    await screen.findByRole("button", { name: "停用线路" }, { timeout: 5000 });
+    expect(screen.queryByRole("checkbox", { name: /供画布 Agent 使用/ })).toBeNull();
+  });
+
   test("denies the former tenant-admin permission", () => {
     render(<AuthContext.Provider value={{ ...createAuthState(), roles: ["tenant_admin"], permissions: ["admin:system"] }}><AiSettingsPage /></AuthContext.Provider>);
     expect(screen.getByText("当前账号没有模型中心访问权限。")).toBeTruthy();

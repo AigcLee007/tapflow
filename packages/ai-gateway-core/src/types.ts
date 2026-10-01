@@ -1,9 +1,26 @@
 import type { ProviderRequestObserver } from "./provider-request-telemetry.js";
 import type { VideoAspectRatio, VideoGenerationMode, VideoResolution } from "./video-generation-contract.js";
 
+/** A tool call the assistant made in an earlier round of a tool-calling loop. */
+export type TextToolCall = {
+  /** JSON-encoded arguments exactly as the model produced them. */
+  arguments: string;
+  callId: string;
+  name: string;
+};
+
+/**
+ * Provider-neutral chat message.
+ * - assistant messages may carry `toolCalls` (content may then be empty);
+ * - `tool` messages carry the result of one tool call, linked by `toolCallId`.
+ * Adapters translate these into each provider's native tool-result format.
+ */
 export type TextMessage = {
   content: string;
-  role: "assistant" | "system" | "user";
+  role: "assistant" | "system" | "tool" | "user";
+  toolCallId?: string;
+  toolCalls?: TextToolCall[];
+  toolName?: string;
 };
 
 /** A provider-neutral JSON-schema tool exposed to the text model. */

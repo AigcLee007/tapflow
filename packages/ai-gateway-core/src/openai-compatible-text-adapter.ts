@@ -48,25 +48,73 @@ function resolveHydratedImageInputs(request: TextGenerationRequest): HydratedIma
   });
 }
 
+type ProviderMessage = Record<string, unknown>;
+
+/** Chat Completions: assistant tool calls -> `tool_calls`, tool results -> role "tool". */
+function toChatMessages(messages: TextGenerationRequest["messages"]): ProviderMessage[] {
+  return messages.map((message) => {
+    if (message.role === "tool") {
+      return { content: message.content, role: "tool", tool_call_id: message.toolCallId ?? "" };
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return {
+        content: message.content || null,
+        role: "assistant",
+        tool_calls: message.toolCalls.map((call) => ({
+          function: { arguments: call.arguments, name: call.name },
+          id: call.callId,
+          type: "function",
+        })),
+      };
+    }
+    return { content: message.content, role: message.role };
+  });
+}
+
+/** Responses API: tool calls and results are standalone input items, not messages. */
+function toResponsesInput(messages: TextGenerationRequest["messages"]): ProviderMessage[] {
+  return messages.flatMap((message): ProviderMessage[] => {
+    if (message.role === "tool") {
+      return [{ call_id: message.toolCallId ?? "", output: message.content, type: "function_call_output" }];
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return [
+        ...(message.content.trim() ? [{ content: message.content, role: "assistant" }] : []),
+        ...message.toolCalls.map((call) => ({
+          arguments: call.arguments,
+          call_id: call.callId,
+          name: call.name,
+          type: "function_call",
+        })),
+      ];
+    }
+    return [{ content: message.content, role: message.role }];
+  });
+}
+
+function lastUserIndex(items: ProviderMessage[]): number {
+  return items.map((item) => item.role).lastIndexOf("user");
+}
+
 function withChatImageInputs(messages: TextGenerationRequest["messages"], images: HydratedImageInput[]) {
-  if (!images.length) return messages;
-  const userIndex = [...messages].map((message) => message.role).lastIndexOf("user");
-  if (userIndex < 0) return messages;
-  return messages.map((message, index) => index === userIndex
+  const converted = toChatMessages(messages);
+  const userIndex = lastUserIndex(converted);
+  if (!images.length || userIndex < 0) return converted;
+  return converted.map((message, index) => index === userIndex
     ? { ...message, content: [
-        { type: "text", text: message.content },
+        { type: "text", text: String(message.content ?? "") },
         ...images.map((image) => ({ type: "image_url", image_url: { url: image.url } })),
       ] }
     : message);
 }
 
 function withResponsesImageInputs(messages: TextGenerationRequest["messages"], images: HydratedImageInput[]) {
-  if (!images.length) return messages;
-  const userIndex = [...messages].map((message) => message.role).lastIndexOf("user");
-  if (userIndex < 0) return messages;
-  return messages.map((message, index) => index === userIndex
+  const converted = toResponsesInput(messages);
+  const userIndex = lastUserIndex(converted);
+  if (!images.length || userIndex < 0) return converted;
+  return converted.map((message, index) => index === userIndex
     ? { ...message, content: [
-        { type: "input_text", text: message.content },
+        { type: "input_text", text: String(message.content ?? "") },
         ...images.map((image) => ({ type: "input_image", image_url: image.url })),
       ] }
     : message);
@@ -209,21 +257,30 @@ function readStreamToolDeltas(event: Record<string, unknown>, knownCallIds: Map<
   });
 }
 
-function readResponsesToolDelta(event: Record<string, unknown>): { argumentsDelta: string; callId: string; name?: string } | null {
+/**
+ * Responses API streams announce a function call with both `item.id` and
+ * `item.call_id`, then stream argument deltas keyed only by `item_id`.
+ * `itemCallIds` maps item id -> call id so name and arguments land on the same
+ * call. The call id (not the item id) is what `function_call_output` must echo.
+ */
+function readResponsesToolDelta(
+  event: Record<string, unknown>,
+  itemCallIds: Map<string, string>,
+): { argumentsDelta: string; callId: string; name?: string } | null {
   const type = typeof event.type === "string" ? event.type : "";
   const delta = typeof event.delta === "string" ? event.delta : "";
   if (type === "response.function_call_arguments.delta" && delta) {
-    const callId = typeof event.item_id === "string" && event.item_id ? event.item_id : "tool-call-0";
+    const itemId = typeof event.item_id === "string" && event.item_id ? event.item_id : "";
+    const callId = (itemId && itemCallIds.get(itemId)) || itemId || "tool-call-0";
     return { argumentsDelta: delta, callId };
   }
   if (type === "response.output_item.added") {
     const item = readStreamRecord(event.item);
     if (item.type === "function_call" && typeof item.name === "string") {
-      return {
-        argumentsDelta: "",
-        callId: typeof item.call_id === "string" ? item.call_id : String(item.id ?? "tool-call-0"),
-        name: item.name,
-      };
+      const itemId = typeof item.id === "string" && item.id ? item.id : "";
+      const callId = typeof item.call_id === "string" && item.call_id ? item.call_id : itemId || "tool-call-0";
+      if (itemId) itemCallIds.set(itemId, callId);
+      return { argumentsDelta: "", callId, name: item.name };
     }
   }
   return null;
@@ -854,6 +911,8 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
 
     let finishReason: string | undefined;
     const knownCallIds = new Map<number, string>();
+    const responsesItemCallIds = new Map<string, string>();
+    let sawResponsesToolCall = false;
     for await (const raw of readTextServerSentEvents(response)) {
       const event = readStreamRecord(raw);
       if (event.error && typeof event.error === "object") {
@@ -869,8 +928,11 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
         const type = typeof event.type === "string" ? event.type : "";
         const text = type === "response.output_text.delta" && typeof event.delta === "string" ? event.delta : null;
         if (text) yield { type: "text_delta", text };
-        const tool = readResponsesToolDelta(event);
-        if (tool) yield { type: "tool_call_delta", ...tool };
+        const tool = readResponsesToolDelta(event, responsesItemCallIds);
+        if (tool) {
+          sawResponsesToolCall = true;
+          yield { type: "tool_call_delta", ...tool };
+        }
         if (type === "response.completed") {
           const responseBody = readStreamRecord(event.response);
           const usage = asRecord(responseBody.usage);
@@ -884,7 +946,9 @@ export class OpenAiCompatibleTextAdapter implements ProviderAdapter {
               },
             };
           }
-          finishReason = "stop";
+          // The Responses API has no finish_reason; report tool_calls so the
+          // agent loop knows it must execute tools and call the model again.
+          finishReason = sawResponsesToolCall ? "tool_calls" : "stop";
         }
         continue;
       }
