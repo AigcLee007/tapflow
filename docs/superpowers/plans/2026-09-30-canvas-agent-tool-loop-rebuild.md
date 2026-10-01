@@ -152,10 +152,10 @@
   - 结果回看：一批生成结束后的第一轮，服务端读取生成图的 preview（最多 4 张、单张 ≤3MB），同时以 base64 与 data URL 提供给两种适配器，并临时附加一句点评要求（不写入历史）。文本线路不支持图片时，在尚未输出任何内容的前提下自动去掉图片重试一次。网关中转 claude 协议支持把图片追加到含工具结果的用户轮。
   - 顺带修：`saveFlowDraft` 改为带版本条件的更新，修复并发保存互相覆盖（读取未加锁）；另一条"canceled/cancelled 拼写不一致"经核实不是 bug（工作流状态统一用 canceled，前端有意映射为节点状态 cancelled），不改。
   - 测试：前端 25 个、后端 canvas-agent 28 个、网关 193 个全部通过；API 全量 731 通过，3 个失败为既有问题。`saveFlowDraft` 的修复只过了类型检查，相关测试需要数据库，未运行。
-- [ ] 阶段 3 联调验收（需要 Docker，会真实扣积分，每次出图前先问用户）：
-  1. 用户启动 Docker Desktop；本地起 Postgres + Redis，跑迁移（含 000105）。
-  2. 起 api（`CANVAS_AGENT_ENABLED=true`）、worker、web（`VITE_CANVAS_AGENT_LOOP=true`）。
-  3. 用户在后台给 gpt-5.5 文本线路勾选"供画布 Agent 使用"。
+- [ ] 阶段 3 联调验收（改为在用户自己的测试服务器上进行，本机 Docker 磁盘不足；会真实扣积分，每次出图前先问用户）：
+  1. 推送 `canvas-agent-loop` 分支，服务器切到该分支。
+  2. 服务器 env（/opt/aittco/env/tapflow.staging.env）加：`CANVAS_AGENT_ENABLED=true`、`VITE_CANVAS_AGENT_LOOP=true`、`AGENT_TEXT_ROUTE_KEY=<gpt-5.5 线路 key>`。
+  3. 跑迁移：`docker compose --env-file /opt/aittco/env/tapflow.staging.env -f docker-compose.staging.yml --profile tools run --rm tapflow-migrator`；再 `up -d --build tapflow-api tapflow-worker tapflow-frontend`。用户在后台给 gpt-5.5 文本线路勾选"供画布 Agent 使用"。
   4. 先跑不出图的部分：提问 → 回答 → 写 project.md → 出确认卡。
   5. 征得同意后用 1~2 张、1K 跑一次出图，确认：占位节点出现 → 出图 → Agent 看图点评 → 继续。
   6. 记录问题，修复后再跑一遍验收场景。
