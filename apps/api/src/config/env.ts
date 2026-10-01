@@ -33,6 +33,8 @@ export type ApiEnv = {
   agentSkillMaxSteps: number;
   agentSkillRepairAttempts: number;
   agentTextRouteKey: string;
+  /** New tool-calling canvas agent (/api/v2/canvas-agent). Off unless CANVAS_AGENT_ENABLED=true. */
+  canvasAgentEnabled?: boolean;
   apiRateLimitMax?: number;
   apiRateLimitWindowMs?: number;
   authRateLimitMax?: number;
@@ -216,6 +218,7 @@ export function getApiEnv(): ApiEnv {
   const agentSkillMaxSteps = parsePositiveIntegerEnv("AGENT_SKILL_MAX_STEPS", process.env.AGENT_SKILL_MAX_STEPS, 12);
   const agentSkillRepairAttempts = parsePositiveIntegerEnv("AGENT_SKILL_REPAIR_ATTEMPTS", process.env.AGENT_SKILL_REPAIR_ATTEMPTS, 1);
   const agentTextRouteKey = process.env.AGENT_TEXT_ROUTE_KEY?.trim() || "text.default";
+  const canvasAgentEnabled = parseBooleanEnv("CANVAS_AGENT_ENABLED", process.env.CANVAS_AGENT_ENABLED, false);
   const agentExecutorEnabled = parseBooleanEnv(
     "AGENT_EXECUTOR_ENABLED",
     process.env.AGENT_EXECUTOR_ENABLED,
@@ -422,6 +425,7 @@ export function getApiEnv(): ApiEnv {
     agentSkillMaxSteps,
     agentSkillRepairAttempts,
     agentTextRouteKey,
+    canvasAgentEnabled,
     apiRateLimitMax,
     apiRateLimitWindowMs,
     authRateLimitMax,

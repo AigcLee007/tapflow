@@ -130,7 +130,15 @@
 
 - [x] 用户确认方案（2026-09-30）
 - [x] 阶段 0（2026-10-01）：网关支持工具结果回传（`TextMessage` 增加 `tool` 角色、`toolCalls`、`toolCallId`）；修 OpenAI responses 模式、中转 claude/responses 的工具调用 ID 对不上；responses 模式完成原因改报 `tool_calls`；中转 gemini 协议带工具时明确报错 `TEXT_TOOL_CALLING_UNSUPPORTED_PROTOCOL`；后台文本线路编辑页加"供画布 Agent 使用"开关（写入 `requestConfig.capabilities`）。网关测试 191 通过（新增 7 个，旧代码下均失败），后台页测试 13 通过。真实模型冒烟调用未做，并入阶段 1 的本地验收。
-- [ ] 阶段 1
+- [x] 阶段 1（2026-10-01，代码与假模型测试完成；真实数据库与真实模型验收待做）：
+  - 新模块 `apps/api/src/modules/canvas-agent/`：types、repository（Pg）、tools（canvas_inspect、asset_search、asset_list_folders、model_list、model_contract、file_list/read/write、asset_save）、interactive-tools（ask_user、propose_generation 及其恢复校验）、prompt、loop（每段最多 20 轮）、service（认领/心跳/暂停/恢复/停止）、routes（SSE）、schemas。
+  - 迁移 `packages/db/migrations/000105_canvas_agent.sql`：canvas_agent_sessions / messages / files，带租户 RLS。
+  - 接口 `/api/v2/canvas-agent/...`：sessions（增、查、改）、messages（SSE）、resume（SSE）、stop、flows/:flowId/files、image-models。开关 `CANVAS_AGENT_ENABLED` 默认关，关闭时返回 503。
+  - 手动模式：propose_generation → 确认卡 → 确认后变为 canvas_generate 等浏览器执行 → 浏览器回传结果 → 模型继续。自动模式跳过确认卡。
+  - 网关补充：claude 协议下工具结果后紧跟的用户消息并入同一轮。
+  - 测试：loop/service 19 个、routes 5 个、网关 192 个，全部通过；API 全量 727 通过，3 个失败均为既有问题（V6 编排器、管理权限、缺 DATABASE_URL）。
+  - 未验证：迁移 SQL 未在 Postgres 上跑过（本机 Docker 未启动）；未用真实模型跑验收场景。需要：启动 Docker → 跑迁移 → 后台给 gpt-5.5 文本线路勾选"供画布 Agent 使用" → `CANVAS_AGENT_ENABLED=true`。
+  - 已知限制：多实例部署时，停止请求只能中止本实例上的运行，其他实例上的运行要等 90 秒租约过期。
 - [ ] 阶段 2
 - [ ] 阶段 3
 - [ ] 阶段 4（需单独确认）

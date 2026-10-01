@@ -353,6 +353,27 @@ describe("tool-calling loop round trip", () => {
     expect(bodies[0]!.input).toContainEqual({ call_id: "call-1", output: '{"nodes":3}', type: "function_call_output" });
   });
 
+  test("relay claude protocol folds a user message that follows tool results into the same turn", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([{ type: "message_delta", delta: { stop_reason: "end_turn" } }]);
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation });
+    await collect(adapter.streamText!(providerContext({ protocol: "claude" }), {
+      ...toolLoopRequest,
+      messages: [...toolLoopRequest.messages, { content: "换个思路", role: "user" }],
+    }));
+
+    expect(bodies[0]!.messages).toEqual([
+      { content: "Look at my canvas", role: "user" },
+      { content: [{ id: "call-1", input: { scope: "all" }, name: "canvas_inspect", type: "tool_use" }], role: "assistant" },
+      {
+        content: [
+          { content: '{"nodes":3}', tool_use_id: "call-1", type: "tool_result" },
+          { text: "换个思路", type: "text" },
+        ],
+        role: "user",
+      },
+    ]);
+  });
+
   test("relay gemini protocol rejects tools instead of silently dropping them", async () => {
     const { bodies, fetchImplementation } = capturingFetch([]);
     const adapter = new AittcoTextRelayAdapter({ fetchImplementation });

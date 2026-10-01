@@ -28,6 +28,12 @@ import { AdminApiService } from "./modules/admin/admin.service.js";
 import { registerPlatformAccessRoutes } from "./modules/platform-access/platform-access.routes.js";
 import { PlatformAccessService } from "./modules/platform-access/platform-access.service.js";
 import { registerAgentRoutes } from "./modules/agent/agent.routes.js";
+import { registerCanvasAgentRoutes } from "./modules/canvas-agent/canvas-agent.routes.js";
+import { CanvasAgentService } from "./modules/canvas-agent/canvas-agent.service.js";
+import { CanvasAgentLoop } from "./modules/canvas-agent/canvas-agent.loop.js";
+import { PgCanvasAgentRepository } from "./modules/canvas-agent/canvas-agent.repository.js";
+import { infoTools } from "./modules/canvas-agent/canvas-agent.tools.js";
+import { interactiveTools } from "./modules/canvas-agent/canvas-agent.interactive-tools.js";
 import { registerSkillRoutes } from "./modules/agent/skill.routes.js";
 import { SkillAuthoringService } from "./modules/agent/skill-authoring.service.js";
 import { SkillRunService } from "./modules/agent/agent-skill-run.service.js";
@@ -408,7 +414,28 @@ export function buildApp(options?: {
 
   registerSecurityBaseline(app, env);
 
+  const canvasAgentDeps = {
+    assets: assetsService,
+    catalog: aiModelCatalogService,
+    costEstimator: agentCostEstimator,
+    repository: new PgCanvasAgentRepository({ pool }),
+  };
+  const canvasAgentService = new CanvasAgentService({
+    defaultRouteKey: env.agentTextRouteKey,
+    deps: canvasAgentDeps,
+    logger: app.log,
+    loop: new CanvasAgentLoop({
+      deps: canvasAgentDeps,
+      onToolError: (error, tool) => app.log.error({ err: error, tool }, "canvas agent tool failed"),
+      textRuntime: agentTextRuntime,
+      tools: [...infoTools, ...interactiveTools],
+    }),
+    runSettings: agentRunSettingsService,
+    textRuntime: agentTextRuntime,
+  });
+
   app.decorate("adminService", adminService);
+  app.decorate("canvasAgentService", canvasAgentService);
   app.decorate("platformAccessService", platformAccessService);
   app.decorate("agentService", agentService);
   app.decorate("canonicalAgentRuntime", canonicalAgentRuntime);
@@ -542,6 +569,7 @@ export function buildApp(options?: {
   registerAdminRoutes(app);
   registerPlatformAccessRoutes(app);
   registerAgentRoutes(app);
+  registerCanvasAgentRoutes(app, { enabled: env.canvasAgentEnabled === true });
   registerSkillRoutes(app, skillService, new SkillAuthoringService({
     repairAttempts: env.agentSkillRepairAttempts,
     generate: async (prompt, runtimeContext) => {

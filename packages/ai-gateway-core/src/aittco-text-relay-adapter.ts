@@ -187,7 +187,14 @@ function toRelayClaudeMessages(messages: TextMessage[]): Array<{ content: unknow
       });
       continue;
     }
-    result.push({ content: message.content, role: message.role === "assistant" ? "assistant" : "user" });
+    const role = message.role === "assistant" ? "assistant" : "user";
+    const previous = result[result.length - 1];
+    if (role === "user" && previous?.role === "user" && Array.isArray(previous.content)) {
+      // A user message right after tool results: same turn, text after the results.
+      (previous.content as unknown[]).push({ text: message.content, type: "text" });
+      continue;
+    }
+    result.push({ content: message.content, role });
   }
   return result;
 }
