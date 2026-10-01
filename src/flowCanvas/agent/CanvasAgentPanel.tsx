@@ -41,6 +41,7 @@ import { buildStableAgentContextSnapshot } from "./agentContextSnapshot";
 import { AgentWorkspace as CanonicalAgentWorkspace } from "./runtime/AgentWorkspace";
 import { useAgentRuntime } from "./runtime/useAgentRuntime";
 import { agentRuntimeApi, type AgentRuntimeSession } from "./runtime/agentRuntimeApi";
+import { AgentLoopPanel } from "../canvasAgent/AgentLoopPanel";
 
 type ApplyResult = {
   createdNodeIds: string[];
@@ -147,11 +148,17 @@ type CanvasAgentPanelProps = {
  */
 export function CanvasAgentPanel(props: CanvasAgentPanelProps) {
   if (!props.open) return null;
+  // New tool-calling agent (docs/superpowers/plans/2026-09-30-canvas-agent-tool-loop-rebuild.md). Off by default.
+  if (shouldUseCanvasAgentLoop(import.meta.env.VITE_CANVAS_AGENT_LOOP)) return <AgentLoopPanel initialSessionId={props.initialSessionId} onClose={props.onClose} />;
   if (shouldUseCanonicalAgentRuntime(import.meta.env.VITE_AGENT_RUNTIME_CANONICAL)) return <CanonicalCanvasAgentPanel {...props} />;
   return <CanvasAgentV6Panel {...props} />;
 }
 
 export function shouldUseCanonicalAgentRuntime(value: unknown): boolean {
+  return value === "true";
+}
+
+export function shouldUseCanvasAgentLoop(value: unknown): boolean {
   return value === "true";
 }
 

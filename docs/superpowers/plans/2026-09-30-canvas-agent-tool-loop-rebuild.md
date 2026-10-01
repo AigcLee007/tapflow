@@ -139,7 +139,13 @@
   - 测试：loop/service 19 个、routes 5 个、网关 192 个，全部通过；API 全量 727 通过，3 个失败均为既有问题（V6 编排器、管理权限、缺 DATABASE_URL）。
   - 未验证：迁移 SQL 未在 Postgres 上跑过（本机 Docker 未启动）；未用真实模型跑验收场景。需要：启动 Docker → 跑迁移 → 后台给 gpt-5.5 文本线路勾选"供画布 Agent 使用" → `CANVAS_AGENT_ENABLED=true`。
   - 已知限制：多实例部署时，停止请求只能中止本实例上的运行，其他实例上的运行要等 90 秒租约过期。
-- [ ] 阶段 2
+- [x] 阶段 2（2026-10-01，前端面板完成；未接真实后端联调）：
+  - 新目录 `src/flowCanvas/canvasAgent/`：types、api（REST + POST 流式 SSE，复用 v2HttpClient 的令牌与 401 刷新）、transcript（历史 + 实时事件 → 渲染列表，纯函数）、snapshot（画布快照，字段上限与后端一致）、useCanvasAgent（会话、发送、回答、确认、停止、历史、模式、文件）。
+  - 组件：AgentLoopView/Panel、Steps（"已完成 N 个操作" + 状态计时）、QuestionCard（分步问答，推荐项默认选中，可打字，提交后折叠为问→答）、GenerationCard（任务可展开/移除，模型/比例/分辨率/张数可改，实时预估积分，取消/确认）、Files（project.md 等项目文件查看，可带入对话）、Composer（已选节点提示、手动确认/自动生成切换、Enter 发送且不误触输入法）、Markdown（表格/列表/加粗，只输出 React 元素）。样式 `canvasAgent.css`。
+  - 挂载：`CanvasAgentPanel.tsx` 中 `VITE_CANVAS_AGENT_LOOP=true` 时显示新面板，默认关闭，旧面板不变。
+  - 测试：新增 16 个全部通过；agent 相关旧测试 8 个失败与改动前一致，无新增失败。
+  - 视觉检查：用样例数据渲染与 TapNow 截图对照，修了输入框溢出卡片的问题。
+  - 暂未做：+ 菜单（上传附件/技能/应用）、文本模型选择、"添加到画布"；确认生成后画布执行在阶段 3 接入，目前显示"等待画布执行"。
 - [ ] 阶段 3
 - [ ] 阶段 4（需单独确认）
 - [ ] 阶段 5
