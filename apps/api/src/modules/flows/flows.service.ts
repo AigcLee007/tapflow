@@ -637,6 +637,9 @@ export class FlowsService {
             last_saved_by = $3::uuid,
             updated_at = now()
           WHERE id = $1::uuid
+            -- Compare-and-swap: the read above is unlocked, so two saves with the same
+            -- expectedRevision could otherwise both pass the check and one would be lost.
+            AND ($4::int IS NULL OR revision = $4::int)
           RETURNING
             id::text AS id,
             tenant_id::text AS tenant_id,
@@ -648,8 +651,16 @@ export class FlowsService {
             created_at::text AS created_at,
             updated_at::text AS updated_at
         `,
-        [draft.id, JSON.stringify(graph), context.userId],
+        [draft.id, JSON.stringify(graph), context.userId, input.expectedRevision ?? null],
       );
+
+      if (!result.rows[0]) {
+        throw new FlowsApiError(
+          409,
+          "FLOW_DRAFT_REVISION_CONFLICT",
+          "画布草稿已在其他位置更新，请刷新后再试",
+        );
+      }
 
       return mapFlowDraft(result.rows[0]);
     }, this.pool);

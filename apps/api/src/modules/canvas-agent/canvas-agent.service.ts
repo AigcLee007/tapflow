@@ -149,6 +149,8 @@ export class CanvasAgentService {
     let outcome: CanvasAgentToolOutcome | null = null;
     let card: Record<string, unknown> = pendingCard(pending);
     let next: CanvasAgentPending | null = null;
+    // Images from the batch that just finished; the model reviews them in its next round.
+    let reviewAssetIds: string[] = [];
     if (pending.kind === "questions") {
       outcome = resolveQuestionAnswers(pending, input.payload);
       card = { ...card, answers: (outcome as { output: { answers: unknown } }).output.answers };
@@ -158,7 +160,9 @@ export class CanvasAgentService {
       else next = { callId: pending.callId, kind: "canvas_generate", plan: decision.plan, toolName: "propose_generation" };
     } else {
       outcome = resolveGenerationResults(pending, input.payload);
-      card = { ...card, results: (outcome as { output: { results: unknown } }).output.results };
+      const results = (outcome as { output: { results: Array<{ assetIds: string[]; status: string }> } }).output.results;
+      card = { ...card, results };
+      reviewAssetIds = results.filter((item) => item.status === "succeeded").flatMap((item) => item.assetIds);
     }
     if (outcome) await this.ensureRouteReady(ctx, routeKey);
 
@@ -179,7 +183,7 @@ export class CanvasAgentService {
         toolResultMessage(pendingCall(pending), outcome as Extract<CanvasAgentToolOutcome, { type: "result" }>, { card, title: PENDING_TITLE[pending.kind] }),
       ]);
       const updated = await this.repository.updateSession(ctx, sessionId, { pending: null });
-      return (emit, signal) => this.execute(ctx, updated, routeKey, input.canvas, emit, signal);
+      return (emit, signal) => this.execute(ctx, updated, routeKey, input.canvas, emit, signal, reviewAssetIds);
     } catch (error) {
       await this.releaseRun(ctx, sessionId, session.pending);
       throw error;
@@ -204,7 +208,7 @@ export class CanvasAgentService {
 
   private async execute(
     ctx: CanvasAgentContext, session: CanvasAgentSession, routeKey: string, canvas: CanvasSnapshot | null,
-    emit: (event: CanvasAgentEvent) => void, clientSignal: AbortSignal,
+    emit: (event: CanvasAgentEvent) => void, clientSignal: AbortSignal, reviewAssetIds: string[] = [],
   ): Promise<void> {
     const controller = new AbortController();
     const onClientGone = () => controller.abort();
@@ -214,7 +218,7 @@ export class CanvasAgentService {
     const heartbeat = setInterval(() => { void this.repository.touchRun(ctx, session.id).catch(() => undefined); }, this.heartbeatMs);
     let outcome: CanvasAgentLoopResult = "cancelled";
     try {
-      outcome = await this.options.loop.run({ canvas, ctx, emit, routeKey, session, signal: controller.signal });
+      outcome = await this.options.loop.run({ canvas, ctx, emit, reviewAssetIds, routeKey, session, signal: controller.signal });
       if (outcome === "round_limit") emit({ code: "CANVAS_AGENT_ROUND_LIMIT", message: "这一轮步骤太多，已暂停。回复「继续」可以接着做。", type: "error" });
       emit({ reason: outcome, type: "done" });
     } catch (error) {

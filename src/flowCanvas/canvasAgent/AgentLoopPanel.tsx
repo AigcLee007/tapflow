@@ -6,6 +6,7 @@ import { canvasAgentApi } from "./canvasAgentApi";
 import { buildCanvasSnapshot } from "./canvasAgentSnapshot";
 import type { CanvasAgentImageModel } from "./canvasAgentTypes";
 import { useCanvasAgent } from "./useCanvasAgent";
+import { useCanvasGenerationExecutor } from "./useCanvasGenerationExecutor";
 
 /**
  * Tool-calling canvas agent panel (enabled with VITE_CANVAS_AGENT_LOOP=true).
@@ -17,6 +18,7 @@ export function AgentLoopPanel({ initialSessionId, onClose }: { initialSessionId
   // Read the canvas at send time rather than re-rendering on every node change.
   const getCanvas = useCallback(() => buildCanvasSnapshot(useFlowCanvasStore.getState()), []);
   const agent = useCanvasAgent({ flowId, getCanvas });
+  const { progress } = useCanvasGenerationExecutor(agent);
   const [models, setModels] = useState<CanvasAgentImageModel[]>([]);
 
   useEffect(() => {
@@ -31,5 +33,5 @@ export function AgentLoopPanel({ initialSessionId, onClose }: { initialSessionId
     if (initialSessionId) void openSession(initialSessionId);
   }, [initialSessionId, openSession]);
 
-  return <AgentLoopView agent={agent} flowId={flowId} models={models} selectedCount={selectedCount} onClose={onClose} />;
+  return <AgentLoopView agent={agent} executorReady flowId={flowId} generationProgress={progress} models={models} selectedCount={selectedCount} onClose={onClose} />;
 }

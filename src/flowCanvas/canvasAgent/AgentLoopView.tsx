@@ -22,12 +22,14 @@ export type AgentLoopViewProps = {
   /** Phase 3 wires a canvas executor; until then approved batches show a waiting note. */
   executorReady?: boolean;
   flowId: string | null;
+  /** Per-card canvas progress while a batch is generating. */
+  generationProgress?: Record<string, { done: number; total: number }>;
   models: CanvasAgentImageModel[];
   onClose: () => void;
   selectedCount: number;
 };
 
-export function AgentLoopView({ agent, executorReady = false, flowId, models, onClose, selectedCount }: AgentLoopViewProps) {
+export function AgentLoopView({ agent, executorReady = false, flowId, generationProgress, models, onClose, selectedCount }: AgentLoopViewProps) {
   const [prompt, setPrompt] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
@@ -82,7 +84,7 @@ export function AgentLoopView({ agent, executorReady = false, flowId, models, on
             case "assistant": return <div className="agent-loop-assistant" key={item.id}><AgentLoopMarkdown text={item.text} /></div>;
             case "steps": return <AgentLoopSteps key={item.id} steps={item.steps} />;
             case "questions": return <AgentLoopQuestionCard disabled={agent.busy} item={item} key={item.id} onSubmit={(payload) => void agent.answerQuestions(item.callId, item.questions, payload)} />;
-            case "generation": return <AgentLoopGenerationCard disabled={agent.busy} item={item} key={item.id} models={models} waitingForExecutor={!executorReady} onDecide={(payload) => void agent.decideGeneration(item.callId, payload)} />;
+            case "generation": return <AgentLoopGenerationCard disabled={agent.busy} item={item} key={item.id} models={models} progress={generationProgress?.[item.callId]} waitingForExecutor={!executorReady} onDecide={(payload) => void agent.decideGeneration(item.callId, payload)} />;
             case "error": return <p className="agent-loop-error" key={item.id} role="alert">{item.message}</p>;
             default: return null;
           }

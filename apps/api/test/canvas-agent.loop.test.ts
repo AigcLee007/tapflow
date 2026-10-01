@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { AiGatewayError } from "@aigc-flow/ai-gateway-core";
 
-import { CanvasAgentLoop, buildModelMessages } from "../src/modules/canvas-agent/canvas-agent.loop.js";
+import { CanvasAgentLoop, REVIEW_PROMPT, buildModelMessages, type CanvasAgentImageLoader } from "../src/modules/canvas-agent/canvas-agent.loop.js";
+import { MAX_REVIEW_IMAGES, createReviewImageLoader } from "../src/modules/canvas-agent/canvas-agent.review-images.js";
 import { CanvasAgentService, type CanvasAgentRun } from "../src/modules/canvas-agent/canvas-agent.service.js";
 import { infoTools } from "../src/modules/canvas-agent/canvas-agent.tools.js";
 import { interactiveTools } from "../src/modules/canvas-agent/canvas-agent.interactive-tools.js";
@@ -16,11 +17,11 @@ const canvas = {
 };
 const oneQuestion = { questions: [{ id: "q", options: [{ id: "a", label: "A" }], prompt: "选哪个？" }] };
 
-async function setup(rounds: Parameters<typeof scriptedRuntime>[0], options?: { maxRounds?: number; mode?: CanvasAgentMode }) {
+async function setup(rounds: Parameters<typeof scriptedRuntime>[0], options?: { images?: CanvasAgentImageLoader; maxRounds?: number; mode?: CanvasAgentMode }) {
   const repository = new MemoryCanvasAgentRepository();
   const deps = fakeDeps(repository);
   const runtime = scriptedRuntime(rounds);
-  const loop = new CanvasAgentLoop({ deps, maxRounds: options?.maxRounds, textRuntime: runtime, tools: [...infoTools, ...interactiveTools] });
+  const loop = new CanvasAgentLoop({ deps, images: options?.images, maxRounds: options?.maxRounds, textRuntime: runtime, tools: [...infoTools, ...interactiveTools] });
   const service = new CanvasAgentService({ defaultRouteKey: "text.agent", deps, loop, textRuntime: runtime });
   const session = await service.createSession(ctx, { flowId: repository.addFlow(ctx), mode: options?.mode });
   return { deps, repository, runtime, service, session };
@@ -253,6 +254,66 @@ describe("canvas agent loop", () => {
     await drive(await service.startMessage(limited, session.id, { canvas: null, content: "存一下" }));
     expect(toolResult(runtime.requests[1]!.messages).error).toBe("PERMISSION_DENIED");
     expect(deps.savedToFolder).toHaveLength(0);
+  });
+});
+
+describe("result review", () => {
+  const ASSET = "44444444-4444-4444-8444-444444444444";
+  const image = { assetId: ASSET, kind: "image", metadata: { base64: "QUJD", url: "data:image/png;base64,QUJD" }, mimeType: "image/png" };
+  const proposal = { modelKey: IMAGE_MODEL, tasks: [{ prompt: "主图", title: "主图1" }] };
+  const results = { results: [{ assetIds: [ASSET], nodeIds: ["n1"], status: "succeeded", taskIndex: 0 }] };
+
+  async function generateAndReport(rounds: Parameters<typeof scriptedRuntime>[0], loader: CanvasAgentImageLoader) {
+    const env = await setup([calls(["propose_generation", proposal, "call_gen"]), ...rounds], { images: loader, mode: "auto" });
+    await drive(await env.service.startMessage(ctx, env.session.id, { canvas: null, content: "出主图" }));
+    const events = await drive(await env.service.startResume(ctx, env.session.id, { callId: "call_gen", canvas: null, payload: results }));
+    return { ...env, events };
+  }
+
+  test("the round after a batch shows the generated images with a review request that is not stored", async () => {
+    const load = vi.fn(async () => [image]);
+    const { events, repository, runtime, session } = await generateAndReport([say("主图1 构图饱满，色调统一。下一步做详情页。")], { load });
+
+    expect(load).toHaveBeenCalledWith(ctx, [ASSET]);
+    const request = runtime.requests[1]!;
+    expect(request.inputAssets).toEqual([image]);
+    expect(request.messages.at(-1)).toEqual({ content: REVIEW_PROMPT, role: "user" });
+    expect(repository.messages.get(session.id)!.some((m) => m.content === REVIEW_PROMPT)).toBe(false);
+    expect(events.at(-1)).toEqual({ reason: "completed", type: "done" });
+  });
+
+  test("a route that rejects images retries the review round without them", async () => {
+    const reject = () => { throw new AiGatewayError({ code: "TEXT_MODEL_IMAGE_INPUT_UNSUPPORTED", message: "no images", statusCode: 400 }); };
+    const { events, runtime } = await generateAndReport([reject, say("已生成 1 张主图。")], { load: async () => [image] });
+
+    expect(runtime.requests).toHaveLength(3);
+    expect(runtime.requests[2]!.inputAssets).toBeUndefined();
+    expect(runtime.requests[2]!.messages.at(-1)!.content).not.toBe(REVIEW_PROMPT);
+    expect(events.at(-1)).toEqual({ reason: "completed", type: "done" });
+  });
+
+  test("later rounds and answer resumes carry no images", async () => {
+    const load = vi.fn(async () => [image]);
+    const { runtime } = await generateAndReport([calls(["canvas_inspect", {}]), say("好的。")], { load });
+    expect(runtime.requests[1]!.inputAssets).toHaveLength(1);
+    expect(runtime.requests[2]!.inputAssets).toBeUndefined();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  test("the loader uses previews, skips unreadable, non-image and oversized assets, and caps the count", async () => {
+    const getAssetBytes = vi.fn(async (_ctx: unknown, assetId: string, variant?: string) => {
+      expect(variant).toBe("preview");
+      if (assetId === "missing") throw new Error("not found");
+      if (assetId === "video") return { body: Buffer.from("x"), contentLength: 1, contentType: "video/mp4", variantKey: null };
+      if (assetId === "huge") return { body: Buffer.alloc(4 * 1024 * 1024), contentLength: null, contentType: "image/png", variantKey: null };
+      return { body: Buffer.from("ABC"), contentLength: 3, contentType: "image/webp; charset=binary", variantKey: "preview" };
+    });
+    const loader = createReviewImageLoader({ getAssetBytes } as never);
+    const loaded = await loader.load(ctx, ["ok1", "missing", "video", "huge", "ok2", "ok3"]);
+
+    expect(loaded.map((item) => item.assetId)).toEqual(["ok1"]);
+    expect(loaded[0]).toEqual({ assetId: "ok1", kind: "image", metadata: { base64: "QUJD", url: "data:image/webp;base64,QUJD" }, mimeType: "image/webp" });
+    expect(getAssetBytes).toHaveBeenCalledTimes(MAX_REVIEW_IMAGES);
   });
 });
 

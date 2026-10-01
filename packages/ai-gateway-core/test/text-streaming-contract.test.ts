@@ -374,6 +374,27 @@ describe("tool-calling loop round trip", () => {
     ]);
   });
 
+  test("relay claude protocol appends review images to the turn holding tool results + review text", async () => {
+    const { bodies, fetchImplementation } = capturingFetch([{ type: "message_delta", delta: { stop_reason: "end_turn" } }]);
+    const adapter = new AittcoTextRelayAdapter({ fetchImplementation });
+    await collect(adapter.streamText!(providerContext({ protocol: "claude" }), {
+      ...toolLoopRequest,
+      inputAssets: [{ assetId: "a1", kind: "image", metadata: { base64: "QUJD" }, mimeType: "image/png" }],
+      messages: [...toolLoopRequest.messages, { content: "请点评刚生成的图片", role: "user" }],
+    }));
+
+    const messages = bodies[0]!.messages as Array<{ content: unknown; role: string }>;
+    expect(messages[0]).toEqual({ content: "Look at my canvas", role: "user" });
+    expect(messages.at(-1)).toEqual({
+      content: [
+        { content: '{"nodes":3}', tool_use_id: "call-1", type: "tool_result" },
+        { text: "请点评刚生成的图片", type: "text" },
+        { source: { data: "QUJD", media_type: "image/png", type: "base64" }, type: "image" },
+      ],
+      role: "user",
+    });
+  });
+
   test("relay gemini protocol rejects tools instead of silently dropping them", async () => {
     const { bodies, fetchImplementation } = capturingFetch([]);
     const adapter = new AittcoTextRelayAdapter({ fetchImplementation });

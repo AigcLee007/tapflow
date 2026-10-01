@@ -633,18 +633,25 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
         systemInstruction: system ? { parts: [{ text: system }] } : undefined,
       });
     }
-    // Images attach to the last plain-text user turn (never to a tool-result turn).
-    const attachImages = <T extends Record<string, unknown>>(items: T[], toContent: (text: string) => unknown[]): T[] => {
+    // Images attach to the last user turn. A plain-text turn becomes [text, ...images];
+    // a turn that is already a block list (Claude tool results + folded text) gets the
+    // images appended, so they sit next to the request that refers to them.
+    const attachImages = <T extends Record<string, unknown>>(items: T[], textPart: (text: string) => unknown, imageParts: unknown[]): T[] => {
       if (!images.length) return items;
-      const index = items.map((item) => item.role === "user" && typeof item.content === "string").lastIndexOf(true);
+      const index = items.map((item) => item.role === "user").lastIndexOf(true);
       if (index < 0) return items;
-      return items.map((item, itemIndex) => itemIndex === index ? { ...item, content: toContent(String(item.content)) } : item);
+      return items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const content = Array.isArray(item.content) ? [...item.content, ...imageParts] : [textPart(String(item.content)), ...imageParts];
+        return { ...item, content };
+      });
     };
     if (protocol === "responses") {
-      const input = attachImages(toRelayResponsesInput(messages), (text) => [
-        { type: "input_text", text },
-        ...images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` })),
-      ]);
+      const input = attachImages(
+        toRelayResponsesInput(messages),
+        (text) => ({ type: "input_text", text }),
+        images.map((image) => ({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.base64}` })),
+      );
       return compactObject({
         input: system ? [{ content: system, role: "system" }, ...input] : input,
         max_output_tokens: maxTokens,
@@ -653,10 +660,11 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
       });
     }
     if (protocol === "chat-completions") {
-      const chatMessages = attachImages(toRelayChatMessages(messages), (text) => [
-        { type: "text", text },
-        ...images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.base64}` } })),
-      ]);
+      const chatMessages = attachImages(
+        toRelayChatMessages(messages),
+        (text) => ({ type: "text", text }),
+        images.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.base64}` } })),
+      );
       return compactObject({
         max_tokens: maxTokens,
         messages: system ? [{ content: system, role: "system" }, ...chatMessages] : chatMessages,
@@ -666,10 +674,11 @@ export class AittcoTextRelayAdapter implements ProviderAdapter {
     }
     return compactObject({
       max_tokens: maxTokens ?? 2048,
-      messages: attachImages(toRelayClaudeMessages(messages), (text) => [
-        { type: "text", text },
-        ...images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } })),
-      ]),
+      messages: attachImages(
+        toRelayClaudeMessages(messages),
+        (text) => ({ type: "text", text }),
+        images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } })),
+      ),
       model,
       system: system ?? undefined,
       temperature,

@@ -146,6 +146,18 @@
   - 测试：新增 16 个全部通过；agent 相关旧测试 8 个失败与改动前一致，无新增失败。
   - 视觉检查：用样例数据渲染与 TapNow 截图对照，修了输入框溢出卡片的问题。
   - 暂未做：+ 菜单（上传附件/技能/应用）、文本模型选择、"添加到画布"；确认生成后画布执行在阶段 3 接入，目前显示"等待画布执行"。
-- [ ] 阶段 3
+- [x] 阶段 3 代码（2026-10-01；假数据测试通过，未真实运行）：
+  - 画布执行器 `src/flowCanvas/canvasAgent/canvasAgentExecutor.ts`：在已有节点右侧找空位 → 每个任务建一个图片节点（标题、提示词、`routeKey`，以及 worker 读取的 `agentTool`：prompt/routeKey/size/aspectRatio/n/referenceAssetIds）→ 保存草稿 → 逐个走 `runBackendWorkflow({ runMode: 'target_node' })`（复用积分预扣）→ 等节点到终态 → 回传结果。节点带 `agentCallId`/`agentTaskIndex`，重开会话时复用已建节点，不重复建、不重复扣费。单个任务启动失败（如积分不足）只标记该任务失败；停止立即返回；15 分钟超时。
+  - `useCanvasGenerationExecutor`：卡片进入"生成中"且确认流结束后启动，卡片被停止或面板关闭时中止；卡片显示"正在画布上生成…（1/2 完成）"。
+  - 结果回看：一批生成结束后的第一轮，服务端读取生成图的 preview（最多 4 张、单张 ≤3MB），同时以 base64 与 data URL 提供给两种适配器，并临时附加一句点评要求（不写入历史）。文本线路不支持图片时，在尚未输出任何内容的前提下自动去掉图片重试一次。网关中转 claude 协议支持把图片追加到含工具结果的用户轮。
+  - 顺带修：`saveFlowDraft` 改为带版本条件的更新，修复并发保存互相覆盖（读取未加锁）；另一条"canceled/cancelled 拼写不一致"经核实不是 bug（工作流状态统一用 canceled，前端有意映射为节点状态 cancelled），不改。
+  - 测试：前端 25 个、后端 canvas-agent 28 个、网关 193 个全部通过；API 全量 731 通过，3 个失败为既有问题。`saveFlowDraft` 的修复只过了类型检查，相关测试需要数据库，未运行。
+- [ ] 阶段 3 联调验收（需要 Docker，会真实扣积分，每次出图前先问用户）：
+  1. 用户启动 Docker Desktop；本地起 Postgres + Redis，跑迁移（含 000105）。
+  2. 起 api（`CANVAS_AGENT_ENABLED=true`）、worker、web（`VITE_CANVAS_AGENT_LOOP=true`）。
+  3. 用户在后台给 gpt-5.5 文本线路勾选"供画布 Agent 使用"。
+  4. 先跑不出图的部分：提问 → 回答 → 写 project.md → 出确认卡。
+  5. 征得同意后用 1~2 张、1K 跑一次出图，确认：占位节点出现 → 出图 → Agent 看图点评 → 继续。
+  6. 记录问题，修复后再跑一遍验收场景。
 - [ ] 阶段 4（需单独确认）
 - [ ] 阶段 5

@@ -23,11 +23,12 @@ function estimate(models: CanvasAgentImageModel[], modelKey: string, routeKey: s
   return credits === undefined ? null : credits * count * tasks;
 }
 
-export function AgentLoopGenerationCard({ disabled, item, models, onDecide, waitingForExecutor }: {
+export function AgentLoopGenerationCard({ disabled, item, models, onDecide, progress, waitingForExecutor }: {
   disabled?: boolean;
   item: GenerationItem;
   models: CanvasAgentImageModel[];
   onDecide: (payload: CanvasAgentApprovalPayload) => void;
+  progress?: { done: number; total: number };
   /** True while state is "generating" but no canvas executor is wired yet (phase 3). */
   waitingForExecutor?: boolean;
 }) {
@@ -114,7 +115,11 @@ export function AgentLoopGenerationCard({ disabled, item, models, onDecide, wait
       ) : item.state === "done" ? null : (
         <p className="agent-loop-card-note">
           {item.state === "generating" ? <Loader2 aria-hidden className="agent-loop-spin" size={13} /> : null}
-          {item.state === "generating" && waitingForExecutor ? "已确认，等待画布执行（画布生成将在下一阶段接入）" : STATE_NOTE[item.state]}
+          {item.state === "generating" && waitingForExecutor
+            ? "已确认，等待画布执行"
+            : item.state === "generating" && progress
+              ? `正在画布上生成…（${progress.done}/${progress.total} 完成）`
+              : STATE_NOTE[item.state]}
         </p>
       )}
     </section>

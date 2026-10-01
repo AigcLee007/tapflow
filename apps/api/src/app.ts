@@ -32,6 +32,7 @@ import { registerCanvasAgentRoutes } from "./modules/canvas-agent/canvas-agent.r
 import { CanvasAgentService } from "./modules/canvas-agent/canvas-agent.service.js";
 import { CanvasAgentLoop } from "./modules/canvas-agent/canvas-agent.loop.js";
 import { PgCanvasAgentRepository } from "./modules/canvas-agent/canvas-agent.repository.js";
+import { createReviewImageLoader } from "./modules/canvas-agent/canvas-agent.review-images.js";
 import { infoTools } from "./modules/canvas-agent/canvas-agent.tools.js";
 import { interactiveTools } from "./modules/canvas-agent/canvas-agent.interactive-tools.js";
 import { registerSkillRoutes } from "./modules/agent/skill.routes.js";
@@ -426,6 +427,7 @@ export function buildApp(options?: {
     logger: app.log,
     loop: new CanvasAgentLoop({
       deps: canvasAgentDeps,
+      images: createReviewImageLoader(assetsService),
       onToolError: (error, tool) => app.log.error({ err: error, tool }, "canvas agent tool failed"),
       textRuntime: agentTextRuntime,
       tools: [...infoTools, ...interactiveTools],
